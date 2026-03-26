@@ -7,11 +7,10 @@ from apps.labeling.api.v1.serializers import AnnotationSerializer, AnnotationSub
 from apps.labeling.selectors import get_task_or_404
 from apps.labeling.services import get_next_task_for_annotator, submit_annotation
 from apps.rooms.selectors import get_visible_room
-from common.permissions import IsAnnotator
 
 
 class RoomNextTaskView(APIView):
-    permission_classes = [IsAuthenticated, IsAnnotator]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, room_id: int):
         room = get_visible_room(room_id=room_id, user=request.user)
@@ -22,7 +21,7 @@ class RoomNextTaskView(APIView):
 
 
 class TaskSubmitView(APIView):
-    permission_classes = [IsAuthenticated, IsAnnotator]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, task_id: int):
         serializer = AnnotationSubmitSerializer(data=request.data)

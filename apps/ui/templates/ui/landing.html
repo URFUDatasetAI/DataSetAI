@@ -1,0 +1,65 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Главная{% endblock %}
+
+{% block content %}
+    <section class="hero-card hero-card--landing">
+        <div class="hero-card__main">
+            <span class="eyebrow hero-card__eyebrow">Crowdsourcing MVP</span>
+            <h1>Backend + интерфейс для разметки датасетов</h1>
+            <p>
+                Этот проект дает заказчику возможность создавать комнаты для разметки,
+                приглашать исполнителей, выдавать задачи и собирать результаты. Архитектура
+                рассчитана на локальный запуск, корпоративное разворачивание и дальнейшее
+                развитие API без болезненного рефакторинга.
+            </p>
+        </div>
+        <div class="hero-card__stats">
+            <div class="metric-card">
+                <span>Пользователи</span>
+                <strong>{{ stats.users }}</strong>
+            </div>
+            <div class="metric-card">
+                <span>Комнаты</span>
+                <strong>{{ stats.rooms }}</strong>
+            </div>
+            <div class="metric-card">
+                <span>Задачи</span>
+                <strong>{{ stats.tasks }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="card-grid card-grid--three card-grid--compact">
+        <article class="info-card">
+            <h2>Что делает заказчик</h2>
+            <p>Создает комнаты, добавляет тестовый датасет, задает пароль, дедлайн и приглашает разметчиков.</p>
+        </article>
+        <article class="info-card">
+            <h2>Что делает разметчик</h2>
+            <p>Видит только доступные ему комнаты, заходит в рабочую среду, берет задачи и отправляет разметку.</p>
+        </article>
+        <article class="info-card">
+            <h2>Что уже заложено</h2>
+            <p>PostgreSQL, DRF API, mock identification, dashboard по комнате и профиль со статистикой активности.</p>
+        </article>
+    </section>
+
+    <section class="wide-card wide-card--landing">
+        <div class="wide-card__column">
+            <h2>Текущая цель MVP</h2>
+            <p>
+                Быстро дать команде рабочий контур системы, где можно руками проверить
+                основной пользовательский путь: создать комнату, открыть ее, выполнить
+                разметку и увидеть прогресс по работе.
+            </p>
+        </div>
+        <div class="wide-card__column">
+            <h2>Следующий естественный шаг</h2>
+            <p>
+                Подключить полноценную аутентификацию, реальную загрузку датасетов и
+                управление жизненным циклом задач без изменения базовой структуры проекта.
+            </p>
+        </div>
+    </section>
+{% endblock %}

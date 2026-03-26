@@ -1,0 +1,33 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Регистрация{% endblock %}
+
+{% block content %}
+    <section class="auth-page">
+        <div class="auth-card">
+            <span class="eyebrow">Регистрация</span>
+            <h1>Создать аккаунт</h1>
+            <p>После регистрации ты сможешь создавать комнаты и участвовать в чужих комнатах без выбора глобальной роли.</p>
+
+            <form method="post" class="auth-form">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="form-error">{{ form.non_field_errors }}</div>
+                {% endif %}
+                <label class="field">
+                    <span>{{ form.username.label }}</span>
+                    {{ form.username }}
+                </label>
+                <label class="field">
+                    <span>{{ form.password.label }}</span>
+                    {{ form.password }}
+                </label>
+                <label class="field">
+                    <span>{{ form.password_repeat.label }}</span>
+                    {{ form.password_repeat }}
+                </label>
+                <button class="btn btn--primary" type="submit">Зарегистрироваться</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

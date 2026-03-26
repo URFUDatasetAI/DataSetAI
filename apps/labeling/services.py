@@ -18,9 +18,6 @@ def _assert_joined_membership(*, room: Room, annotator: User) -> None:
 
 
 def get_next_task_for_annotator(*, room: Room, annotator: User):
-    if annotator.role != User.Role.ANNOTATOR:
-        raise AccessDeniedError("Only annotators can request tasks.")
-
     _assert_joined_membership(room=room, annotator=annotator)
 
     with transaction.atomic():
@@ -51,8 +48,6 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
 
 
 def submit_annotation(*, task: Task, annotator: User, result_payload):
-    if annotator.role != User.Role.ANNOTATOR:
-        raise AccessDeniedError("Only annotators can submit annotations.")
     if task.assigned_to_id != annotator.id:
         raise AccessDeniedError("Task is not assigned to the current annotator.")
     if task.status != Task.Status.IN_PROGRESS:

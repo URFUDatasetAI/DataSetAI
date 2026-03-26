@@ -1,0 +1,83 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Комната{% endblock %}
+
+{% block content %}
+    <section class="page-topbar page-topbar--room">
+        <div class="page-topbar__copy">
+            <span class="eyebrow">Комната</span>
+            <h1 id="room-title">Загрузка комнаты...</h1>
+            <p id="room-subtitle">Подгружаем статистику и рабочий контур.</p>
+        </div>
+        <div class="room-header-meta" id="room-header-meta"></div>
+    </section>
+
+    <section class="card-grid card-grid--four" id="room-metrics"></section>
+
+    <section id="annotator-workspace" class="workspace-grid hidden">
+        <div class="workspace-grid__main">
+            <div class="panel-card">
+                <div class="panel-card__head">
+                    <h2>Личная статистика</h2>
+                </div>
+                <div id="annotator-summary" class="summary-stack"></div>
+                <div id="annotator-activity" class="activity-board"></div>
+            </div>
+        </div>
+        <div class="workspace-grid__side">
+            <div class="panel-card">
+                <div class="panel-card__head">
+                    <h2>Работа с задачами</h2>
+                </div>
+                <div class="action-strip">
+                    <button id="detail-join-btn" class="btn btn--muted" type="button">Войти в комнату</button>
+                    <button id="detail-next-task-btn" class="btn btn--primary" type="button">Взять задачу</button>
+                </div>
+                <div id="detail-task-box" class="empty-card">Задача пока не выбрана.</div>
+                <form id="detail-submit-form" class="stack-form hidden">
+                    <label class="field">
+                        <span>Результат разметки</span>
+                        <textarea id="detail-result-json" rows="10">{
+  "label": "positive",
+  "confidence": 0.95
+}</textarea>
+                    </label>
+                    <button class="btn btn--primary" type="submit">Отправить результат</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <section id="customer-workspace" class="workspace-grid hidden">
+        <div class="workspace-grid__main">
+            <div class="panel-card">
+                <div class="panel-card__head">
+                    <h2>Участники комнаты</h2>
+                </div>
+                <div id="annotators-list" class="annotators-list"></div>
+            </div>
+        </div>
+        <div class="workspace-grid__side workspace-grid__side--stack">
+            <div class="panel-card">
+                <div class="panel-card__head">
+                    <h2>Добавить исполнителя</h2>
+                </div>
+                <form id="detail-invite-form" class="stack-form stack-form--compact">
+                    <label class="field">
+                        <span>ID пользователя</span>
+                        <input id="detail-invite-user-id" type="number" min="1" placeholder="Например, 5" required>
+                    </label>
+                    <button class="btn btn--primary" type="submit">Добавить в комнату</button>
+                </form>
+                <div class="panel-note">Пользователь будет добавлен в комнату и сможет зайти в нее как исполнитель.</div>
+            </div>
+            <div class="panel-card">
+                <div class="panel-card__head">
+                    <h2>Полная статистика участника</h2>
+                </div>
+                <div id="annotator-detail-panel" class="empty-card">Выбери исполнителя в списке слева.</div>
+                <div id="annotator-detail-activity" class="activity-board"></div>
+            </div>
+        </div>
+    </section>
+{% endblock %}

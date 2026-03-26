@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.contrib.auth.hashers import check_password, make_password
 
 from common.models import TimeStampedModel
 
@@ -7,6 +8,9 @@ from common.models import TimeStampedModel
 class Room(TimeStampedModel):
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    access_password_hash = models.CharField(max_length=255, blank=True)
+    deadline = models.DateTimeField(null=True, blank=True)
+    dataset_label = models.CharField(max_length=255, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -18,6 +22,18 @@ class Room(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title
+
+    @property
+    def has_password(self) -> bool:
+        return bool(self.access_password_hash)
+
+    def set_access_password(self, raw_password: str) -> None:
+        self.access_password_hash = make_password(raw_password) if raw_password else ""
+
+    def check_access_password(self, raw_password: str) -> bool:
+        if not self.access_password_hash:
+            return True
+        return check_password(raw_password or "", self.access_password_hash)
 
 
 class RoomMembership(TimeStampedModel):

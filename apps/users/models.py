@@ -4,10 +4,11 @@ from django.db import models
 
 class User(AbstractUser):
     class Role(models.TextChoices):
+        USER = "user", "User"
         CUSTOMER = "customer", "Customer"
         ANNOTATOR = "annotator", "Annotator"
 
-    role = models.CharField(max_length=32, choices=Role.choices)
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.USER)
 
     def __str__(self) -> str:
-        return f"{self.username} ({self.role})"
+        return self.username

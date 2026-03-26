@@ -1,0 +1,29 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Вход{% endblock %}
+
+{% block content %}
+    <section class="auth-page">
+        <div class="auth-card">
+            <span class="eyebrow">Авторизация</span>
+            <h1>Вход в аккаунт</h1>
+            <p>Используй тестовые данные `admin/admin` или `user/user`.</p>
+
+            <form method="post" class="auth-form">
+                {% csrf_token %}
+                {% if form.non_field_errors %}
+                    <div class="form-error">{{ form.non_field_errors }}</div>
+                {% endif %}
+                <label class="field">
+                    <span>{{ form.username.label }}</span>
+                    {{ form.username }}
+                </label>
+                <label class="field">
+                    <span>{{ form.password.label }}</span>
+                    {{ form.password }}
+                </label>
+                <button class="btn btn--primary" type="submit">Войти</button>
+            </form>
+        </div>
+    </section>
+{% endblock %}

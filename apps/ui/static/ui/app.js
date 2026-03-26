@@ -1,15 +1,12 @@
-const mockUsers = JSON.parse(document.getElementById("mock-users-data").textContent);
+const authUser = JSON.parse(document.getElementById("auth-user-data").textContent);
 
-const state = {
-  user: null,
-  rooms: [],
-  selectedRoom: null,
-  currentTask: null,
-};
+const body = document.body;
+const currentPage = body.dataset.page;
+const currentRoomId = body.dataset.roomId ? Number(body.dataset.roomId) : null;
 
 const roleLabels = {
   customer: "Заказчик",
-  annotator: "Разметчик",
+  annotator: "Исполнитель",
   unknown: "Неизвестная роль",
 };
 
@@ -25,28 +22,16 @@ const taskStatusLabels = {
   submitted: "Отправлена",
 };
 
-const elements = {
-  userPicker: document.getElementById("user-picker"),
-  userIdInput: document.getElementById("user-id-input"),
-  useUserBtn: document.getElementById("use-user-btn"),
-  currentUserCard: document.getElementById("current-user-card"),
-  roomsList: document.getElementById("rooms-list"),
-  roomsEmpty: document.getElementById("rooms-empty"),
-  roomDetail: document.getElementById("room-detail"),
-  roomRoleBadge: document.getElementById("room-role-badge"),
-  customerTools: document.getElementById("customer-tools"),
-  annotatorTools: document.getElementById("annotator-tools"),
-  createRoomForm: document.getElementById("create-room-form"),
-  inviteForm: document.getElementById("invite-form"),
-  joinRoomBtn: document.getElementById("join-room-btn"),
-  nextTaskBtn: document.getElementById("next-task-btn"),
-  taskCard: document.getElementById("task-card"),
-  submitTaskForm: document.getElementById("submit-task-form"),
-  resultPayloadInput: document.getElementById("result-payload-input"),
-  requestLog: document.getElementById("request-log"),
-  flashBox: document.getElementById("flash-box"),
-  refreshRoomsBtn: document.getElementById("refresh-rooms-btn"),
-  clearLogBtn: document.getElementById("clear-log-btn"),
+const state = {
+  user: authUser,
+  currentTask: null,
+  roomDashboard: null,
+  pageRefresh: () => {},
+};
+
+const globalElements = {
+  currentUserBadge: document.getElementById("current-user-badge"),
+  globalFlash: document.getElementById("global-flash"),
 };
 
 function translateRole(role) {
@@ -61,173 +46,62 @@ function translateTaskStatus(status) {
   return taskStatusLabels[status] || status;
 }
 
-function log(message, payload) {
-  const timestamp = new Date().toLocaleTimeString();
-  const renderedPayload = payload ? `\n${JSON.stringify(payload, null, 2)}` : "";
-  elements.requestLog.textContent = `[${timestamp}] ${message}${renderedPayload}\n\n${elements.requestLog.textContent}`;
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "Не задан";
+  }
+  return new Date(value).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function showFlash(message, type = "success") {
-  elements.flashBox.className = `flash-box flash-box--${type}`;
-  elements.flashBox.textContent = message;
-  elements.flashBox.classList.remove("hidden");
+  globalElements.globalFlash.textContent = message;
+  globalElements.globalFlash.className = `global-flash global-flash--${type}`;
+  globalElements.globalFlash.classList.remove("hidden");
 }
 
 function clearFlash() {
-  elements.flashBox.classList.add("hidden");
-  elements.flashBox.textContent = "";
+  globalElements.globalFlash.className = "global-flash hidden";
+  globalElements.globalFlash.textContent = "";
 }
 
-function getStoredUserId() {
-  return window.localStorage.getItem("datasetai-user-id");
-}
-
-function setStoredUserId(userId) {
-  window.localStorage.setItem("datasetai-user-id", String(userId));
-}
-
-function detectUserById(userId) {
-  const numericId = Number(userId);
-  return mockUsers.find((user) => user.id === numericId) || {
-    id: numericId,
-    username: `user_${numericId}`,
-    role: "unknown",
-  };
-}
-
-function renderUserPicker() {
-  if (!mockUsers.length) {
-    elements.userPicker.innerHTML = '<div class="empty-state">Тестовые пользователи не найдены. Выполни команду `python manage.py seed_mvp_data`.</div>';
-    return;
+function renderHeaderUser() {
+  if (globalElements.currentUserBadge && state.user) {
+    globalElements.currentUserBadge.innerHTML = `<strong>${state.user.username}</strong><span>Личный кабинет</span>`;
   }
-
-  elements.userPicker.innerHTML = mockUsers
-    .map((user) => `
-      <button class="user-chip" data-user-id="${user.id}" type="button">
-        <strong>#${user.id} ${user.username}</strong>
-        <span class="user-chip__role">${translateRole(user.role)}</span>
-      </button>
-    `)
-    .join("");
-
-  elements.userPicker.querySelectorAll("[data-user-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const userId = Number(button.dataset.userId);
-      elements.userIdInput.value = String(userId);
-      activateUser(userId);
-    });
-  });
-}
-
-function renderCurrentUser() {
-  if (!state.user) {
-    elements.currentUserCard.className = "current-user current-user--empty";
-    elements.currentUserCard.textContent = "Пользователь не выбран";
-    elements.customerTools.classList.add("hidden");
-    elements.annotatorTools.classList.add("hidden");
-    return;
-  }
-
-  elements.currentUserCard.className = "current-user";
-  elements.currentUserCard.innerHTML = `
-    <strong>#${state.user.id} ${state.user.username}</strong>
-    <div class="room-detail__meta">Роль: ${translateRole(state.user.role)}</div>
-  `;
-
-  elements.customerTools.classList.toggle("hidden", state.user.role !== "customer");
-  elements.annotatorTools.classList.toggle("hidden", state.user.role !== "annotator");
-
-  elements.userPicker.querySelectorAll(".user-chip").forEach((button) => {
-    button.classList.toggle("active", Number(button.dataset.userId) === state.user.id);
-  });
-}
-
-function renderRooms() {
-  if (!state.rooms.length) {
-    elements.roomsList.innerHTML = "";
-    elements.roomsEmpty.classList.remove("hidden");
-    return;
-  }
-
-  elements.roomsEmpty.classList.add("hidden");
-  elements.roomsList.innerHTML = state.rooms.map((room) => `
-    <button class="room-item ${state.selectedRoom && state.selectedRoom.id === room.id ? "active" : ""}" data-room-id="${room.id}" type="button">
-      <div class="room-item__title">${room.title}</div>
-      <span class="room-item__meta">Комната #${room.id} · ${translateMembership(room.membership_status || "owner")}</span>
-    </button>
-  `).join("");
-
-  elements.roomsList.querySelectorAll("[data-room-id]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const roomId = Number(button.dataset.roomId);
-      selectRoom(roomId);
-    });
-  });
-}
-
-function renderRoomDetail() {
-  if (!state.selectedRoom) {
-    elements.roomRoleBadge.textContent = "Комната не выбрана";
-    elements.roomDetail.className = "room-detail empty-state";
-    elements.roomDetail.textContent = "Выбери комнату в списке слева.";
-    return;
-  }
-
-  const ownershipLabel = state.user.role === "customer"
-    ? "owner"
-    : state.selectedRoom.membership_status || "invited";
-
-  elements.roomRoleBadge.textContent = translateMembership(ownershipLabel);
-  elements.roomDetail.className = "room-detail";
-  elements.roomDetail.innerHTML = `
-    <h3>${state.selectedRoom.title}</h3>
-    <p>${state.selectedRoom.description || "Описание пока не заполнено."}</p>
-    <div class="room-detail__meta">Комната #${state.selectedRoom.id} · создана пользователем #${state.selectedRoom.created_by_id}</div>
-  `;
-}
-
-function renderTask() {
-  if (!state.currentTask) {
-    elements.taskCard.className = "task-card empty-state";
-    elements.taskCard.textContent = "Задача пока не загружена.";
-    elements.submitTaskForm.classList.add("hidden");
-    return;
-  }
-
-  elements.taskCard.className = "task-card";
-  elements.taskCard.innerHTML = `
-    <h3>Задача #${state.currentTask.id}</h3>
-    <p>Статус: ${translateTaskStatus(state.currentTask.status)}</p>
-    <pre class="payload-preview">${JSON.stringify(state.currentTask.input_payload, null, 2)}</pre>
-  `;
-  elements.submitTaskForm.classList.remove("hidden");
 }
 
 async function api(path, options = {}) {
   if (!state.user) {
-    throw new Error("Сначала выберите пользователя.");
+    throw new Error("Сначала войди в аккаунт.");
   }
-
-  const headers = {
-    "Content-Type": "application/json",
-    "X-User-Id": String(state.user.id),
-    ...(options.headers || {}),
-  };
 
   const requestOptions = {
     method: options.method || "GET",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Id": String(state.user.id),
+      ...(options.headers || {}),
+    },
   };
 
   if (options.body !== undefined) {
     requestOptions.body = JSON.stringify(options.body);
   }
 
-  log(`${requestOptions.method} ${path}`, options.body);
   const response = await fetch(path, requestOptions);
+  const contentType = response.headers.get("content-type") || "";
 
   if (response.status === 204) {
-    log(`RESPONSE 204 ${path}`, { detail: "Пустой ответ" });
     return null;
   }
 
@@ -235,217 +109,558 @@ async function api(path, options = {}) {
   const text = await response.text();
   if (text) {
     try {
-      data = JSON.parse(text);
+      if (contentType.includes("application/json")) {
+        data = JSON.parse(text);
+      } else if (text.includes("<!DOCTYPE html") || text.includes("<html")) {
+        data = {
+          detail: "Сервер вернул HTML-ошибку вместо JSON. Обычно это значит, что backend упал или не применены миграции. Выполни: python manage.py migrate",
+        };
+      } else {
+        data = { detail: text };
+      }
     } catch (error) {
-      data = { raw: text };
+      data = { detail: "Не удалось прочитать ответ API." };
     }
   }
 
   if (!response.ok) {
-    const detail = data?.detail || `HTTP ${response.status}`;
-    throw new Error(detail);
+    throw new Error(data?.detail || `HTTP ${response.status}`);
   }
 
-  log(`RESPONSE ${response.status} ${path}`, data);
   return data;
 }
 
-async function loadRooms() {
-  if (!state.user) {
-    return;
-  }
-
-  clearFlash();
-  try {
-    const path = state.user.role === "customer" ? "/api/v1/rooms/" : "/api/v1/me/rooms/";
-    const rooms = await api(path);
-    state.rooms = rooms || [];
-    if (state.selectedRoom) {
-      state.selectedRoom = state.rooms.find((room) => room.id === state.selectedRoom.id) || null;
-    }
-    renderRooms();
-    renderRoomDetail();
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
+function renderMetricCards(container, metrics) {
+  container.innerHTML = metrics
+    .map((metric) => `
+      <article class="metric-card">
+        <span>${metric.label}</span>
+        <strong>${metric.value}</strong>
+      </article>
+    `)
+    .join("");
 }
 
-async function selectRoom(roomId) {
-  clearFlash();
-  try {
-    const room = await api(`/api/v1/rooms/${roomId}/`);
-    state.selectedRoom = room;
-    state.currentTask = null;
-    renderRooms();
-    renderRoomDetail();
-    renderTask();
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
+function renderSummaryRows(container, rows) {
+  container.innerHTML = rows
+    .map((row) => `
+      <div class="summary-row">
+        <span>${row.label}</span>
+        <strong>${row.value}</strong>
+      </div>
+    `)
+    .join("");
 }
 
-async function activateUser(userId) {
-  const numericId = Number(userId);
-  if (!numericId) {
-    showFlash("Укажи корректный идентификатор пользователя.", "error");
-    return;
-  }
-
-  state.user = detectUserById(numericId);
-  state.rooms = [];
-  state.selectedRoom = null;
-  state.currentTask = null;
-  setStoredUserId(numericId);
-  renderCurrentUser();
-  renderRooms();
-  renderRoomDetail();
-  renderTask();
-  await loadRooms();
+function formatMonthLabel(dateString) {
+  return new Intl.DateTimeFormat("ru-RU", { month: "short" })
+    .format(new Date(`${dateString}T00:00:00`))
+    .replace(".", "");
 }
 
-elements.useUserBtn.addEventListener("click", async () => {
-  await activateUser(elements.userIdInput.value);
-});
+function buildActivityMonthLabels(series) {
+  const labels = [];
+  let previousMonthKey = null;
 
-elements.refreshRoomsBtn.addEventListener("click", async () => {
-  await loadRooms();
-});
-
-elements.clearLogBtn.addEventListener("click", () => {
-  elements.requestLog.textContent = "Интерфейс готов к работе.";
-});
-
-elements.createRoomForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  clearFlash();
-
-  const formData = new FormData(event.currentTarget);
-  const payload = {
-    title: formData.get("title"),
-    description: formData.get("description"),
-  };
-
-  try {
-    const room = await api("/api/v1/rooms/", { method: "POST", body: payload });
-    showFlash(`Комната #${room.id} создана.`);
-    event.currentTarget.reset();
-    await loadRooms();
-    await selectRoom(room.id);
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
-});
-
-elements.inviteForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  clearFlash();
-
-  if (!state.selectedRoom) {
-    showFlash("Сначала выберите комнату.", "error");
-    return;
-  }
-
-  const formData = new FormData(event.currentTarget);
-  const payload = {
-    annotator_id: Number(formData.get("annotator_id")),
-  };
-
-  try {
-    const response = await api(`/api/v1/rooms/${state.selectedRoom.id}/invite/`, {
-      method: "POST",
-      body: payload,
-    });
-    showFlash(`Разметчик #${response.user_id} приглашен в комнату #${response.room_id}.`);
-    event.currentTarget.reset();
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
-});
-
-elements.joinRoomBtn.addEventListener("click", async () => {
-  clearFlash();
-
-  if (!state.selectedRoom) {
-    showFlash("Сначала выберите комнату.", "error");
-    return;
-  }
-
-  try {
-    const membership = await api(`/api/v1/rooms/${state.selectedRoom.id}/join/`, {
-      method: "POST",
-    });
-    showFlash(`Статус участия обновлен: ${translateMembership(membership.status)}.`);
-    await loadRooms();
-    await selectRoom(state.selectedRoom.id);
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
-});
-
-elements.nextTaskBtn.addEventListener("click", async () => {
-  clearFlash();
-
-  if (!state.selectedRoom) {
-    showFlash("Сначала выберите комнату.", "error");
-    return;
-  }
-
-  try {
-    const task = await api(`/api/v1/rooms/${state.selectedRoom.id}/tasks/next/`);
-    if (!task) {
-      state.currentTask = null;
-      renderTask();
-      showFlash("Доступных задач больше нет.", "success");
+  series.forEach((item, index) => {
+    const date = new Date(`${item.date}T00:00:00`);
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+    if (monthKey === previousMonthKey) {
       return;
     }
 
-    state.currentTask = task;
-    renderTask();
-    showFlash(`Задача #${task.id} загружена.`);
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
-});
+    const weekIndex = Math.floor(index / 7);
+    if (labels.length && labels[labels.length - 1].weekIndex === weekIndex) {
+      labels[labels.length - 1] = {
+        label: formatMonthLabel(item.date),
+        weekIndex,
+      };
+    } else {
+      labels.push({
+        label: formatMonthLabel(item.date),
+        weekIndex,
+      });
+    }
 
-elements.submitTaskForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  clearFlash();
+    previousMonthKey = monthKey;
+  });
 
-  if (!state.currentTask) {
-    showFlash("Сначала запросите задачу.", "error");
-    return;
-  }
-
-  let resultPayload;
-  try {
-    resultPayload = JSON.parse(elements.resultPayloadInput.value);
-  } catch (error) {
-    showFlash("Поле результата должно содержать корректный JSON.", "error");
-    return;
-  }
-
-  try {
-    const annotation = await api(`/api/v1/tasks/${state.currentTask.id}/submit/`, {
-      method: "POST",
-      body: { result_payload: resultPayload },
-    });
-    showFlash(`Разметка #${annotation.id} отправлена.`);
-    state.currentTask = null;
-    renderTask();
-    await loadRooms();
-  } catch (error) {
-    showFlash(error.message, "error");
-  }
-});
-
-renderUserPicker();
-renderCurrentUser();
-renderRooms();
-renderRoomDetail();
-renderTask();
-
-const storedUserId = getStoredUserId();
-if (storedUserId) {
-  elements.userIdInput.value = storedUserId;
-  activateUser(storedUserId);
+  return labels;
 }
+
+function renderActivity(container, series) {
+  if (!container) {
+    return;
+  }
+
+  if (!series?.length) {
+    container.innerHTML = '<div class="empty-card">Активность пока отсутствует.</div>';
+    return;
+  }
+
+  const maxCount = Math.max(...series.map((item) => item.count), 0);
+  const weekCount = Math.ceil(series.length / 7);
+  const monthLabels = buildActivityMonthLabels(series);
+  container.innerHTML = `
+    <div class="activity-board__calendar">
+      <div class="activity-board__months" style="grid-template-columns: repeat(${weekCount}, 14px);">
+        ${monthLabels
+          .map(
+            (item) =>
+              `<span class="activity-board__month" style="grid-column: ${item.weekIndex + 1};">${item.label}</span>`
+          )
+          .join("")}
+      </div>
+      <div class="activity-board__grid" style="grid-template-columns: repeat(${weekCount}, 14px);">
+        ${series
+          .map((item) => {
+            let level = 0;
+            if (item.count > 0 && maxCount > 0) {
+              const ratio = item.count / maxCount;
+              level = ratio < 0.34 ? 1 : ratio < 0.67 ? 2 : 3;
+            }
+
+            return `<div class="activity-board__cell" data-level="${level}" title="${item.date}: ${item.count}"></div>`;
+          })
+          .join("")}
+      </div>
+    </div>
+    <div class="activity-board__legend">Интенсивность активности за последние 7 недель</div>
+  `;
+}
+
+function initGlobalHeader() {
+  renderHeaderUser();
+  if (state.user) {
+    state.pageRefresh();
+  }
+}
+
+function initRoomsPage() {
+  const grid = document.getElementById("rooms-grid");
+  const empty = document.getElementById("rooms-grid-empty");
+  const roomIdInput = document.getElementById("rooms-room-id");
+  const passwordInput = document.getElementById("rooms-room-password");
+  const enterBtn = document.getElementById("rooms-enter-btn");
+  const createLink = document.getElementById("rooms-create-link");
+
+  function updateEnterButtonState() {
+    const isReady = roomIdInput.value.trim() && passwordInput.value.trim();
+    enterBtn.disabled = !isReady;
+    enterBtn.classList.toggle("btn--primary", isReady);
+    enterBtn.classList.toggle("btn--muted", !isReady);
+  }
+
+  async function loadRooms() {
+    if (!state.user) {
+      return;
+    }
+
+    const [ownedRooms, memberRooms] = await Promise.all([api("/api/v1/rooms/"), api("/api/v1/me/rooms/")]);
+    const roomMap = new Map();
+    [...ownedRooms, ...memberRooms].forEach((room) => {
+      if (!roomMap.has(room.id)) {
+        roomMap.set(room.id, room);
+      }
+    });
+    const rooms = Array.from(roomMap.values());
+
+    if (!rooms?.length) {
+      grid.innerHTML = "";
+      empty.classList.remove("hidden");
+      return;
+    }
+
+    empty.classList.add("hidden");
+    grid.innerHTML = rooms
+      .map(
+        (room) => `
+          <article class="room-card" data-room-id="${room.id}">
+            <div>
+              <div class="room-card__title">${room.title}</div>
+              <div class="room-card__meta">${room.description || "Описание пока не добавлено."}</div>
+            </div>
+            <div class="room-card__footer">
+              <div>Статус: ${translateMembership(room.membership_status || "owner")}</div>
+              <div>Роль в комнате: ${room.membership_status === "owner" ? "Заказчик" : "Исполнитель"}</div>
+              <div>Прогресс: ${formatPercent(room.progress_percent)}</div>
+              <div>Задачи: ${room.completed_tasks}/${room.total_tasks}</div>
+              <div>Пароль: ${room.has_password ? "есть" : "не задан"}</div>
+            </div>
+          </article>
+        `
+      )
+      .join("");
+
+    grid.querySelectorAll("[data-room-id]").forEach((card) => {
+      card.addEventListener("click", () => {
+        roomIdInput.value = card.dataset.roomId;
+        updateEnterButtonState();
+        window.location.href = `/rooms/${card.dataset.roomId}/`;
+      });
+    });
+  }
+
+  roomIdInput?.addEventListener("input", updateEnterButtonState);
+  passwordInput?.addEventListener("input", updateEnterButtonState);
+
+  enterBtn?.addEventListener("click", async () => {
+    clearFlash();
+    try {
+      const response = await api("/api/v1/rooms/access/", {
+        method: "POST",
+        body: {
+          room_id: Number(roomIdInput.value),
+          password: passwordInput.value,
+        },
+      });
+      window.location.href = response.redirect_url;
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  state.pageRefresh = async () => {
+    updateEnterButtonState();
+    try {
+      await loadRooms();
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  };
+}
+
+function initProfilePage() {
+  const metrics = document.getElementById("profile-metrics");
+  const summary = document.getElementById("profile-summary");
+  const activity = document.getElementById("profile-activity");
+
+  state.pageRefresh = async () => {
+    if (!state.user) {
+      return;
+    }
+
+    try {
+      const profile = await api("/api/v1/me/profile/");
+      renderMetricCards(metrics, [
+        { label: "Доступные комнаты", value: profile.overview.accessible_rooms_count },
+        { label: "Создано комнат", value: profile.overview.created_rooms_count },
+        { label: "Размечено", value: profile.overview.completed_tasks },
+        { label: "В работе", value: profile.overview.in_progress_tasks },
+      ]);
+
+      renderSummaryRows(summary, [
+        { label: "Пользователь", value: `#${profile.id} ${profile.username}` },
+        { label: "Создано комнат", value: profile.overview.created_rooms_count },
+        { label: "Комнат как исполнителю", value: profile.overview.joined_rooms_count },
+        { label: "Приглашения / доступы", value: profile.overview.invitations_count },
+      ]);
+      renderActivity(activity, profile.activity);
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  };
+}
+
+function initRoomCreatePage() {
+  const form = document.getElementById("room-create-form");
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearFlash();
+
+    const formData = new FormData(form);
+    const annotatorIds = (formData.get("annotator_ids") || "")
+      .toString()
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item > 0);
+
+    const deadlineValue = formData.get("deadline");
+    const payload = {
+      title: formData.get("title"),
+      description: formData.get("description"),
+      password: formData.get("password"),
+      annotator_ids: annotatorIds,
+      dataset_mode: "demo",
+      test_task_count: Number(formData.get("test_task_count") || 12),
+      dataset_label: formData.get("dataset_label") || "Тестовый датасет",
+    };
+
+    if (deadlineValue) {
+      payload.deadline = new Date(deadlineValue.toString()).toISOString();
+    }
+
+    try {
+      const room = await api("/api/v1/rooms/", {
+        method: "POST",
+        body: payload,
+      });
+      showFlash(`Комната #${room.id} создана. Переходим к ней.`, "success");
+      window.setTimeout(() => {
+        window.location.href = `/rooms/${room.id}/`;
+      }, 700);
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  state.pageRefresh = async () => {
+    return;
+  };
+}
+
+function renderCurrentTask(taskBox, task) {
+  if (!task) {
+    taskBox.className = "empty-card";
+    taskBox.textContent = "Задача пока не выбрана.";
+    return;
+  }
+
+  taskBox.className = "task-box";
+  taskBox.innerHTML = `
+    <strong>Задача #${task.id}</strong>
+    <div>Статус: ${translateTaskStatus(task.status)}</div>
+    <pre class="payload-preview">${JSON.stringify(task.input_payload, null, 2)}</pre>
+  `;
+}
+
+function renderCustomerAnnotatorDetail(container, activityContainer, annotator) {
+  if (!annotator) {
+    container.className = "empty-card";
+    container.textContent = "Выбери исполнителя в списке слева.";
+    activityContainer.innerHTML = "";
+    return;
+  }
+
+  container.className = "summary-stack";
+  renderSummaryRows(container, [
+    { label: "Исполнитель", value: `#${annotator.user_id} ${annotator.username}` },
+    { label: "Статус", value: translateMembership(annotator.status) },
+    { label: "Выполнено", value: annotator.completed_tasks },
+    { label: "В работе", value: annotator.in_progress_tasks },
+    { label: "Осталось", value: annotator.remaining_tasks },
+    { label: "Прогресс", value: formatPercent(annotator.progress_percent) },
+  ]);
+  renderActivity(activityContainer, annotator.activity);
+}
+
+function initRoomDetailPage() {
+  const title = document.getElementById("room-title");
+  const subtitle = document.getElementById("room-subtitle");
+  const roomHeaderMeta = document.getElementById("room-header-meta");
+  const roomMetrics = document.getElementById("room-metrics");
+  const annotatorWorkspace = document.getElementById("annotator-workspace");
+  const customerWorkspace = document.getElementById("customer-workspace");
+  const annotatorSummary = document.getElementById("annotator-summary");
+  const annotatorActivity = document.getElementById("annotator-activity");
+  const joinBtn = document.getElementById("detail-join-btn");
+  const nextTaskBtn = document.getElementById("detail-next-task-btn");
+  const taskBox = document.getElementById("detail-task-box");
+  const submitForm = document.getElementById("detail-submit-form");
+  const resultJson = document.getElementById("detail-result-json");
+  const annotatorsList = document.getElementById("annotators-list");
+  const annotatorDetailPanel = document.getElementById("annotator-detail-panel");
+  const annotatorDetailActivity = document.getElementById("annotator-detail-activity");
+  const inviteForm = document.getElementById("detail-invite-form");
+  const inviteUserIdInput = document.getElementById("detail-invite-user-id");
+
+  async function loadDashboard() {
+    const dashboard = await api(`/api/v1/rooms/${currentRoomId}/dashboard/`);
+    state.roomDashboard = dashboard;
+
+    title.textContent = dashboard.room.title;
+    subtitle.textContent = dashboard.room.description || "Описание для этой комнаты пока не заполнено.";
+    roomHeaderMeta.innerHTML = `
+      <div class="summary-stack">
+        <div class="summary-row"><span>Датасет</span><strong>${dashboard.room.dataset_label || "Тестовый датасет"}</strong></div>
+        <div class="summary-row"><span>Дедлайн</span><strong>${formatDate(dashboard.room.deadline)}</strong></div>
+        <div class="summary-row"><span>Доступ</span><strong>${dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong></div>
+      </div>
+    `;
+
+    renderMetricCards(roomMetrics, [
+      { label: "Всего задач", value: dashboard.overview.total_tasks },
+      { label: "Выполнено", value: dashboard.overview.completed_tasks },
+      { label: "Осталось", value: dashboard.overview.remaining_tasks },
+      { label: "Готовность", value: formatPercent(dashboard.overview.progress_percent) },
+    ]);
+
+    if (dashboard.actor.role === "annotator") {
+      customerWorkspace.classList.add("hidden");
+      annotatorWorkspace.classList.remove("hidden");
+
+      renderSummaryRows(annotatorSummary, [
+        { label: "Роль в комнате", value: translateRole(dashboard.actor.role) },
+        { label: "Выполнено мной", value: dashboard.annotator_stats.completed_tasks },
+        { label: "В работе", value: dashboard.annotator_stats.in_progress_tasks },
+        { label: "Осталось", value: dashboard.annotator_stats.remaining_tasks },
+        { label: "Мой прогресс", value: formatPercent(dashboard.annotator_stats.progress_percent) },
+      ]);
+      renderActivity(annotatorActivity, dashboard.annotator_stats.activity);
+
+      const isJoined = dashboard.room.membership_status === "joined";
+      joinBtn.disabled = isJoined;
+      joinBtn.textContent = isJoined ? "Вы уже в комнате" : "Войти в комнату";
+    } else {
+      annotatorWorkspace.classList.add("hidden");
+      customerWorkspace.classList.remove("hidden");
+      renderCustomerView(dashboard);
+    }
+  }
+
+  function renderCustomerView(dashboard) {
+    if (!dashboard.annotators?.length) {
+      annotatorsList.innerHTML = '<div class="empty-card">В этой комнате пока нет исполнителей.</div>';
+      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, null);
+      return;
+    }
+
+    annotatorsList.innerHTML = dashboard.annotators
+      .map(
+        (annotator, index) => `
+          <button class="annotator-row ${index === 0 ? "is-active" : ""}" type="button" data-user-id="${annotator.user_id}">
+            <div class="annotator-row__meta">
+              <strong>${annotator.username}</strong>
+              <span>${translateMembership(annotator.status)}</span>
+            </div>
+            <div class="annotator-row__brief">
+              <div>${formatPercent(annotator.progress_percent)}</div>
+              <div>${annotator.completed_tasks} из ${dashboard.overview.total_tasks}</div>
+            </div>
+          </button>
+        `
+      )
+      .join("");
+
+    const setAnnotator = (annotator) => {
+      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, annotator);
+      annotatorsList.querySelectorAll(".annotator-row").forEach((row) => {
+        row.classList.toggle("is-active", Number(row.dataset.userId) === annotator.user_id);
+      });
+    };
+
+    const firstAnnotator = dashboard.annotators[0];
+    setAnnotator(firstAnnotator);
+    annotatorsList.querySelectorAll(".annotator-row").forEach((row) => {
+      row.addEventListener("click", () => {
+        const annotator = dashboard.annotators.find((item) => item.user_id === Number(row.dataset.userId));
+        setAnnotator(annotator);
+      });
+    });
+  }
+
+  inviteForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearFlash();
+
+    const invitedUserId = Number(inviteUserIdInput.value);
+    if (!Number.isInteger(invitedUserId) || invitedUserId <= 0) {
+      showFlash("Укажи корректный ID пользователя.", "error");
+      return;
+    }
+
+    try {
+      await api(`/api/v1/rooms/${currentRoomId}/invite/`, {
+        method: "POST",
+        body: { annotator_id: invitedUserId },
+      });
+      inviteUserIdInput.value = "";
+      showFlash(`Пользователь #${invitedUserId} добавлен в комнату.`, "success");
+      await loadDashboard();
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  joinBtn?.addEventListener("click", async () => {
+    clearFlash();
+    try {
+      await api(`/api/v1/rooms/${currentRoomId}/join/`, { method: "POST", body: {} });
+      showFlash("Ты вошел в комнату. Теперь можно брать задачи.", "success");
+      await loadDashboard();
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  nextTaskBtn?.addEventListener("click", async () => {
+    clearFlash();
+    try {
+      const task = await api(`/api/v1/rooms/${currentRoomId}/tasks/next/`);
+      state.currentTask = task;
+      renderCurrentTask(taskBox, task);
+      submitForm.classList.toggle("hidden", !task);
+      showFlash(task ? `Задача #${task.id} готова к разметке.` : "Доступных задач больше нет.", "success");
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  submitForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearFlash();
+
+    if (!state.currentTask) {
+      showFlash("Сначала возьми задачу.", "error");
+      return;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(resultJson.value);
+    } catch (error) {
+      showFlash("Результат должен быть валидным JSON.", "error");
+      return;
+    }
+
+    try {
+      await api(`/api/v1/tasks/${state.currentTask.id}/submit/`, {
+        method: "POST",
+        body: { result_payload: payload },
+      });
+      showFlash(`Задача #${state.currentTask.id} успешно размечена.`, "success");
+      state.currentTask = null;
+      renderCurrentTask(taskBox, null);
+      submitForm.classList.add("hidden");
+      await loadDashboard();
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  });
+
+  state.pageRefresh = async () => {
+    if (!state.user) {
+      return;
+    }
+
+    try {
+      await loadDashboard();
+    } catch (error) {
+      showFlash(error.message, "error");
+    }
+  };
+}
+
+function initPage() {
+  switch (currentPage) {
+    case "rooms":
+      initRoomsPage();
+      break;
+    case "profile":
+      initProfilePage();
+      break;
+    case "room-create":
+      initRoomCreatePage();
+      break;
+    case "room-detail":
+      initRoomDetailPage();
+      break;
+    default:
+      state.pageRefresh = async () => {};
+      break;
+  }
+}
+
+initPage();
+initGlobalHeader();

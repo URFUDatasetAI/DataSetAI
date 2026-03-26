@@ -6,8 +6,5 @@ from apps.users.models import User
 
 @admin.register(User)
 class DatasetAIUserAdmin(UserAdmin):
-    fieldsets = UserAdmin.fieldsets + (
-        ("DatasetAI", {"fields": ("role",)}),
-    )
-    list_display = ("id", "username", "email", "role", "is_staff", "is_active")
-    list_filter = ("role", "is_staff", "is_active")
+    list_display = ("id", "username", "email", "is_staff", "is_active")
+    list_filter = ("is_staff", "is_active")

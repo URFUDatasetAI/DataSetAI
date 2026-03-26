@@ -1,0 +1,73 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Создание комнаты{% endblock %}
+
+{% block content %}
+    <section class="page-topbar">
+        <div class="page-topbar__copy">
+            <span class="eyebrow">Создание комнаты</span>
+            <h1>Новая комната для разметки</h1>
+            <p>Задай название, пароль, дедлайн, тестовый датасет и список участников, которых нужно пригласить.</p>
+        </div>
+    </section>
+
+    <section class="create-layout">
+        <form id="room-create-form" class="form-card">
+            <div class="form-grid">
+                <label class="field">
+                    <span>Название комнаты</span>
+                    <input name="title" type="text" placeholder="Например, Разметка отзывов Q2" required>
+                </label>
+                <label class="field">
+                    <span>Пароль комнаты</span>
+                    <input name="password" type="text" placeholder="Например, demo123">
+                </label>
+                <label class="field field--full">
+                    <span>Описание</span>
+                    <textarea name="description" rows="4" placeholder="Кратко опиши задачу и правила разметки"></textarea>
+                </label>
+                <label class="field">
+                    <span>Дедлайн</span>
+                    <input name="deadline" type="datetime-local">
+                </label>
+                <label class="field">
+                    <span>ID приглашенных участников</span>
+                    <input name="annotator_ids" type="text" placeholder="Например, 2,3,7">
+                </label>
+                <label class="field">
+                    <span>Название датасета</span>
+                    <input name="dataset_label" type="text" value="Тестовый датасет">
+                </label>
+                <label class="field">
+                    <span>Количество тестовых задач</span>
+                    <input name="test_task_count" type="number" min="1" max="100" value="12">
+                </label>
+            </div>
+
+            <div class="dataset-box">
+                <div>
+                    <h2>Загрузка датасета</h2>
+                    <p>Для текущего теста используется встроенный demo-набор. Реальную загрузку файла добавим следующим шагом.</p>
+                </div>
+                <div class="dataset-box__actions">
+                    <button class="btn btn--primary" type="button" disabled>Тестовый датасет подключен</button>
+                    <input type="file" disabled>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <a class="btn btn--muted" href="/rooms/">Назад к комнатам</a>
+                <button class="btn btn--primary" type="submit">Создать комнату</button>
+            </div>
+        </form>
+
+        <aside class="side-note">
+            <h2>Что будет создано</h2>
+            <ul>
+                <li>Комната с названием, описанием, паролем и дедлайном.</li>
+                <li>Тестовый набор задач для ручной проверки полного цикла.</li>
+                <li>Приглашения для указанных участников.</li>
+            </ul>
+        </aside>
+    </section>
+{% endblock %}

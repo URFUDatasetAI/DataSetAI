@@ -1,4 +1,6 @@
 from django.core.management.base import BaseCommand
+from django.utils import timezone
+from datetime import timedelta
 
 from apps.labeling.models import Task
 from apps.rooms.models import Room, RoomMembership
@@ -13,7 +15,7 @@ class Command(BaseCommand):
             username="customer_demo",
             defaults={
                 "email": "customer@example.com",
-                "role": User.Role.CUSTOMER,
+                "role": User.Role.USER,
             },
         )
 
@@ -21,22 +23,57 @@ class Command(BaseCommand):
             username="annotator_alice",
             defaults={
                 "email": "alice@example.com",
-                "role": User.Role.ANNOTATOR,
+                "role": User.Role.USER,
             },
         )
         annotator_2, _ = User.objects.get_or_create(
             username="annotator_bob",
             defaults={
                 "email": "bob@example.com",
-                "role": User.Role.ANNOTATOR,
+                "role": User.Role.USER,
             },
         )
+
+        admin_user, created_admin = User.objects.get_or_create(
+            username="admin",
+            defaults={
+                "email": "admin@example.com",
+                "role": User.Role.USER,
+                "is_staff": True,
+            },
+        )
+        if created_admin or not admin_user.check_password("admin"):
+            admin_user.set_password("admin")
+            admin_user.save(update_fields=["password"])
+
+        simple_user, created_simple_user = User.objects.get_or_create(
+            username="user",
+            defaults={
+                "email": "user@example.com",
+                "role": User.Role.USER,
+            },
+        )
+        if created_simple_user or not simple_user.check_password("user"):
+            simple_user.set_password("user")
+            simple_user.save(update_fields=["password"])
 
         room, _ = Room.objects.get_or_create(
             title="Demo dataset room",
             created_by=customer,
-            defaults={"description": "Room with sample tasks for local MVP checks."},
+            defaults={
+                "description": "Room with sample tasks for local MVP checks.",
+                "dataset_label": "Тестовый датасет",
+                "deadline": timezone.now() + timedelta(days=7),
+            },
         )
+
+        if not room.dataset_label:
+            room.dataset_label = "Тестовый датасет"
+        if not room.deadline:
+            room.deadline = timezone.now() + timedelta(days=7)
+        if not room.has_password:
+            room.set_access_password("demo123")
+        room.save(update_fields=["dataset_label", "deadline", "access_password_hash", "updated_at"])
 
         RoomMembership.objects.get_or_create(
             room=room,
@@ -49,6 +86,14 @@ class Command(BaseCommand):
         RoomMembership.objects.get_or_create(
             room=room,
             user=annotator_2,
+            defaults={
+                "invited_by": customer,
+                "status": RoomMembership.Status.INVITED,
+            },
+        )
+        RoomMembership.objects.get_or_create(
+            room=room,
+            user=simple_user,
             defaults={
                 "invited_by": customer,
                 "status": RoomMembership.Status.INVITED,
@@ -69,4 +114,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Customer id: {customer.id} ({customer.username})")
         self.stdout.write(f"Annotator Alice id: {annotator_1.id} ({annotator_1.username})")
         self.stdout.write(f"Annotator Bob id: {annotator_2.id} ({annotator_2.username})")
+        self.stdout.write(f"Auth customer: {admin_user.username} / admin")
+        self.stdout.write(f"Auth annotator: {simple_user.username} / user")
         self.stdout.write(f"Room id: {room.id} ({room.title})")
+        self.stdout.write("Room password: demo123")

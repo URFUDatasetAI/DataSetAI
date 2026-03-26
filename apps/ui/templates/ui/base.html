@@ -1,0 +1,58 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}DataSetAI{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'ui/app.css' %}">
+    {{ stats|json_script:"app-stats-data" }}
+    {{ auth_user_data|json_script:"auth-user-data" }}
+</head>
+<body data-page="{{ page_key }}"{% if room_id %} data-room-id="{{ room_id }}"{% endif %}>
+    <div class="app-shell">
+        <header class="site-header">
+            <div class="site-header__left">
+                <a class="brand-mark" href="/">
+                    <span class="brand-mark__logo">D</span>
+                    <span class="brand-mark__text">
+                        <strong>DataSetAI</strong>
+                        <small>Платформа разметки</small>
+                    </span>
+                </a>
+                <nav class="site-nav">
+                    <a class="site-nav__link {% if active_page == 'home' %}is-active{% endif %}" href="/">Главная</a>
+                    <a class="site-nav__link {% if active_page == 'rooms' %}is-active{% endif %}" href="/rooms/">Комнаты</a>
+                </nav>
+            </div>
+
+            <div class="site-header__right">
+                <div class="auth-actions">
+                    {% if request.user.is_authenticated %}
+                        <a id="header-profile-link" class="btn btn--muted btn--compact" href="/profile/">Профиль</a>
+                        <form action="/auth/logout/" method="post" class="logout-form">
+                            {% csrf_token %}
+                            <button class="btn btn--secondary btn--compact" type="submit">Выйти</button>
+                        </form>
+                        <div id="current-user-badge" class="current-user-badge">
+                            <strong>{{ request.user.username }}</strong>
+                            <span>Личный кабинет</span>
+                        </div>
+                    {% else %}
+                        <a class="btn btn--muted btn--compact" href="/auth/login/">Войти</a>
+                        <a class="btn btn--primary btn--compact" href="/auth/register/">Зарегистрироваться</a>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        <div id="global-flash" class="global-flash hidden"></div>
+
+        <main class="page-layout">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script src="{% static 'ui/app.js' %}"></script>
+</body>
+</html>

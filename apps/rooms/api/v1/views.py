@@ -4,32 +4,34 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rooms.api.v1.serializers import (
+    RoomAccessSerializer,
     InviteAnnotatorSerializer,
     RoomCreateSerializer,
+    RoomJoinSerializer,
     RoomMembershipSerializer,
     RoomSerializer,
 )
-from apps.rooms.selectors import get_room_for_owner, get_visible_room, list_customer_rooms, list_user_rooms
+from apps.rooms.selectors import (
+    build_room_dashboard,
+    get_room_by_id,
+    get_room_for_owner,
+    get_visible_room,
+    list_member_rooms,
+    list_owned_rooms,
+)
 from apps.rooms.services import create_room, invite_user_to_room, join_room
-from apps.users.models import User
-from common.exceptions import AccessDeniedError
-from common.permissions import IsAnnotator, IsCustomer
 
 
 class RoomListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        if request.user.role != User.Role.CUSTOMER:
-            raise AccessDeniedError("Only customers can list owned rooms here.")
-        rooms = list_customer_rooms(customer=request.user)
+        rooms = list_owned_rooms(user=request.user)
         serializer = RoomSerializer(rooms, many=True, context={"request": request})
         return Response(serializer.data)
 
     def post(self, request):
         self.check_permissions(request)
-        if request.user.role != User.Role.CUSTOMER:
-            raise AccessDeniedError("Only customers can create rooms.")
         serializer = RoomCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         room = create_room(creator=request.user, **serializer.validated_data)
@@ -48,8 +50,16 @@ class RoomDetailView(APIView):
         return Response(serializer.data)
 
 
+class RoomDashboardView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        return Response(build_room_dashboard(room=room, actor=request.user))
+
+
 class RoomInviteView(APIView):
-    permission_classes = [IsAuthenticated, IsCustomer]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
@@ -67,18 +77,48 @@ class RoomInviteView(APIView):
 
 
 class MyRoomListView(APIView):
-    permission_classes = [IsAuthenticated, IsAnnotator]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        rooms = list_user_rooms(user=request.user)
+        rooms = list_member_rooms(user=request.user)
         serializer = RoomSerializer(rooms, many=True, context={"request": request})
         return Response(serializer.data)
 
 
+class RoomAccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = RoomAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        room = get_room_by_id(room_id=serializer.validated_data["room_id"])
+        password = serializer.validated_data.get("password", "")
+
+        if room.created_by_id != request.user.id:
+            membership = join_room(room=room, annotator=request.user, password=password)
+            return Response(
+                {
+                    "room": RoomSerializer(room, context={"request": request}).data,
+                    "membership": RoomMembershipSerializer(membership).data,
+                    "redirect_url": f"/rooms/{room.id}/",
+                }
+            )
+
+        return Response(
+            {
+                "room": RoomSerializer(room, context={"request": request}).data,
+                "redirect_url": f"/rooms/{room.id}/",
+            }
+        )
+
+
 class RoomJoinView(APIView):
-    permission_classes = [IsAuthenticated, IsAnnotator]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, room_id: int):
         room = get_visible_room(room_id=room_id, user=request.user)
-        membership = join_room(room=room, annotator=request.user)
+        serializer = RoomJoinSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        membership = join_room(room=room, annotator=request.user, password=serializer.validated_data.get("password"))
         return Response(RoomMembershipSerializer(membership).data)

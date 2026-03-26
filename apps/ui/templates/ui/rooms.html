@@ -1,0 +1,32 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Комнаты{% endblock %}
+
+{% block content %}
+    <section class="page-topbar page-topbar--rooms">
+        <div class="page-topbar__copy">
+            <span class="eyebrow">Комнаты</span>
+            <h1>Доступные комнаты</h1>
+            <p>Введи ID и пароль для прямого входа или открой комнату из списка ниже.</p>
+        </div>
+        <div class="room-toolbar-card">
+            <div class="room-toolbar">
+            <label class="inline-field">
+                <span>ID комнаты</span>
+                <input id="rooms-room-id" type="number" min="1" placeholder="Например, 1">
+            </label>
+            <label class="inline-field">
+                <span>Пароль комнаты</span>
+                <input id="rooms-room-password" type="password" placeholder="Пароль">
+            </label>
+            <button id="rooms-enter-btn" class="btn btn--muted" type="button" disabled>Войти в комнату</button>
+            <a id="rooms-create-link" class="btn btn--primary" href="/rooms/create/">Создать комнату</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="room-grid-section">
+        <div id="rooms-grid" class="room-grid"></div>
+        <div id="rooms-grid-empty" class="empty-card">У выбранного пользователя пока нет доступных комнат.</div>
+    </section>
+{% endblock %}
