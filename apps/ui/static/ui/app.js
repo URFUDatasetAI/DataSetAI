@@ -136,6 +136,37 @@ function clearFlash() {
   globalElements.globalFlash.textContent = "";
 }
 
+function formatApiError(data, fallbackStatus) {
+  if (!data) {
+    return `HTTP ${fallbackStatus}`;
+  }
+
+  if (typeof data.detail === "string" && data.detail.trim()) {
+    return data.detail;
+  }
+
+  if (Array.isArray(data)) {
+    return data.join(", ");
+  }
+
+  if (typeof data === "object") {
+    const messages = [];
+    Object.entries(data).forEach(([key, value]) => {
+      const fieldName = key === "non_field_errors" ? "Ошибка" : key;
+      if (Array.isArray(value)) {
+        messages.push(`${fieldName}: ${value.join(", ")}`);
+      } else if (typeof value === "string") {
+        messages.push(`${fieldName}: ${value}`);
+      }
+    });
+    if (messages.length) {
+      return messages.join(" | ");
+    }
+  }
+
+  return `HTTP ${fallbackStatus}`;
+}
+
 async function api(path, options = {}) {
   if (!state.user) {
     throw new Error("Сначала войди в аккаунт.");
@@ -183,7 +214,7 @@ async function api(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.detail || `HTTP ${response.status}`);
+    throw new Error(formatApiError(data, response.status));
   }
 
   return data;
@@ -347,7 +378,7 @@ function initRoomsPage() {
   const createLink = document.getElementById("rooms-create-link");
 
   function updateEnterButtonState() {
-    const isReady = roomIdInput.value.trim() && passwordInput.value.trim();
+    const isReady = roomIdInput.value.trim();
     enterBtn.disabled = !isReady;
     enterBtn.classList.toggle("btn--primary", isReady);
     enterBtn.classList.toggle("btn--muted", !isReady);
@@ -1476,8 +1507,9 @@ function initRoomWorkPage() {
     }
 
     const isJoined = dashboard.room.membership_status === "joined";
+    joinBtn.classList.toggle("hidden", isJoined);
     joinBtn.disabled = isJoined;
-    joinBtn.textContent = isJoined ? "Вы уже в комнате" : "Войти в комнату";
+    joinBtn.textContent = "Войти в комнату";
     nextTaskBtn.disabled = !isJoined;
 
     if (!isJoined) {

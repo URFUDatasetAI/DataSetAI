@@ -23,6 +23,26 @@ from apps.rooms.selectors import (
 from apps.rooms.services import create_room, export_room_annotations, invite_user_to_room, join_room
 
 
+ROOM_CREATE_LIST_FIELDS = {"annotator_ids", "dataset_files"}
+
+
+def _build_room_create_payload(request):
+    if hasattr(request.data, "lists"):
+        data = {}
+        for key, values in request.data.lists():
+            if key in ROOM_CREATE_LIST_FIELDS:
+                data[key] = values
+            else:
+                data[key] = values if len(values) > 1 else (values[0] if values else None)
+    else:
+        data = dict(request.data)
+
+    dataset_files = request.FILES.getlist("dataset_files")
+    data["dataset_files"] = dataset_files
+
+    return data
+
+
 class RoomListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -33,13 +53,7 @@ class RoomListCreateView(APIView):
 
     def post(self, request):
         self.check_permissions(request)
-        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
-        dataset_files = request.FILES.getlist("dataset_files")
-        if hasattr(data, "setlist"):
-            data.setlist("dataset_files", dataset_files)
-        elif dataset_files:
-            data["dataset_files"] = dataset_files
-
+        data = _build_room_create_payload(request)
         serializer = RoomCreateSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         room = create_room(creator=request.user, **serializer.validated_data)

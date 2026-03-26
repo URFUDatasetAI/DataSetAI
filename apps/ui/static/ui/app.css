@@ -896,6 +896,31 @@ textarea:focus {
     width: 100%;
 }
 
+.panel-card--workscreen {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 1.6vw, 18px);
+    padding: clamp(16px, 1.6vw, 22px);
+    border-radius: var(--radius-xl);
+    background: var(--panel-background);
+    box-shadow: var(--shadow);
+}
+
+.panel-card--workscreen .hero-card__eyebrow {
+    margin-bottom: 0;
+}
+
+.panel-card--workscreen .action-strip {
+    margin-bottom: 0;
+    margin-top: 2px;
+}
+
+.panel-card--workscreen .task-box,
+.panel-card--workscreen .empty-card,
+.panel-card--workscreen .stack-form {
+    margin-top: 0;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
