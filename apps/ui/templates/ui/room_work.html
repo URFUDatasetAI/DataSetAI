@@ -3,23 +3,9 @@
 {% block title %}DataSetAI | Работа в комнате{% endblock %}
 
 {% block content %}
-    <section class="page-topbar page-topbar--room">
-        <div class="page-topbar__copy">
-            <span class="eyebrow">Рабочая среда</span>
-            <h1 id="room-work-title">Загрузка комнаты...</h1>
-            <p id="room-work-subtitle">Подгружаем задачи и инструменты для разметки.</p>
-        </div>
-        <div class="room-header-meta" id="room-work-header-meta"></div>
-    </section>
-
-    <section class="card-grid card-grid--four" id="room-work-metrics"></section>
-
-    <section id="room-workspace" class="workspace-grid">
+    <section id="room-workspace" class="workspace-grid workspace-grid--single">
         <div class="workspace-grid__main">
-            <div class="panel-card">
-                <div class="panel-card__head">
-                    <h2>Работа с задачами</h2>
-                </div>
+            <div class="panel-card panel-card--workscreen">
                 <div class="action-strip">
                     <a class="btn btn--muted" href="/rooms/{{ room_id }}/">Назад в комнату</a>
                     <button id="work-join-btn" class="btn btn--muted" type="button">Войти в комнату</button>
@@ -51,16 +37,6 @@
                     </label>
                     <button class="btn btn--primary" type="submit">Отправить результат</button>
                 </form>
-            </div>
-        </div>
-
-        <div class="workspace-grid__side">
-            <div class="panel-card">
-                <div class="panel-card__head">
-                    <h2>Личная статистика</h2>
-                </div>
-                <div id="work-annotator-summary" class="summary-stack"></div>
-                <div id="work-annotator-activity" class="activity-board"></div>
             </div>
         </div>
     </section>

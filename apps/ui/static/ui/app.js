@@ -821,7 +821,7 @@ function renderStaticLabels(container, labels) {
 }
 
 async function downloadRoomExport(roomId, exportFormat) {
-  const response = await fetch(`/api/v1/rooms/${roomId}/export/?format=${encodeURIComponent(exportFormat)}`, {
+  const response = await fetch(`/api/v1/rooms/${roomId}/export/?export_format=${encodeURIComponent(exportFormat)}`, {
     method: "GET",
     headers: {
       "X-User-Id": String(state.user.id),
@@ -1407,12 +1407,6 @@ function initRoomWorkPage() {
     return;
   }
 
-  const title = document.getElementById("room-work-title");
-  const subtitle = document.getElementById("room-work-subtitle");
-  const roomHeaderMeta = document.getElementById("room-work-header-meta");
-  const roomMetrics = document.getElementById("room-work-metrics");
-  const summary = document.getElementById("work-annotator-summary");
-  const activity = document.getElementById("work-annotator-activity");
   const joinBtn = document.getElementById("work-join-btn");
   const nextTaskBtn = document.getElementById("work-next-task-btn");
   const taskBox = document.getElementById("work-task-box");
@@ -1480,10 +1474,6 @@ function initRoomWorkPage() {
       }, 900);
       return;
     }
-
-    renderRoomDashboardHeader(title, subtitle, roomHeaderMeta, roomMetrics, dashboard);
-    subtitle.textContent = "Здесь проходит разметка: вход в комнату, получение следующей задачи и отправка результата.";
-    renderAnnotatorOverview(summary, activity, dashboard);
 
     const isJoined = dashboard.room.membership_status === "joined";
     joinBtn.disabled = isJoined;

@@ -137,7 +137,10 @@ class RoomExportView(APIView):
 
     def get(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
-        export_format = request.query_params.get("format", "native_json")
+        export_format = request.query_params.get("export_format") or request.query_params.get(
+            "format",
+            "native_json",
+        )
         artifact = export_room_annotations(
             room=room,
             export_format=export_format,

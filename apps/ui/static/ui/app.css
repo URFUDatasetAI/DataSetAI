@@ -891,6 +891,11 @@ textarea:focus {
     min-width: 0;
 }
 
+.workspace-grid--single .workspace-grid__main {
+    flex: 1 1 100%;
+    width: 100%;
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));

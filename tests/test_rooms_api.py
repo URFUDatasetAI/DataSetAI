@@ -75,7 +75,20 @@ class RoomsApiTests(APITestCase):
             **self.auth(self.annotator),
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(RoomMembership.objects.filter(room=room, user=self.annotator).exists())
+
+    def test_invited_annotator_can_join_room(self):
+        room = make_room(customer=self.customer, title="Invited room")
+        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer)
+
+        response = self.client.post(
+            reverse("room-join", kwargs={"room_id": room.id}),
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.JOINED)
 
@@ -162,7 +175,7 @@ class RoomsApiTests(APITestCase):
         )
 
         response = self.client.get(
-            f'{reverse("room-export", kwargs={"room_id": room.id})}?format=native_json',
+            f'{reverse("room-export", kwargs={"room_id": room.id})}?export_format=native_json',
             **self.auth(self.customer),
         )
 
