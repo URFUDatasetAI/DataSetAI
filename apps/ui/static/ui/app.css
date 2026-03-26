@@ -135,6 +135,7 @@ body {
     min-height: 720px;
     padding: 18px;
     box-shadow: var(--shadow);
+    overflow: hidden;
 }
 
 .panel--center {
@@ -145,6 +146,7 @@ body {
 .block {
     padding: 18px;
     background: rgba(255, 255, 255, 0.68);
+    overflow: hidden;
 }
 
 .panel > .block + .block,
@@ -156,8 +158,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 16px;
+}
+
+.block__head > * {
+    min-width: 0;
 }
 
 .block__head h2 {
@@ -264,10 +271,17 @@ textarea:focus {
     border: 0;
     border-radius: 15px;
     padding: 13px 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font: inherit;
     font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
     cursor: pointer;
     transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+    max-width: 100%;
 }
 
 .btn:hover {
@@ -294,6 +308,10 @@ textarea:focus {
 .btn--ghost {
     background: rgba(23, 23, 23, 0.06);
     color: var(--text);
+}
+
+.btn--compact {
+    padding: 10px 14px;
 }
 
 .current-user,
@@ -328,10 +346,21 @@ textarea:focus {
     border-top: 1px solid var(--line);
 }
 
+.stacked-form .btn,
+.panel--left .block > .btn {
+    width: 100%;
+}
+
 .actions-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 12px;
     margin-bottom: 16px;
+}
+
+.actions-row .btn {
+    width: 100%;
+    min-height: 52px;
 }
 
 .request-log {
@@ -346,6 +375,19 @@ textarea:focus {
     font-size: 0.84rem;
     line-height: 1.55;
     white-space: pre-wrap;
+}
+
+.payload-preview {
+    margin: 12px 0 0;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: #171717;
+    color: #f3f1eb;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow: auto;
 }
 
 .flash-box {
@@ -369,6 +411,10 @@ textarea:focus {
     padding-left: 18px;
     color: var(--text-soft);
     line-height: 1.7;
+}
+
+.guide-list li + li {
+    margin-top: 8px;
 }
 
 .hidden {
@@ -409,6 +455,6 @@ textarea:focus {
     }
 
     .actions-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
     }
 }

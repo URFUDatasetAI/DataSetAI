@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DataSetAI Workspace</title>
+    <title>DataSetAI | Рабочее место</title>
     <link rel="stylesheet" href="{% static 'ui/app.css' %}">
     {{ mock_users|json_script:"mock-users-data" }}
     {{ stats|json_script:"app-stats-data" }}
@@ -13,7 +13,7 @@
     <div class="page-shell">
         <header class="hero">
             <div class="hero__copy">
-                <span class="eyebrow">Crowdsourcing labeling workspace</span>
+                <span class="eyebrow">Платформа разметки датасетов</span>
                 <h1>DataSetAI</h1>
                 <p>
                     Локальный MVP-интерфейс для проверки комнат, приглашений и разметки.
@@ -23,15 +23,15 @@
             </div>
             <div class="hero__stats">
                 <div class="stat-card">
-                    <span>Users</span>
+                    <span>Пользователи</span>
                     <strong id="users-count">{{ stats.users }}</strong>
                 </div>
                 <div class="stat-card">
-                    <span>Rooms</span>
+                    <span>Комнаты</span>
                     <strong id="rooms-count">{{ stats.rooms }}</strong>
                 </div>
                 <div class="stat-card">
-                    <span>Tasks</span>
+                    <span>Задачи</span>
                     <strong id="tasks-count">{{ stats.tasks }}</strong>
                 </div>
             </div>
@@ -41,15 +41,15 @@
             <aside class="panel panel--left">
                 <section class="block">
                     <div class="block__head">
-                        <h2>Mock user</h2>
-                        <span class="block__caption">Через `X-User-Id`</span>
+                        <h2>Тестовый пользователь</h2>
+                        <span class="block__caption">Идентификация через X-User-Id</span>
                     </div>
                     <div id="user-picker" class="user-picker"></div>
                     <label class="field">
-                        <span>User ID</span>
+                        <span>Идентификатор пользователя</span>
                         <input id="user-id-input" type="number" min="1" placeholder="Например, 1">
                     </label>
-                    <button id="use-user-btn" class="btn btn--primary" type="button">Использовать user</button>
+                    <button id="use-user-btn" class="btn btn--primary" type="button">Выбрать пользователя</button>
                     <div id="current-user-card" class="current-user current-user--empty">
                         Пользователь не выбран
                     </div>
@@ -57,8 +57,8 @@
 
                 <section class="block">
                     <div class="block__head">
-                        <h2>Rooms</h2>
-                        <button id="refresh-rooms-btn" class="btn btn--ghost" type="button">Обновить</button>
+                        <h2>Комнаты</h2>
+                        <button id="refresh-rooms-btn" class="btn btn--ghost btn--compact" type="button">Обновить</button>
                     </div>
                     <div id="rooms-empty" class="empty-state">Выбери пользователя и загрузи комнаты.</div>
                     <div id="rooms-list" class="rooms-list"></div>
@@ -68,29 +68,29 @@
             <section class="panel panel--center">
                 <section class="block">
                     <div class="block__head">
-                        <h2>Room workspace</h2>
-                        <span id="room-role-badge" class="badge">No room selected</span>
+                        <h2>Рабочая область комнаты</h2>
+                        <span id="room-role-badge" class="badge">Комната не выбрана</span>
                     </div>
                     <div id="room-detail" class="room-detail empty-state">
-                        Выбери room из списка слева.
+                        Выбери комнату в списке слева.
                     </div>
                 </section>
 
                 <section id="customer-tools" class="block hidden">
                     <div class="block__head">
-                        <h2>Customer tools</h2>
-                        <span class="block__caption">Создание room и приглашение разметчиков</span>
+                        <h2>Инструменты заказчика</h2>
+                        <span class="block__caption">Создание комнат и приглашение разметчиков</span>
                     </div>
                     <form id="create-room-form" class="stacked-form">
                         <label class="field">
-                            <span>Название room</span>
-                            <input name="title" type="text" placeholder="Например, Sentiment batch">
+                            <span>Название комнаты</span>
+                            <input name="title" type="text" placeholder="Например, Пакет оценки тональности">
                         </label>
                         <label class="field">
                             <span>Описание</span>
                             <textarea name="description" rows="3" placeholder="Коротко про набор задач"></textarea>
                         </label>
-                        <button class="btn btn--primary" type="submit">Создать room</button>
+                        <button class="btn btn--primary" type="submit">Создать комнату</button>
                     </form>
 
                     <form id="invite-form" class="stacked-form">
@@ -98,31 +98,31 @@
                             <span>ID разметчика</span>
                             <input name="annotator_id" type="number" min="1" placeholder="Например, 2">
                         </label>
-                        <button class="btn btn--secondary" type="submit">Пригласить в выбранную room</button>
+                        <button class="btn btn--secondary" type="submit">Пригласить в выбранную комнату</button>
                     </form>
                 </section>
 
                 <section id="annotator-tools" class="block hidden">
                     <div class="block__head">
-                        <h2>Annotator tools</h2>
-                        <span class="block__caption">Join room, взять задачу, отправить разметку</span>
+                        <h2>Инструменты разметчика</h2>
+                        <span class="block__caption">Войти в комнату, взять задачу и отправить результат</span>
                     </div>
                     <div class="actions-row">
-                        <button id="join-room-btn" class="btn btn--secondary" type="button">Join room</button>
-                        <button id="next-task-btn" class="btn btn--primary" type="button">Получить next task</button>
+                        <button id="join-room-btn" class="btn btn--secondary" type="button">Войти в комнату</button>
+                        <button id="next-task-btn" class="btn btn--primary" type="button">Получить следующую задачу</button>
                     </div>
                     <div id="task-card" class="task-card empty-state">
                         Задача пока не загружена.
                     </div>
                     <form id="submit-task-form" class="stacked-form hidden">
                         <label class="field">
-                            <span>Result payload JSON</span>
+                            <span>Результат разметки в формате JSON</span>
                             <textarea id="result-payload-input" rows="8">{
   "label": "positive",
   "confidence": 0.95
 }</textarea>
                         </label>
-                        <button class="btn btn--primary" type="submit">Отправить annotation</button>
+                        <button class="btn btn--primary" type="submit">Отправить разметку</button>
                     </form>
                 </section>
             </section>
@@ -130,22 +130,22 @@
             <aside class="panel panel--right">
                 <section class="block">
                     <div class="block__head">
-                        <h2>Request log</h2>
-                        <button id="clear-log-btn" class="btn btn--ghost" type="button">Очистить</button>
+                        <h2>Журнал запросов</h2>
+                        <button id="clear-log-btn" class="btn btn--ghost btn--compact" type="button">Очистить</button>
                     </div>
                     <div id="flash-box" class="flash-box hidden"></div>
-                    <pre id="request-log" class="request-log">UI ready.</pre>
+                    <pre id="request-log" class="request-log">Интерфейс готов к работе.</pre>
                 </section>
 
                 <section class="block">
                     <div class="block__head">
-                        <h2>Quick guide</h2>
+                        <h2>Краткая инструкция</h2>
                     </div>
                     <ol class="guide-list">
-                        <li>Выбери mock user слева.</li>
-                        <li>Для customer создай room и пригласи annotator по id.</li>
-                        <li>Для annotator открой приглашенную room и нажми `Join room`.</li>
-                        <li>Запроси `next task`, затем отправь `result_payload`.</li>
+                        <li>Слева выбери тестового пользователя или введи его ID вручную.</li>
+                        <li>Под ролью заказчика создай комнату и пригласи разметчика по ID.</li>
+                        <li>Под ролью разметчика открой приглашенную комнату и нажми «Войти в комнату».</li>
+                        <li>Запроси следующую задачу и отправь JSON с результатом разметки.</li>
                     </ol>
                 </section>
             </aside>

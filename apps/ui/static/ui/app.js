@@ -7,6 +7,24 @@ const state = {
   currentTask: null,
 };
 
+const roleLabels = {
+  customer: "Заказчик",
+  annotator: "Разметчик",
+  unknown: "Неизвестная роль",
+};
+
+const membershipLabels = {
+  owner: "Владелец",
+  invited: "Приглашен",
+  joined: "В комнате",
+};
+
+const taskStatusLabels = {
+  pending: "Ожидает разметки",
+  in_progress: "В работе",
+  submitted: "Отправлена",
+};
+
 const elements = {
   userPicker: document.getElementById("user-picker"),
   userIdInput: document.getElementById("user-id-input"),
@@ -30,6 +48,18 @@ const elements = {
   refreshRoomsBtn: document.getElementById("refresh-rooms-btn"),
   clearLogBtn: document.getElementById("clear-log-btn"),
 };
+
+function translateRole(role) {
+  return roleLabels[role] || role;
+}
+
+function translateMembership(status) {
+  return membershipLabels[status] || status;
+}
+
+function translateTaskStatus(status) {
+  return taskStatusLabels[status] || status;
+}
 
 function log(message, payload) {
   const timestamp = new Date().toLocaleTimeString();
@@ -67,7 +97,7 @@ function detectUserById(userId) {
 
 function renderUserPicker() {
   if (!mockUsers.length) {
-    elements.userPicker.innerHTML = '<div class="empty-state">Seed users не найдены. Выполни `python manage.py seed_mvp_data`.</div>';
+    elements.userPicker.innerHTML = '<div class="empty-state">Тестовые пользователи не найдены. Выполни команду `python manage.py seed_mvp_data`.</div>';
     return;
   }
 
@@ -75,7 +105,7 @@ function renderUserPicker() {
     .map((user) => `
       <button class="user-chip" data-user-id="${user.id}" type="button">
         <strong>#${user.id} ${user.username}</strong>
-        <span class="user-chip__role">${user.role}</span>
+        <span class="user-chip__role">${translateRole(user.role)}</span>
       </button>
     `)
     .join("");
@@ -101,7 +131,7 @@ function renderCurrentUser() {
   elements.currentUserCard.className = "current-user";
   elements.currentUserCard.innerHTML = `
     <strong>#${state.user.id} ${state.user.username}</strong>
-    <div class="room-detail__meta">role: ${state.user.role}</div>
+    <div class="room-detail__meta">Роль: ${translateRole(state.user.role)}</div>
   `;
 
   elements.customerTools.classList.toggle("hidden", state.user.role !== "customer");
@@ -123,7 +153,7 @@ function renderRooms() {
   elements.roomsList.innerHTML = state.rooms.map((room) => `
     <button class="room-item ${state.selectedRoom && state.selectedRoom.id === room.id ? "active" : ""}" data-room-id="${room.id}" type="button">
       <div class="room-item__title">${room.title}</div>
-      <span class="room-item__meta">room #${room.id} · ${room.membership_status || "owner"}</span>
+      <span class="room-item__meta">Комната #${room.id} · ${translateMembership(room.membership_status || "owner")}</span>
     </button>
   `).join("");
 
@@ -137,9 +167,9 @@ function renderRooms() {
 
 function renderRoomDetail() {
   if (!state.selectedRoom) {
-    elements.roomRoleBadge.textContent = "No room selected";
+    elements.roomRoleBadge.textContent = "Комната не выбрана";
     elements.roomDetail.className = "room-detail empty-state";
-    elements.roomDetail.textContent = "Выбери room из списка слева.";
+    elements.roomDetail.textContent = "Выбери комнату в списке слева.";
     return;
   }
 
@@ -147,12 +177,12 @@ function renderRoomDetail() {
     ? "owner"
     : state.selectedRoom.membership_status || "invited";
 
-  elements.roomRoleBadge.textContent = ownershipLabel;
+  elements.roomRoleBadge.textContent = translateMembership(ownershipLabel);
   elements.roomDetail.className = "room-detail";
   elements.roomDetail.innerHTML = `
     <h3>${state.selectedRoom.title}</h3>
     <p>${state.selectedRoom.description || "Описание пока не заполнено."}</p>
-    <div class="room-detail__meta">room #${state.selectedRoom.id} · created by user #${state.selectedRoom.created_by_id}</div>
+    <div class="room-detail__meta">Комната #${state.selectedRoom.id} · создана пользователем #${state.selectedRoom.created_by_id}</div>
   `;
 }
 
@@ -166,16 +196,16 @@ function renderTask() {
 
   elements.taskCard.className = "task-card";
   elements.taskCard.innerHTML = `
-    <h3>Task #${state.currentTask.id}</h3>
-    <p>status: ${state.currentTask.status}</p>
-    <pre class="request-log">${JSON.stringify(state.currentTask.input_payload, null, 2)}</pre>
+    <h3>Задача #${state.currentTask.id}</h3>
+    <p>Статус: ${translateTaskStatus(state.currentTask.status)}</p>
+    <pre class="payload-preview">${JSON.stringify(state.currentTask.input_payload, null, 2)}</pre>
   `;
   elements.submitTaskForm.classList.remove("hidden");
 }
 
 async function api(path, options = {}) {
   if (!state.user) {
-    throw new Error("Сначала выбери пользователя.");
+    throw new Error("Сначала выберите пользователя.");
   }
 
   const headers = {
@@ -197,6 +227,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, requestOptions);
 
   if (response.status === 204) {
+    log(`RESPONSE 204 ${path}`, { detail: "Пустой ответ" });
     return null;
   }
 
@@ -256,7 +287,7 @@ async function selectRoom(roomId) {
 async function activateUser(userId) {
   const numericId = Number(userId);
   if (!numericId) {
-    showFlash("Укажи корректный user id.", "error");
+    showFlash("Укажи корректный идентификатор пользователя.", "error");
     return;
   }
 
@@ -281,7 +312,7 @@ elements.refreshRoomsBtn.addEventListener("click", async () => {
 });
 
 elements.clearLogBtn.addEventListener("click", () => {
-  elements.requestLog.textContent = "UI ready.";
+  elements.requestLog.textContent = "Интерфейс готов к работе.";
 });
 
 elements.createRoomForm.addEventListener("submit", async (event) => {
@@ -296,7 +327,7 @@ elements.createRoomForm.addEventListener("submit", async (event) => {
 
   try {
     const room = await api("/api/v1/rooms/", { method: "POST", body: payload });
-    showFlash(`Room #${room.id} created.`);
+    showFlash(`Комната #${room.id} создана.`);
     event.currentTarget.reset();
     await loadRooms();
     await selectRoom(room.id);
@@ -310,7 +341,7 @@ elements.inviteForm.addEventListener("submit", async (event) => {
   clearFlash();
 
   if (!state.selectedRoom) {
-    showFlash("Сначала выбери room.", "error");
+    showFlash("Сначала выберите комнату.", "error");
     return;
   }
 
@@ -324,7 +355,7 @@ elements.inviteForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: payload,
     });
-    showFlash(`Annotator #${response.user_id} invited to room #${response.room_id}.`);
+    showFlash(`Разметчик #${response.user_id} приглашен в комнату #${response.room_id}.`);
     event.currentTarget.reset();
   } catch (error) {
     showFlash(error.message, "error");
@@ -335,7 +366,7 @@ elements.joinRoomBtn.addEventListener("click", async () => {
   clearFlash();
 
   if (!state.selectedRoom) {
-    showFlash("Сначала выбери room.", "error");
+    showFlash("Сначала выберите комнату.", "error");
     return;
   }
 
@@ -343,7 +374,7 @@ elements.joinRoomBtn.addEventListener("click", async () => {
     const membership = await api(`/api/v1/rooms/${state.selectedRoom.id}/join/`, {
       method: "POST",
     });
-    showFlash(`Membership updated: ${membership.status}.`);
+    showFlash(`Статус участия обновлен: ${translateMembership(membership.status)}.`);
     await loadRooms();
     await selectRoom(state.selectedRoom.id);
   } catch (error) {
@@ -355,7 +386,7 @@ elements.nextTaskBtn.addEventListener("click", async () => {
   clearFlash();
 
   if (!state.selectedRoom) {
-    showFlash("Сначала выбери room.", "error");
+    showFlash("Сначала выберите комнату.", "error");
     return;
   }
 
@@ -370,7 +401,7 @@ elements.nextTaskBtn.addEventListener("click", async () => {
 
     state.currentTask = task;
     renderTask();
-    showFlash(`Task #${task.id} loaded.`);
+    showFlash(`Задача #${task.id} загружена.`);
   } catch (error) {
     showFlash(error.message, "error");
   }
@@ -381,7 +412,7 @@ elements.submitTaskForm.addEventListener("submit", async (event) => {
   clearFlash();
 
   if (!state.currentTask) {
-    showFlash("Сначала запроси задачу.", "error");
+    showFlash("Сначала запросите задачу.", "error");
     return;
   }
 
@@ -389,7 +420,7 @@ elements.submitTaskForm.addEventListener("submit", async (event) => {
   try {
     resultPayload = JSON.parse(elements.resultPayloadInput.value);
   } catch (error) {
-    showFlash("Result payload должен быть валидным JSON.", "error");
+    showFlash("Поле результата должно содержать корректный JSON.", "error");
     return;
   }
 
@@ -398,7 +429,7 @@ elements.submitTaskForm.addEventListener("submit", async (event) => {
       method: "POST",
       body: { result_payload: resultPayload },
     });
-    showFlash(`Annotation #${annotation.id} submitted.`);
+    showFlash(`Разметка #${annotation.id} отправлена.`);
     state.currentTask = null;
     renderTask();
     await loadRooms();
