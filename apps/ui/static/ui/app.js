@@ -228,7 +228,7 @@ function buildActivityMonthLabels(series) {
   return labels;
 }
 
-function buildCalendarSeries(series, targetWeekCount = 12) {
+function buildCalendarSeries(series, targetWeekCount = 52) {
   const totalDays = targetWeekCount * 7;
   const seriesByDate = new Map(series.map((item) => [item.date, item.count]));
   const lastDate = series[series.length - 1]?.date;
@@ -258,7 +258,7 @@ function renderActivity(container, series) {
     return;
   }
 
-  const targetWeekCount = 12;
+  const targetWeekCount = 52;
   const calendarSeries = buildCalendarSeries(series, targetWeekCount);
   const maxCount = Math.max(...calendarSeries.map((item) => item.count), 0);
   const calendarWidth = targetWeekCount * 14 + (targetWeekCount - 1) * 4 + 24;
