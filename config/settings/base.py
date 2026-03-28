@@ -50,6 +50,7 @@ def env_list(key: str, default: str = "") -> list[str]:
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "unsafe-local-secret-key")
 DEBUG = env_bool("DJANGO_DEBUG", False)
+APP_DEBUG_MODE = env_bool("APP_DEBUG_MODE", False)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost")
 
 INSTALLED_APPS = [

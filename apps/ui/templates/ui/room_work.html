@@ -11,7 +11,7 @@
                     <a class="btn btn--muted btn--workscreen-back" href="/rooms/{{ room_id }}/">Назад в комнату</a>
                     <button id="work-join-btn" class="btn btn--muted" type="button">Войти в комнату</button>
                 </div>
-                <div id="work-task-box" class="empty-card">Задача пока не выбрана.</div>
+                <div id="work-task-box" class="empty-card{% if not app_debug_mode %} hidden{% endif %}">Задача пока не выбрана.</div>
                 <form id="work-submit-form" class="stack-form hidden">
                     <div id="work-media-tool" class="media-tool hidden">
                         <div id="work-media-instructions" class="panel-note">

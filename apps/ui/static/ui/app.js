@@ -3,6 +3,7 @@ const authUser = JSON.parse(document.getElementById("auth-user-data").textConten
 const body = document.body;
 const currentPage = body.dataset.page;
 const currentRoomId = body.dataset.roomId ? Number(body.dataset.roomId) : null;
+const appDebugMode = body.dataset.appDebugMode === "true";
 
 const roleLabels = {
   customer: "Заказчик",
@@ -50,6 +51,7 @@ const state = {
   user: authUser,
   currentTask: null,
   roomDashboard: null,
+  appDebugMode,
   theme: document.documentElement.dataset.theme || "light",
   pageRefresh: () => {},
 };
@@ -793,6 +795,15 @@ function initRoomCreatePage() {
 }
 
 function renderCurrentTask(taskBox, task) {
+  if (!taskBox) {
+    return;
+  }
+
+  if (!state.appDebugMode) {
+    taskBox.className = "empty-card hidden";
+    return;
+  }
+
   if (!task) {
     taskBox.className = "empty-card";
     taskBox.textContent = "Задача пока не выбрана.";
@@ -876,6 +887,15 @@ function renderAnnotatorOverview(summaryContainer, activityContainer, dashboard)
 }
 
 function renderEmptyTaskBox(taskBox, message) {
+  if (!taskBox) {
+    return;
+  }
+
+  if (!state.appDebugMode) {
+    taskBox.className = "empty-card hidden";
+    return;
+  }
+
   taskBox.className = "empty-card";
   taskBox.textContent = message;
 }
