@@ -1,4 +1,6 @@
 from django.db import connection, transaction
+from django.db.models import Count, Exists, IntegerField, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.labeling.consensus import evaluate_annotation_consensus
@@ -47,10 +49,37 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         if current_assignment:
             return current_assignment.task
 
-        queryset = Task.objects.filter(
-            room=room,
-            status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
-        ).order_by("id")
+        annotator_assignments = TaskAssignment.objects.filter(
+            task_id=OuterRef("pk"),
+            annotator=annotator,
+        )
+        round_assignments = (
+            TaskAssignment.objects.filter(
+                task_id=OuterRef("pk"),
+                round_number=OuterRef("current_round"),
+            )
+            .values("task_id")
+            .annotate(total=Count("id"))
+            .values("total")[:1]
+        )
+        queryset = (
+            Task.objects.filter(
+                room=room,
+                status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
+            )
+            .annotate(
+                has_annotator_assignment=Exists(annotator_assignments),
+                round_assignments_count=Coalesce(
+                    Subquery(round_assignments, output_field=IntegerField()),
+                    0,
+                ),
+            )
+            .filter(
+                has_annotator_assignment=False,
+                round_assignments_count__lt=room.required_reviews_per_item,
+            )
+            .order_by("id")
+        )
         # `skip_locked` lets multiple annotators ask for work concurrently
         # without blocking each other on the same candidate task.
         if connection.features.has_select_for_update_skip_locked:
@@ -58,17 +87,8 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         else:
             queryset = queryset.select_for_update()
 
-        required_reviews = room.required_reviews_per_item
-        for next_task in queryset:
-            if next_task.assignments.filter(annotator=annotator).exists():
-                continue
-
-            round_assignments_count = next_task.assignments.filter(
-                round_number=next_task.current_round,
-            ).count()
-            if round_assignments_count >= required_reviews:
-                continue
-
+        next_task = queryset.first()
+        if next_task:
             TaskAssignment.objects.create(
                 task=next_task,
                 annotator=annotator,
