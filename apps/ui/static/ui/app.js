@@ -1140,12 +1140,15 @@ function createMediaAnnotationEditor({
     activeLabelId: null,
     mediaElement: null,
     overlayElement: null,
+    boxElements: new Map(),
     draftElement: null,
     draftStart: null,
     dragState: null,
     resizeState: null,
     suppressLabelClickUntil: 0,
     eventsAttached: false,
+    previewRafId: null,
+    previewAnnotation: null,
   };
 
   function clamp(value, min, max) {
@@ -1203,6 +1206,19 @@ function createMediaAnnotationEditor({
     return {
       width: editor.mediaElement.naturalWidth || mediaStage.clientWidth,
       height: editor.mediaElement.naturalHeight || mediaStage.clientHeight,
+    };
+  }
+
+  function getOverlayScale() {
+    if (!editor.overlayElement) {
+      return { scaleX: 1, scaleY: 1 };
+    }
+
+    const bounds = editor.overlayElement.getBoundingClientRect();
+    const naturalSize = getNaturalSize();
+    return {
+      scaleX: naturalSize.width > 0 && bounds.width > 0 ? bounds.width / naturalSize.width : 1,
+      scaleY: naturalSize.height > 0 && bounds.height > 0 ? bounds.height / naturalSize.height : 1,
     };
   }
 
@@ -1274,6 +1290,60 @@ function createMediaAnnotationEditor({
     });
   }
 
+  function removeBoxElement(localId) {
+    const element = editor.boxElements.get(localId);
+    if (!element) {
+      return;
+    }
+    element.remove();
+    editor.boxElements.delete(localId);
+  }
+
+  function updateBoxElement(element, annotation, scaleX, scaleY) {
+    const label = getLabelById(annotation.label_id);
+    const [xMin, yMin, xMax, yMax] = annotation.points;
+    element.style.left = `${xMin * scaleX}px`;
+    element.style.top = `${yMin * scaleY}px`;
+    element.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
+    element.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
+    element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
+    const labelNode = element.querySelector("span");
+    if (labelNode) {
+      labelNode.textContent = label ? label.name : "Без лейбла";
+    }
+  }
+
+  function createBoxElement(annotation) {
+    const element = document.createElement("button");
+    element.type = "button";
+    element.className = "media-bbox";
+    element.innerHTML = `
+      <span></span>
+      <i class="media-bbox__resize-handle" aria-hidden="true"></i>
+    `;
+    element.addEventListener("mousedown", (event) => {
+      startDragging(event, annotation);
+    });
+    element.querySelector(".media-bbox__resize-handle")?.addEventListener("mousedown", (event) => {
+      startResizing(event, annotation);
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (Date.now() < editor.suppressLabelClickUntil) {
+        return;
+      }
+      if (!editor.activeLabelId) {
+        showFlash("Сначала выбери label.", "error");
+        return;
+      }
+      annotation.label_id = editor.activeLabelId;
+      render();
+    });
+    editor.boxElements.set(annotation.local_id, element);
+    return element;
+  }
+
   function renderPalette() {
     const labels = getLabels();
     if (!labels.length) {
@@ -1314,51 +1384,28 @@ function createMediaAnnotationEditor({
       return;
     }
 
-    editor.overlayElement.querySelectorAll(".media-bbox").forEach((node) => node.remove());
+    const { scaleX, scaleY } = getOverlayScale();
+    const visibleIds = new Set();
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
-    const naturalSize = getNaturalSize();
-    const scaleX = naturalSize.width > 0 && bounds.width > 0 ? bounds.width / naturalSize.width : 1;
-    const scaleY = naturalSize.height > 0 && bounds.height > 0 ? bounds.height / naturalSize.height : 1;
+    editor.annotations.forEach((annotation) => {
+      if (!isVisibleOnCurrentFrame(annotation)) {
+        removeBoxElement(annotation.local_id);
+        return;
+      }
 
-    editor.annotations
-      .filter((annotation) => isVisibleOnCurrentFrame(annotation))
-      .forEach((annotation) => {
-        const label = getLabelById(annotation.label_id);
-        const [xMin, yMin, xMax, yMax] = annotation.points;
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "media-bbox";
-        button.style.left = `${xMin * scaleX}px`;
-        button.style.top = `${yMin * scaleY}px`;
-        button.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
-        button.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
-        button.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
-        button.innerHTML = `
-          <span>${label ? label.name : "Без лейбла"}</span>
-          <i class="media-bbox__resize-handle" aria-hidden="true"></i>
-        `;
-        button.addEventListener("mousedown", (event) => {
-          startDragging(event, annotation);
-        });
-        button.querySelector(".media-bbox__resize-handle")?.addEventListener("mousedown", (event) => {
-          startResizing(event, annotation);
-        });
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (Date.now() < editor.suppressLabelClickUntil) {
-            return;
-          }
-          if (!editor.activeLabelId) {
-            showFlash("Сначала выбери label.", "error");
-            return;
-          }
-          annotation.label_id = editor.activeLabelId;
-          render();
-        });
-        editor.overlayElement.appendChild(button);
-      });
+      visibleIds.add(annotation.local_id);
+      const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
+      if (element.parentNode !== editor.overlayElement) {
+        editor.overlayElement.appendChild(element);
+      }
+      updateBoxElement(element, annotation, scaleX, scaleY);
+    });
+
+    Array.from(editor.boxElements.keys()).forEach((localId) => {
+      if (!visibleIds.has(localId)) {
+        removeBoxElement(localId);
+      }
+    });
   }
 
   function render() {
@@ -1373,6 +1420,36 @@ function createMediaAnnotationEditor({
     editor.draftElement?.remove();
     editor.draftElement = null;
     editor.draftStart = null;
+  }
+
+  function flushPreviewUpdate() {
+    editor.previewRafId = null;
+
+    if (!editor.previewAnnotation || !editor.overlayElement) {
+      return;
+    }
+
+    if (!isVisibleOnCurrentFrame(editor.previewAnnotation)) {
+      removeBoxElement(editor.previewAnnotation.local_id);
+      editor.previewAnnotation = null;
+      return;
+    }
+
+    const { scaleX, scaleY } = getOverlayScale();
+    const element = editor.boxElements.get(editor.previewAnnotation.local_id) || createBoxElement(editor.previewAnnotation);
+    if (element.parentNode !== editor.overlayElement) {
+      editor.overlayElement.appendChild(element);
+    }
+    updateBoxElement(element, editor.previewAnnotation, scaleX, scaleY);
+    editor.previewAnnotation = null;
+  }
+
+  function schedulePreviewUpdate(annotation) {
+    editor.previewAnnotation = annotation;
+    if (editor.previewRafId !== null) {
+      return;
+    }
+    editor.previewRafId = window.requestAnimationFrame(flushPreviewUpdate);
   }
 
   function startDragging(event, annotation) {
@@ -1463,9 +1540,7 @@ function createMediaAnnotationEditor({
         startXMin + nextWidth,
         startYMin + nextHeight,
       ];
-      renderBoxes();
-      renderAnnotationList();
-      updateResultPreview();
+      schedulePreviewUpdate(editor.resizeState.annotation);
       return;
     }
 
@@ -1494,9 +1569,7 @@ function createMediaAnnotationEditor({
         nextXMin + boxWidth,
         nextYMin + boxHeight,
       ];
-      renderBoxes();
-      renderAnnotationList();
-      updateResultPreview();
+      schedulePreviewUpdate(editor.dragState.annotation);
       return;
     }
 
@@ -1523,7 +1596,13 @@ function createMediaAnnotationEditor({
       if (editor.resizeState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
+      if (editor.previewRafId !== null) {
+        window.cancelAnimationFrame(editor.previewRafId);
+        flushPreviewUpdate();
+      }
       editor.resizeState = null;
+      renderAnnotationList();
+      updateResultPreview();
       return;
     }
 
@@ -1531,7 +1610,13 @@ function createMediaAnnotationEditor({
       if (editor.dragState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
+      if (editor.previewRafId !== null) {
+        window.cancelAnimationFrame(editor.previewRafId);
+        flushPreviewUpdate();
+      }
       editor.dragState = null;
+      renderAnnotationList();
+      updateResultPreview();
       return;
     }
 
@@ -1600,6 +1685,13 @@ function createMediaAnnotationEditor({
   });
 
   function reset() {
+    if (editor.previewRafId !== null) {
+      window.cancelAnimationFrame(editor.previewRafId);
+      editor.previewRafId = null;
+    }
+    editor.previewAnnotation = null;
+    editor.boxElements.forEach((element) => element.remove());
+    editor.boxElements.clear();
     editor.annotations = [];
     editor.activeLabelId = null;
     editor.mediaElement = null;
