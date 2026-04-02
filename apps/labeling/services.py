@@ -27,13 +27,30 @@ def _assert_joined_membership(*, room: Room, annotator: User) -> None:
         raise AccessDeniedError("Current user cannot label tasks in this room.")
 
 
+def _get_room_eligible_annotators_count(*, room: Room) -> int:
+    joined_annotators_count = (
+        RoomMembership.objects.filter(
+            room=room,
+            status=RoomMembership.Status.JOINED,
+            role__in=(RoomMembership.Role.ANNOTATOR, RoomMembership.Role.ADMIN),
+        )
+        .exclude(user_id=room.created_by_id)
+        .count()
+    )
+    return 1 + joined_annotators_count
+
+
 def _build_stage_two_payload(*, task: Task, consensus_payload: dict, submitted_assignments: list[TaskAssignment]) -> dict:
+    excluded_annotator_ids = []
+    if _get_room_eligible_annotators_count(room=task.room) > 1:
+        excluded_annotator_ids = sorted({assignment.annotator_id for assignment in submitted_assignments})
+
     return {
         **task.input_payload,
         "workflow_stage": Task.WorkflowStage.TEXT_TRANSCRIPTION,
         "detection_task_id": task.id,
         "detected_annotations": consensus_payload.get("annotations", []),
-        "excluded_annotator_ids": sorted({assignment.annotator_id for assignment in submitted_assignments}),
+        "excluded_annotator_ids": excluded_annotator_ids,
     }
 
 
