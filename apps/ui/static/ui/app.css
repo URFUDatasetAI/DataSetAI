@@ -1299,6 +1299,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-card__id {
+    margin-bottom: 8px;
     color: var(--text-soft);
     font-size: 0.8rem;
     letter-spacing: 0.03em;
