@@ -27,6 +27,8 @@ class RoomsApiTests(APITestCase):
         self.customer = make_user(username="customer", role=User.Role.CUSTOMER)
         self.annotator = make_user(username="annotator", role=User.Role.ANNOTATOR)
         self.other_annotator = make_user(username="annotator2", role=User.Role.ANNOTATOR)
+        self.admin_user = make_user(username="roomadmin", role=User.Role.ANNOTATOR)
+        self.tester_user = make_user(username="roomtester", role=User.Role.ANNOTATOR)
 
     def auth(self, user):
         return {"HTTP_X_USER_ID": str(user.id)}
@@ -74,6 +76,61 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.INVITED)
+
+    def test_owner_can_assign_admin_and_tester_roles(self):
+        room = make_room(customer=self.customer, title="Role room")
+        invite_annotator(room=room, annotator=self.admin_user, invited_by=self.customer, joined=True)
+        invite_annotator(room=room, annotator=self.tester_user, invited_by=self.customer, joined=True)
+
+        admin_response = self.client.post(
+            reverse("room-membership-role", kwargs={"room_id": room.id, "user_id": self.admin_user.id}),
+            {"role": RoomMembership.Role.ADMIN},
+            format="json",
+            **self.auth(self.customer),
+        )
+        tester_response = self.client.post(
+            reverse("room-membership-role", kwargs={"room_id": room.id, "user_id": self.tester_user.id}),
+            {"role": RoomMembership.Role.TESTER},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(admin_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(tester_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            RoomMembership.objects.get(room=room, user=self.admin_user).role,
+            RoomMembership.Role.ADMIN,
+        )
+        self.assertEqual(
+            RoomMembership.objects.get(room=room, user=self.tester_user).role,
+            RoomMembership.Role.TESTER,
+        )
+
+    def test_admin_can_invite_participants_but_cannot_assign_roles(self):
+        room = make_room(customer=self.customer, title="Admin room")
+        invite_annotator(
+            room=room,
+            annotator=self.admin_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.ADMIN,
+        )
+
+        invite_response = self.client.post(
+            reverse("room-invite", kwargs={"room_id": room.id}),
+            {"annotator_id": self.annotator.id},
+            format="json",
+            **self.auth(self.admin_user),
+        )
+        role_response = self.client.post(
+            reverse("room-membership-role", kwargs={"room_id": room.id, "user_id": self.annotator.id}),
+            {"role": RoomMembership.Role.TESTER},
+            format="json",
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(invite_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(role_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_annotator_sees_only_invited_rooms(self):
         visible_room = make_room(customer=self.customer, title="Visible room")

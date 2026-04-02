@@ -121,6 +121,7 @@ class RoomLabelSerializer(serializers.ModelSerializer):
 class RoomSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
     membership_status = serializers.SerializerMethodField()
+    membership_role = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
     total_tasks = serializers.SerializerMethodField()
     completed_tasks = serializers.SerializerMethodField()
@@ -143,6 +144,7 @@ class RoomSerializer(serializers.ModelSerializer):
             "deadline",
             "created_by_id",
             "membership_status",
+            "membership_role",
             "has_password",
             "total_tasks",
             "completed_tasks",
@@ -163,6 +165,16 @@ class RoomSerializer(serializers.ModelSerializer):
             return "owner"
         membership = obj.memberships.filter(user=user).only("status").first()
         return membership.status if membership else None
+
+    def get_membership_role(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+        if obj.created_by_id == user.id:
+            return "owner"
+        membership = obj.memberships.filter(user=user).only("role").first()
+        return membership.role if membership else None
 
     def get_has_password(self, obj):
         return obj.has_password
@@ -208,6 +220,7 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
             "user_id",
             "invited_by_id",
             "status",
+            "role",
             "joined_at",
             "created_at",
             "updated_at",
@@ -216,6 +229,10 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
 
 class InviteAnnotatorSerializer(serializers.Serializer):
     annotator_id = serializers.IntegerField(min_value=1)
+
+
+class RoomMembershipRoleSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=RoomMembership.Role.values)
 
 
 class RoomAccessSerializer(serializers.Serializer):

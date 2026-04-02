@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.labeling.consensus import evaluate_annotation_consensus
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.rooms.models import Room, RoomMembership
+from apps.rooms.policies import can_annotate_room, can_review_room
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError
 
@@ -20,16 +21,9 @@ Key invariant:
 
 
 def _assert_joined_membership(*, room: Room, annotator: User) -> None:
-    if room.created_by_id == annotator.id:
-        return
-
-    is_joined = RoomMembership.objects.filter(
-        room=room,
-        user=annotator,
-        status=RoomMembership.Status.JOINED,
-    ).exists()
-    if not is_joined:
-        raise AccessDeniedError("Annotator must join the room before labeling.")
+    membership = RoomMembership.objects.filter(room=room, user=annotator).only("status", "role").first()
+    if not can_annotate_room(room=room, user=annotator, membership=membership):
+        raise AccessDeniedError("Current user cannot label tasks in this room.")
 
 
 def get_next_task_for_annotator(*, room: Room, annotator: User):
@@ -184,14 +178,14 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
         return annotation
 
 
-def reject_task_annotation(*, task: Task, owner: User) -> Task:
-    if task.room.created_by_id != owner.id:
-        raise AccessDeniedError("Only the room owner can reject annotations.")
+def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("You do not have permission to reject annotations in this room.")
 
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
-        if locked_task.room.created_by_id != owner.id:
-            raise AccessDeniedError("Only the room owner can reject annotations.")
+        if not can_review_room(room=locked_task.room, user=reviewer):
+            raise AccessDeniedError("You do not have permission to reject annotations in this room.")
         if locked_task.status != Task.Status.SUBMITTED:
             raise ConflictError("Only submitted tasks can be rejected.")
 

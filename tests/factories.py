@@ -28,12 +28,20 @@ def make_room(
     )
 
 
-def invite_annotator(*, room: Room, annotator: User, invited_by: User, joined: bool = False) -> RoomMembership:
+def invite_annotator(
+    *,
+    room: Room,
+    annotator: User,
+    invited_by: User,
+    joined: bool = False,
+    role: str = RoomMembership.Role.ANNOTATOR,
+) -> RoomMembership:
     membership = RoomMembership.objects.create(
         room=room,
         user=annotator,
         invited_by=invited_by,
         status=RoomMembership.Status.JOINED if joined else RoomMembership.Status.INVITED,
+        role=role,
     )
     return membership
 

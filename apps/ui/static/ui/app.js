@@ -7,8 +7,11 @@ const currentProfileUserId = body.dataset.profileUserId ? Number(body.dataset.pr
 const appDebugMode = body.dataset.appDebugMode === "true";
 
 const roleLabels = {
+  owner: "Владелец",
   customer: "Заказчик",
   annotator: "Исполнитель",
+  admin: "Админ",
+  tester: "Тестировщик",
   unknown: "Неизвестная роль",
 };
 
@@ -765,7 +768,7 @@ function initRoomsPage() {
             <div class="room-card__footer">
               <div>ID: ${room.id}</div>
               <div>Статус: ${translateMembership(room.membership_status || "owner")}</div>
-              <div>Роль в комнате: ${room.membership_status === "owner" ? "Заказчик" : "Исполнитель"}</div>
+              <div>Роль в комнате: ${translateRole(room.membership_role || "owner")}</div>
               <div>Прогресс: ${formatPercent(room.progress_percent)}</div>
               <div>Задачи: ${room.completed_tasks}/${room.total_tasks}</div>
               <div>Пароль: ${room.has_password ? "есть" : "не задан"}</div>
@@ -1211,7 +1214,7 @@ function renderCurrentTask(taskBox, task) {
   `;
 }
 
-function renderCustomerAnnotatorDetail(container, activityContainer, annotator) {
+function renderCustomerAnnotatorDetail(container, activityContainer, annotator, dashboard) {
   if (!annotator) {
     container.className = "empty-card";
     container.textContent = "Выбери исполнителя в списке слева.";
@@ -1223,11 +1226,55 @@ function renderCustomerAnnotatorDetail(container, activityContainer, annotator) 
   renderSummaryRows(container, [
     { label: "Исполнитель", value: `#${annotator.user_id} ${annotator.username}` },
     { label: "Статус", value: translateMembership(annotator.status) },
+    { label: "Роль", value: translateRole(annotator.role) },
     { label: "Выполнено", value: annotator.completed_tasks },
     { label: "В работе", value: annotator.in_progress_tasks },
     { label: "Осталось", value: annotator.remaining_tasks },
     { label: "Прогресс", value: formatPercent(annotator.progress_percent) },
   ]);
+
+  const roleOptions = (dashboard?.membership_role_options || [])
+    .map(
+      (option) => `
+        <option value="${escapeHtml(option.value)}" ${option.value === annotator.role ? "selected" : ""}>
+          ${escapeHtml(option.label)}
+        </option>
+      `
+    )
+    .join("");
+
+  container.insertAdjacentHTML(
+    "beforeend",
+    `
+      <div class="role-assignment-box">
+        ${
+          dashboard?.actor?.can_assign_roles
+            ? `
+              <label class="field field--compact">
+                <span>Роль участника</span>
+                <select id="annotator-role-select" data-user-id="${annotator.user_id}">
+                  ${roleOptions}
+                </select>
+              </label>
+            `
+            : ""
+        }
+        <div class="role-assignment-box__actions">
+          <a class="btn btn--muted btn--compact" href="/users/${annotator.user_id}/profile/">Открыть профиль</a>
+          ${
+            dashboard?.actor?.can_assign_roles
+              ? `
+                <button id="annotator-role-submit" class="btn btn--secondary btn--compact" type="button" data-user-id="${annotator.user_id}">
+                  Сохранить роль
+                </button>
+              `
+              : ""
+          }
+        </div>
+      </div>
+    `
+  );
+
   renderActivity(activityContainer, annotator.activity);
 }
 
@@ -1419,7 +1466,7 @@ function renderRoomDashboardHeader(title, subtitle, roomHeaderMeta, roomMetrics,
       <div class="summary-row"><span>Дедлайн</span><strong>${formatDate(dashboard.room.deadline)}</strong></div>
       <div class="summary-row"><span>Доступ</span><strong>${dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong></div>
       ${
-        dashboard.actor.role === "customer"
+        dashboard.actor.can_delete_room
           ? '<button id="detail-delete-room-btn" class="btn btn--danger room-header-meta__delete" type="button">Удалить комнату</button>'
           : ""
       }
@@ -1532,6 +1579,8 @@ function initRoomDetailPage() {
   const annotatorDetailActivity = document.getElementById("annotator-detail-activity");
   const inviteForm = document.getElementById("detail-invite-form");
   const inviteUserIdInput = document.getElementById("detail-invite-user-id");
+  const exportPanel = document.getElementById("detail-export-panel");
+  const invitePanel = document.getElementById("detail-invite-panel");
   const customerLabels = document.getElementById("customer-labels");
   const exportFormatSelect = document.getElementById("detail-export-format");
   const exportBtn = document.getElementById("detail-export-btn");
@@ -1579,6 +1628,33 @@ function initRoomDetailPage() {
       : "Ты приглашен в комнату. Сначала подтверди вступление, после этого кнопка переключится на переход в рабочую среду.";
   }
 
+  function bindAnnotatorRoleControls(dashboard, annotator) {
+    const roleSelect = document.getElementById("annotator-role-select");
+    const roleSubmit = document.getElementById("annotator-role-submit");
+
+    if (!dashboard.actor.can_assign_roles || !annotator || !roleSelect || !roleSubmit) {
+      return;
+    }
+
+    roleSubmit.addEventListener("click", async () => {
+      clearFlash();
+      roleSubmit.disabled = true;
+
+      try {
+        await api(`/api/v1/rooms/${currentRoomId}/memberships/${annotator.user_id}/role/`, {
+          method: "POST",
+          body: { role: roleSelect.value },
+        });
+        showFlash(`Роль пользователя #${annotator.user_id} обновлена.`, "success");
+        await loadDashboard();
+      } catch (error) {
+        showFlash(error.message, "error");
+      } finally {
+        roleSubmit.disabled = false;
+      }
+    });
+  }
+
   async function loadDashboard() {
     const dashboard = await api(`/api/v1/rooms/${currentRoomId}/dashboard/`);
     state.roomDashboard = dashboard;
@@ -1588,7 +1664,11 @@ function initRoomDetailPage() {
     if (dashboard.actor.can_annotate) {
       annotatorWorkspace.classList.remove("hidden");
       annotatorWorkspace.classList.toggle("workspace-grid--owner-manage", dashboard.actor.can_manage);
-      annotatorManageSide?.classList.toggle("hidden", !dashboard.actor.can_manage);
+      const managePanelsCount = Number(Boolean(dashboard.actor.can_export)) + Number(Boolean(dashboard.actor.can_invite));
+      annotatorManageSide?.classList.toggle("hidden", managePanelsCount === 0);
+      annotatorManageSide?.classList.toggle("workspace-grid__side--stack-single", managePanelsCount === 1);
+      exportPanel?.classList.toggle("hidden", !dashboard.actor.can_export);
+      invitePanel?.classList.toggle("hidden", !dashboard.actor.can_invite);
 
       renderAnnotatorOverview(annotatorSummary, annotatorActivity, dashboard);
       updateAnnotatorWorkAction(dashboard);
@@ -1596,16 +1676,21 @@ function initRoomDetailPage() {
       annotatorWorkspace.classList.add("hidden");
       annotatorWorkspace.classList.remove("workspace-grid--owner-manage");
       annotatorManageSide?.classList.add("hidden");
+      exportPanel?.classList.add("hidden");
+      invitePanel?.classList.add("hidden");
     }
 
-    if (dashboard.actor.can_manage) {
+    if (dashboard.actor.can_review) {
       customerWorkspace.classList.remove("hidden");
       renderCustomerView(dashboard);
       state.reviewTasks = [];
       await loadReviewTasks();
-      bindDeleteRoomButton();
     } else {
       customerWorkspace.classList.add("hidden");
+    }
+
+    if (dashboard.actor.can_delete_room) {
+      bindDeleteRoomButton();
     }
   }
 
@@ -1626,6 +1711,7 @@ function initRoomDetailPage() {
         annotator.username,
         annotator.user_id,
         translateMembership(annotator.status),
+        translateRole(annotator.role),
       ]
         .join(" ")
         .toLowerCase()
@@ -1653,7 +1739,7 @@ function initRoomDetailPage() {
           <button class="annotator-row ${annotator.user_id === state.selectedAnnotatorUserId ? "is-active" : ""}" type="button" data-user-id="${annotator.user_id}">
             <div class="annotator-row__meta">
               <strong>${annotator.username}</strong>
-              <span>${translateMembership(annotator.status)}</span>
+              <span>${translateMembership(annotator.status)} · ${translateRole(annotator.role)}</span>
             </div>
             <div class="annotator-row__brief">
               <div>${formatPercent(annotator.progress_percent)}</div>
@@ -1668,10 +1754,11 @@ function initRoomDetailPage() {
 
     if (activeAnnotator) {
       annotatorDetailPanel.dataset.userId = String(activeAnnotator.user_id);
-      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, activeAnnotator);
+      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, activeAnnotator, dashboard);
+      bindAnnotatorRoleControls(dashboard, activeAnnotator);
     } else {
       delete annotatorDetailPanel.dataset.userId;
-      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, null);
+      renderCustomerAnnotatorDetail(annotatorDetailPanel, annotatorDetailActivity, null, dashboard);
     }
 
     annotatorsList.querySelectorAll(".annotator-row").forEach((row) => {
@@ -1847,13 +1934,13 @@ function initRoomDetailPage() {
   });
 
   annotatorsSearchInput?.addEventListener("input", () => {
-    if (state.roomDashboard?.actor.can_manage) {
+    if (state.roomDashboard?.actor.can_review) {
       renderCustomerView(state.roomDashboard);
     }
   });
 
   reviewSearchInput?.addEventListener("input", async () => {
-    if (state.roomDashboard?.actor.can_manage) {
+    if (state.roomDashboard?.actor.can_review) {
       await loadReviewTasks();
     }
   });

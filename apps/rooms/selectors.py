@@ -7,6 +7,17 @@ from django.utils import timezone
 from apps.labeling.models import Annotation, Task, TaskAssignment
 
 from apps.rooms.models import Room, RoomMembership, RoomPin
+from apps.rooms.policies import (
+    can_annotate_room,
+    can_assign_room_roles,
+    can_delete_room,
+    can_export_room,
+    can_invite_members,
+    can_manage_room,
+    can_review_room,
+    get_room_actor_role,
+    get_room_membership,
+)
 from apps.rooms.services import get_supported_export_formats
 from apps.users.models import User
 from common.exceptions import NotFoundError
@@ -106,11 +117,12 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         "progress_percent": progress_percent,
     }
 
-    actor_membership_status = RoomMembership.objects.filter(room=room, user=actor).values_list("status", flat=True).first()
-    actor_is_owner = room.created_by_id == actor.id
-    actor_room_role = "customer" if actor_is_owner else "annotator"
-    actor_can_manage = actor_is_owner
-    actor_can_annotate = actor_is_owner or actor_membership_status == RoomMembership.Status.JOINED
+    actor_membership = get_room_membership(room=room, user=actor)
+    actor_membership_status = actor_membership.status if actor_membership else None
+    actor_room_role = get_room_actor_role(room=room, user=actor, membership=actor_membership) or RoomMembership.Role.ANNOTATOR
+    actor_can_manage = can_manage_room(room=room, user=actor, membership=actor_membership)
+    actor_can_review = can_review_room(room=room, user=actor, membership=actor_membership)
+    actor_can_annotate = can_annotate_room(room=room, user=actor, membership=actor_membership)
 
     payload = {
         "room": {
@@ -127,6 +139,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "is_pinned": RoomPin.objects.filter(room=room, user=actor).exists(),
             "created_by_id": room.created_by_id,
             "membership_status": "owner" if room.created_by_id == actor.id else actor_membership_status,
+            "membership_role": actor_room_role,
         },
         "labels": [
             {
@@ -139,12 +152,22 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         ],
         "export_formats": get_supported_export_formats(room=room),
         "overview": overview,
+        "membership_role_options": [
+            {"value": RoomMembership.Role.ANNOTATOR, "label": "Исполнитель"},
+            {"value": RoomMembership.Role.ADMIN, "label": "Админ"},
+            {"value": RoomMembership.Role.TESTER, "label": "Тестировщик"},
+        ],
         "actor": {
             "id": actor.id,
             "username": actor.username,
             "role": actor_room_role,
             "can_manage": actor_can_manage,
+            "can_review": actor_can_review,
             "can_annotate": actor_can_annotate,
+            "can_invite": can_invite_members(room=room, user=actor, membership=actor_membership),
+            "can_assign_roles": can_assign_room_roles(room=room, user=actor),
+            "can_export": can_export_room(room=room, user=actor),
+            "can_delete_room": can_delete_room(room=room, user=actor),
         },
     }
 
@@ -168,7 +191,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "progress_percent": actor_progress,
             "activity": activity,
         }
-        if not actor_can_manage:
+        if not (actor_can_manage or actor_can_review):
             return payload
 
     annotators = []
@@ -189,6 +212,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
                 "user_id": user.id,
                 "username": user.username,
                 "status": membership.status,
+                "role": membership.role,
                 "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
                 "completed_tasks": user_completed,
                 "in_progress_tasks": user_in_progress,

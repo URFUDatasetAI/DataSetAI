@@ -92,6 +92,11 @@ class RoomMembership(TimeStampedModel):
         INVITED = "invited", "Invited"
         JOINED = "joined", "Joined"
 
+    class Role(models.TextChoices):
+        ANNOTATOR = "annotator", "Annotator"
+        ADMIN = "admin", "Admin"
+        TESTER = "tester", "Tester"
+
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -104,6 +109,7 @@ class RoomMembership(TimeStampedModel):
         related_name="sent_room_invitations",
     )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.INVITED)
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.ANNOTATOR)
     joined_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

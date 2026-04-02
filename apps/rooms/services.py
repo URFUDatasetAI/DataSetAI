@@ -14,6 +14,7 @@ from django.utils import timezone
 
 from apps.labeling.models import Task
 from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
+from apps.rooms.policies import can_invite_members
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
 
@@ -151,8 +152,8 @@ def create_room(
 
 
 def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> RoomMembership:
-    if room.created_by_id != inviter.id:
-        raise AccessDeniedError("Only the room owner can invite participants.")
+    if not can_invite_members(room=room, user=inviter):
+        raise AccessDeniedError("You do not have permission to invite participants to this room.")
 
     try:
         invited_user = User.objects.get(id=invited_user_id)
@@ -168,12 +169,32 @@ def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> R
         defaults={
             "invited_by": inviter,
             "status": RoomMembership.Status.INVITED,
+            "role": RoomMembership.Role.ANNOTATOR,
         },
     )
 
     if not created and membership.status == RoomMembership.Status.INVITED:
         membership.invited_by = inviter
         membership.save(update_fields=["invited_by", "updated_at"])
+
+    return membership
+
+
+def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, role: str) -> RoomMembership:
+    if room.created_by_id != owner.id:
+        raise AccessDeniedError("Only the room owner can assign room roles.")
+
+    if target_user_id == room.created_by_id:
+        raise ConflictError("Room owner role cannot be changed.")
+
+    try:
+        membership = RoomMembership.objects.get(room=room, user_id=target_user_id)
+    except RoomMembership.DoesNotExist as exc:
+        raise NotFoundError("Room membership not found.") from exc
+
+    if membership.role != role:
+        membership.role = role
+        membership.save(update_fields=["role", "updated_at"])
 
     return membership
 
