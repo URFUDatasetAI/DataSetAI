@@ -5,6 +5,7 @@ from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
 from apps.rooms.models import Room, RoomMembership, RoomPin
 from apps.rooms.policies import (
@@ -102,11 +103,22 @@ def build_activity_series(*, annotations_qs, days: int = 49) -> list[dict]:
     ]
 
 
+def _count_completed_items_for_user(*, room: Room, user: User) -> int:
+    completed_pairs = (
+        Task.objects.filter(room=room, annotations__annotator=user)
+        .order_by()
+        .values_list("id", "parent_task_id")
+        .distinct()
+    )
+    root_task_ids = {parent_task_id or task_id for task_id, parent_task_id in completed_pairs}
+    return len(root_task_ids)
+
+
 def build_room_dashboard(*, room: Room, actor: User) -> dict:
     # Dashboard payload is intentionally assembled here instead of serializers:
     # it mixes room metadata, aggregate stats and actor-specific slices.
-    total_tasks = Task.objects.filter(room=room).count()
-    completed_tasks = Task.objects.filter(room=room, status=Task.Status.SUBMITTED).count()
+    total_tasks = get_room_primary_tasks_queryset(room=room).count()
+    completed_tasks = get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).count()
     remaining_tasks = max(total_tasks - completed_tasks, 0)
     progress_percent = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0.0
 
@@ -131,6 +143,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "description": room.description,
             "dataset_label": room.dataset_label,
             "dataset_type": room.dataset_type,
+            "annotation_workflow": room.annotation_workflow,
             "cross_validation_enabled": room.cross_validation_enabled,
             "cross_validation_annotators_count": room.cross_validation_annotators_count,
             "cross_validation_similarity_threshold": room.cross_validation_similarity_threshold,
@@ -172,7 +185,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
     }
 
     if actor_can_annotate:
-        actor_completed = Annotation.objects.filter(task__room=room, annotator=actor).count()
+        actor_completed = _count_completed_items_for_user(room=room, user=actor)
         actor_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=actor,
@@ -198,7 +211,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
     memberships = RoomMembership.objects.filter(room=room).select_related("user").order_by("user__username")
     for membership in memberships:
         user = membership.user
-        user_completed = Annotation.objects.filter(task__room=room, annotator=user).count()
+        user_completed = _count_completed_items_for_user(room=room, user=user)
         user_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=user,

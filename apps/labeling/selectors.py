@@ -1,4 +1,5 @@
 from apps.labeling.models import Task
+from apps.labeling.workflows import get_task_is_final_stage
 from apps.rooms.policies import can_review_room
 from common.exceptions import NotFoundError
 from common.exceptions import AccessDeniedError
@@ -24,4 +25,6 @@ def get_task_for_review(*, task_id: int, reviewer) -> Task:
     task = get_task_or_404(task_id=task_id)
     if not can_review_room(room=task.room, user=reviewer):
         raise AccessDeniedError("You do not have permission to review tasks in this room.")
+    if not get_task_is_final_stage(task=task):
+        raise NotFoundError("Task not found.")
     return task

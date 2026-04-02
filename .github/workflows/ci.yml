@@ -44,10 +44,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements/local.txt
+          npm install
+
+      - name: Build UI TypeScript
+        run: npm run build:ui
 
       - name: Run Django system checks
         run: python manage.py check

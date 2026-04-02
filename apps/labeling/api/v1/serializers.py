@@ -5,6 +5,7 @@ from apps.labeling.models import Annotation, Task
 
 class TaskSerializer(serializers.ModelSerializer):
     room_id = serializers.IntegerField(read_only=True)
+    parent_task_id = serializers.IntegerField(read_only=True)
     source_file_url = serializers.SerializerMethodField()
 
     class Meta:
@@ -12,11 +13,13 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "room_id",
+            "parent_task_id",
             "status",
             "current_round",
             "validation_score",
             "input_payload",
             "source_type",
+            "workflow_stage",
             "source_name",
             "source_file_url",
             "created_at",
@@ -51,6 +54,10 @@ class BoundingBoxAnnotationSerializer(serializers.Serializer):
         return value
 
 
+class TextTranscriptionAnnotationSerializer(BoundingBoxAnnotationSerializer):
+    text = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
 class AnnotationSubmitSerializer(serializers.Serializer):
     result_payload = serializers.JSONField()
 
@@ -67,6 +74,28 @@ class AnnotationSubmitSerializer(serializers.Serializer):
             raise serializers.ValidationError("Media annotation payload must contain an annotations array.")
         if not isinstance(annotations, list):
             raise serializers.ValidationError("Annotations must be an array.")
+
+        if task.workflow_stage == Task.WorkflowStage.TEXT_TRANSCRIPTION:
+            serializer = TextTranscriptionAnnotationSerializer(data=annotations, many=True)
+            serializer.is_valid(raise_exception=True)
+
+            expected_annotations = task.input_payload.get("detected_annotations") or []
+            if len(serializer.validated_data) != len(expected_annotations):
+                raise serializers.ValidationError("Transcription payload must contain all detected text regions.")
+
+            for submitted_item, expected_item in zip(serializer.validated_data, expected_annotations):
+                if (
+                    submitted_item["label_id"] != expected_item.get("label_id")
+                    or list(submitted_item["points"]) != list(expected_item.get("points", []))
+                    or int(submitted_item["frame"]) != int(expected_item.get("frame", 0))
+                ):
+                    raise serializers.ValidationError(
+                        "Text transcription stage cannot change detected boxes, labels or frames."
+                    )
+
+            return {
+                "annotations": serializer.validated_data,
+            }
 
         serializer = BoundingBoxAnnotationSerializer(data=annotations, many=True)
         serializer.is_valid(raise_exception=True)
@@ -121,6 +150,7 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "current_round",
             "validation_score",
             "source_type",
+            "workflow_stage",
             "source_name",
             "source_file_url",
             "annotations_count",

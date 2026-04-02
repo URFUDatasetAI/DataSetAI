@@ -1,0 +1,11 @@
+{
+  "name": "datasetai-ui",
+  "private": true,
+  "scripts": {
+    "build:ui": "tsc -p tsconfig.json",
+    "check:types": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

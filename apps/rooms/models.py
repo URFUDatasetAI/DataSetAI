@@ -22,6 +22,10 @@ class Room(TimeStampedModel):
         IMAGE = "image", "Image"
         VIDEO = "video", "Video"
 
+    class AnnotationWorkflow(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        TEXT_DETECTION_TRANSCRIPTION = "text_detect_text", "Object detect + text"
+
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     access_password_hash = models.CharField(max_length=255, blank=True)
@@ -31,6 +35,11 @@ class Room(TimeStampedModel):
         max_length=16,
         choices=DatasetType.choices,
         default=DatasetType.DEMO,
+    )
+    annotation_workflow = models.CharField(
+        max_length=32,
+        choices=AnnotationWorkflow.choices,
+        default=AnnotationWorkflow.STANDARD,
     )
     cross_validation_enabled = models.BooleanField(default=False)
     cross_validation_annotators_count = models.PositiveSmallIntegerField(default=1)

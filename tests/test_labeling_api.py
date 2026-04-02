@@ -323,3 +323,103 @@ class LabelingApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_detect_text_workflow_creates_transcription_stage_for_different_executor(self):
+        detect_room = make_room(
+            customer=self.customer,
+            title="Detect + text room",
+            dataset_type="image",
+            annotation_workflow="text_detect_text",
+        )
+        detect_label = detect_room.labels.create(name="text", color="#FFC919", sort_order=0)
+        invite_annotator(room=detect_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=detect_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        detect_task = make_task(
+            room=detect_room,
+            payload={"width": 640, "height": 480, "source_name": "ocr-1.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="ocr-1.jpg",
+            workflow_stage=Task.WorkflowStage.TEXT_DETECTION,
+        )
+
+        first_response = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": detect_room.id}),
+            **self.auth(self.annotator),
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data["id"], detect_task.id)
+        self.assertEqual(first_response.data["workflow_stage"], Task.WorkflowStage.TEXT_DETECTION)
+
+        submit_detection = self.client.post(
+            reverse("task-submit", kwargs={"task_id": detect_task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": detect_label.id,
+                            "points": [20, 30, 220, 120],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        self.assertEqual(submit_detection.status_code, status.HTTP_201_CREATED)
+
+        detect_task.refresh_from_db()
+        self.assertEqual(detect_task.status, Task.Status.SUBMITTED)
+
+        transcription_task = Task.objects.get(parent_task=detect_task, workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION)
+        self.assertEqual(transcription_task.status, Task.Status.PENDING)
+        self.assertEqual(
+            transcription_task.input_payload["excluded_annotator_ids"],
+            [self.annotator.id],
+        )
+
+        same_annotator_response = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": detect_room.id}),
+            **self.auth(self.annotator),
+        )
+        self.assertEqual(same_annotator_response.status_code, status.HTTP_204_NO_CONTENT)
+
+        transcription_response = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": detect_room.id}),
+            **self.auth(self.other_annotator),
+        )
+        self.assertEqual(transcription_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(transcription_response.data["id"], transcription_task.id)
+        self.assertEqual(transcription_response.data["workflow_stage"], Task.WorkflowStage.TEXT_TRANSCRIPTION)
+
+        submit_text = self.client.post(
+            reverse("task-submit", kwargs={"task_id": transcription_task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": detect_label.id,
+                            "points": [20, 30, 220, 120],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                            "text": "Пример текста",
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.other_annotator),
+        )
+
+        self.assertEqual(submit_text.status_code, status.HTTP_201_CREATED)
+        transcription_task.refresh_from_db()
+        self.assertEqual(transcription_task.status, Task.Status.SUBMITTED)
+        self.assertEqual(
+            transcription_task.consensus_payload["annotations"][0]["text"],
+            "Пример текста",
+        )

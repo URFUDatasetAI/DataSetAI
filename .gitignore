@@ -160,6 +160,10 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# Node / TypeScript
+node_modules/
+*.tsbuildinfo
+
 # Pyre type checker
 .pyre/
 

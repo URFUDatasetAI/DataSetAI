@@ -14,7 +14,7 @@ from rest_framework.test import APITestCase
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.rooms.models import RoomMembership, RoomPin
 from apps.users.models import User
-from tests.factories import invite_annotator, make_room, make_user
+from tests.factories import invite_annotator, make_room, make_task, make_user
 
 
 class RoomsApiTests(APITestCase):
@@ -265,6 +265,35 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(first_task.source_type, Task.SourceType.IMAGE)
         self.assertTrue(first_task.source_file.name)
         self.assertEqual(first_task.input_payload["width"], 1920)
+
+    def test_customer_can_create_detect_text_image_room_without_manual_labels(self):
+        response = self.client.post(
+            reverse("room-list-create"),
+            {
+                "title": "Detect text room",
+                "dataset_mode": "image",
+                "annotation_workflow": "text_detect_text",
+                "dataset_label": "OCR",
+                "media_manifest": json.dumps(
+                    [
+                        {"name": "ocr-1.jpg", "width": 1280, "height": 720},
+                    ]
+                ),
+                "dataset_files": [
+                    SimpleUploadedFile("ocr-1.jpg", b"fake-image-ocr", content_type="image/jpeg"),
+                ],
+            },
+            format="multipart",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        room = self.customer.created_rooms.get(id=response.data["id"])
+        self.assertEqual(room.annotation_workflow, "text_detect_text")
+        self.assertEqual(room.labels.count(), 1)
+        self.assertEqual(room.labels.first().name, "text")
+        task = room.tasks.first()
+        self.assertEqual(task.workflow_stage, Task.WorkflowStage.TEXT_DETECTION)
 
     def test_customer_can_create_video_room_and_split_it_into_frame_tasks(self):
         if not shutil.which("ffmpeg"):
@@ -528,3 +557,107 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(task.status, Task.Status.PENDING)
         self.assertEqual(task.current_round, 2)
         self.assertIsNone(task.consensus_payload)
+
+    def test_detect_text_room_progress_uses_only_final_stage_tasks(self):
+        room = make_room(
+            customer=self.customer,
+            title="Detect+Text progress room",
+            dataset_type="image",
+            annotation_workflow="text_detect_text",
+        )
+        detection_task = make_task(
+            room=room,
+            payload={"width": 640, "height": 480, "source_name": "ocr-progress.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="ocr-progress.jpg",
+            workflow_stage=Task.WorkflowStage.TEXT_DETECTION,
+        )
+        detection_task.status = Task.Status.SUBMITTED
+        detection_task.consensus_payload = {
+            "annotations": [
+                {"type": "bbox", "label_id": 1, "points": [10, 10, 100, 50], "frame": 0, "attributes": [], "occluded": False}
+            ]
+        }
+        detection_task.save(update_fields=["status", "consensus_payload", "updated_at"])
+        make_task(
+            room=room,
+            parent_task=detection_task,
+            payload={
+                "detected_annotations": detection_task.consensus_payload["annotations"],
+                "excluded_annotator_ids": [self.annotator.id],
+            },
+            source_type=Task.SourceType.IMAGE,
+            source_name="ocr-progress.jpg",
+            workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
+        )
+
+        response = self.client.get(
+            reverse("room-dashboard", kwargs={"room_id": room.id}),
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["overview"]["total_tasks"], 1)
+        self.assertEqual(response.data["overview"]["completed_tasks"], 0)
+        self.assertEqual(response.data["overview"]["remaining_tasks"], 1)
+
+    def test_detect_text_export_includes_only_final_transcription_stage(self):
+        room = make_room(
+            customer=self.customer,
+            title="Detect+Text export room",
+            dataset_type="image",
+            annotation_workflow="text_detect_text",
+        )
+        label = room.labels.create(name="text", color="#FFC919", sort_order=0)
+        detection_task = make_task(
+            room=room,
+            payload={"width": 640, "height": 480, "source_name": "ocr-export.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="ocr-export.jpg",
+            workflow_stage=Task.WorkflowStage.TEXT_DETECTION,
+        )
+        detection_task.status = Task.Status.SUBMITTED
+        detection_task.consensus_payload = {
+            "annotations": [
+                {"type": "bbox", "label_id": label.id, "points": [10, 10, 100, 50], "frame": 0, "attributes": [], "occluded": False}
+            ]
+        }
+        detection_task.save(update_fields=["status", "consensus_payload", "updated_at"])
+        transcription_task = make_task(
+            room=room,
+            parent_task=detection_task,
+            payload={
+                "detected_annotations": detection_task.consensus_payload["annotations"],
+                "excluded_annotator_ids": [self.annotator.id],
+            },
+            source_type=Task.SourceType.IMAGE,
+            source_name="ocr-export.jpg",
+            workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
+        )
+        transcription_task.status = Task.Status.SUBMITTED
+        transcription_task.consensus_payload = {
+            "annotations": [
+                {
+                    "type": "bbox",
+                    "label_id": label.id,
+                    "points": [10, 10, 100, 50],
+                    "frame": 0,
+                    "attributes": [],
+                    "occluded": False,
+                    "text": "Итоговый текст",
+                }
+            ]
+        }
+        transcription_task.save(update_fields=["status", "consensus_payload", "updated_at"])
+
+        response = self.client.get(
+            reverse("room-export", kwargs={"room_id": room.id}),
+            {"export_format": "native_json"},
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = json.loads(response.content.decode("utf-8"))
+        self.assertEqual(len(payload["tasks"]), 1)
+        self.assertEqual(payload["tasks"][0]["task_id"], transcription_task.id)
+        self.assertEqual(payload["tasks"][0]["annotation"]["annotations"][0]["text"], "Итоговый текст")

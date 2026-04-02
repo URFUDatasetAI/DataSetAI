@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.labeling.consensus import evaluate_annotation_consensus
 from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.workflows import is_text_detection_workflow
 from apps.rooms.models import Room, RoomMembership
 from apps.rooms.policies import can_annotate_room, can_review_room
 from apps.users.models import User
@@ -24,6 +25,35 @@ def _assert_joined_membership(*, room: Room, annotator: User) -> None:
     membership = RoomMembership.objects.filter(room=room, user=annotator).only("status", "role").first()
     if not can_annotate_room(room=room, user=annotator, membership=membership):
         raise AccessDeniedError("Current user cannot label tasks in this room.")
+
+
+def _build_stage_two_payload(*, task: Task, consensus_payload: dict, submitted_assignments: list[TaskAssignment]) -> dict:
+    return {
+        **task.input_payload,
+        "workflow_stage": Task.WorkflowStage.TEXT_TRANSCRIPTION,
+        "detection_task_id": task.id,
+        "detected_annotations": consensus_payload.get("annotations", []),
+        "excluded_annotator_ids": sorted({assignment.annotator_id for assignment in submitted_assignments}),
+    }
+
+
+def _create_followup_transcription_task(*, task: Task, consensus_payload: dict, submitted_assignments: list[TaskAssignment]) -> None:
+    if task.child_tasks.filter(workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION).exists():
+        return
+
+    annotations = consensus_payload.get("annotations", [])
+    Task.objects.create(
+        room=task.room,
+        parent_task=task,
+        source_type=task.source_type,
+        workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
+        source_name=task.source_name,
+        source_file=task.source_file.name if task.source_file else "",
+        input_payload=_build_stage_two_payload(task=task, consensus_payload=consensus_payload, submitted_assignments=submitted_assignments),
+        status=Task.Status.SUBMITTED if not annotations else Task.Status.PENDING,
+        validation_score=100.0 if not annotations else None,
+        consensus_payload={"annotations": []} if not annotations else None,
+    )
 
 
 def get_next_task_for_annotator(*, room: Room, annotator: User):
@@ -74,6 +104,10 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
             .filter(
                 has_annotator_assignment=False,
                 round_assignments_count__lt=room.required_reviews_per_item,
+            )
+            .exclude(
+                workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
+                input_payload__excluded_annotator_ids__contains=[annotator.id],
             )
             .order_by("id")
         )
@@ -172,6 +206,18 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
                     "updated_at",
                 ]
             )
+
+            if (
+                consensus["accepted"]
+                and is_text_detection_workflow(room=locked_task.room)
+                and locked_task.workflow_stage == Task.WorkflowStage.TEXT_DETECTION
+                and locked_task.consensus_payload is not None
+            ):
+                _create_followup_transcription_task(
+                    task=locked_task,
+                    consensus_payload=locked_task.consensus_payload,
+                    submitted_assignments=submitted_assignments,
+                )
         else:
             locked_task.save(update_fields=["updated_at"])
 

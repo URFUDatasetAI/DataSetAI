@@ -28,6 +28,11 @@ class Task(TimeStampedModel):
         IMAGE = "image", "Image"
         VIDEO = "video", "Video"
 
+    class WorkflowStage(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        TEXT_DETECTION = "text_detection", "Text detection"
+        TEXT_TRANSCRIPTION = "text_transcription", "Text transcription"
+
     room = models.ForeignKey("rooms.Room", on_delete=models.CASCADE, related_name="tasks")
     input_payload = models.JSONField()
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
@@ -39,13 +44,26 @@ class Task(TimeStampedModel):
         choices=SourceType.choices,
         default=SourceType.TEXT,
     )
+    workflow_stage = models.CharField(
+        max_length=32,
+        choices=WorkflowStage.choices,
+        default=WorkflowStage.STANDARD,
+    )
     source_file = models.FileField(upload_to=task_source_upload_to, blank=True)
     source_name = models.CharField(max_length=255, blank=True)
+    parent_task = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="child_tasks",
+    )
 
     class Meta:
         ordering = ("id",)
         indexes = [
             models.Index(fields=("room", "status")),
+            models.Index(fields=("room", "workflow_stage", "status"), name="labeling_ta_room_id_5f2def_idx"),
         ]
 
     def __str__(self) -> str:

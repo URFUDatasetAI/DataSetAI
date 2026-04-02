@@ -12,6 +12,7 @@ from apps.labeling.api.v1.serializers import (
 )
 from apps.labeling.selectors import get_task_for_review, get_task_or_404
 from apps.labeling.services import get_next_task_for_annotator, reject_task_annotation, submit_annotation
+from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.policies import can_review_room
 from apps.rooms.selectors import get_visible_room
 from common.exceptions import AccessDeniedError
@@ -56,7 +57,7 @@ class RoomReviewTaskListView(APIView):
         room = get_visible_room(room_id=room_id, user=request.user)
         if not can_review_room(room=room, user=request.user):
             raise AccessDeniedError("You do not have permission to review tasks in this room.")
-        tasks = room.tasks.filter(status="submitted").prefetch_related("annotations").order_by("-updated_at", "-id")
+        tasks = get_room_final_tasks_queryset(room=room).filter(status="submitted").prefetch_related("annotations").order_by("-updated_at", "-id")
         serializer = ReviewTaskListItemSerializer(tasks, many=True, context={"request": request})
         return Response(serializer.data)
 

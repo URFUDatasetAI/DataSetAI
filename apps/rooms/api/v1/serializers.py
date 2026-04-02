@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
 from apps.rooms.services import get_supported_export_formats, validate_dataset_upload
+from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from common.exceptions import ConflictError
 
 
@@ -47,6 +48,11 @@ class RoomCreateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False, default=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100, default=80)
+    annotation_workflow = serializers.ChoiceField(
+        choices=Room.AnnotationWorkflow.values,
+        required=False,
+        default=Room.AnnotationWorkflow.STANDARD,
+    )
     annotator_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         required=False,
@@ -74,9 +80,18 @@ class RoomCreateSerializer(serializers.Serializer):
             attrs["cross_validation_annotators_count"] = 1
 
         dataset_mode = attrs.get("dataset_mode", Room.DatasetType.DEMO)
+        annotation_workflow = attrs.get("annotation_workflow", Room.AnnotationWorkflow.STANDARD)
         dataset_files = list(attrs.get("dataset_files") or [])
         labels = attrs.get("labels")
         media_manifest = attrs.get("media_manifest")
+
+        if (
+            annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+            and dataset_mode not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
+        ):
+            raise serializers.ValidationError(
+                {"annotation_workflow": "Object detect + text is available only for image or video datasets."}
+            )
 
         try:
             validate_dataset_upload(dataset_mode=dataset_mode, dataset_files=dataset_files)
@@ -92,7 +107,11 @@ class RoomCreateSerializer(serializers.Serializer):
             serializer.is_valid(raise_exception=True)
             attrs["labels"] = serializer.validated_data
 
-        if dataset_mode in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO) and not attrs["labels"]:
+        if (
+            dataset_mode in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
+            and annotation_workflow != Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+            and not attrs["labels"]
+        ):
             raise serializers.ValidationError({"labels": "Provide at least one label for image or video datasets."})
 
         if media_manifest in (None, ""):
@@ -138,6 +157,7 @@ class RoomSerializer(serializers.ModelSerializer):
             "description",
             "dataset_label",
             "dataset_type",
+            "annotation_workflow",
             "cross_validation_enabled",
             "cross_validation_annotators_count",
             "cross_validation_similarity_threshold",
@@ -180,14 +200,14 @@ class RoomSerializer(serializers.ModelSerializer):
         return obj.has_password
 
     def get_total_tasks(self, obj):
-        return obj.tasks.count()
+        return get_room_primary_tasks_queryset(room=obj).count()
 
     def get_completed_tasks(self, obj):
-        return obj.tasks.filter(status="submitted").count()
+        return get_room_final_tasks_queryset(room=obj).filter(status="submitted").count()
 
     def get_progress_percent(self, obj):
-        total = obj.tasks.count()
-        completed = obj.tasks.filter(status="submitted").count()
+        total = get_room_primary_tasks_queryset(room=obj).count()
+        completed = get_room_final_tasks_queryset(room=obj).filter(status="submitted").count()
         if not total:
             return 0.0
         return round((completed / total) * 100, 1)

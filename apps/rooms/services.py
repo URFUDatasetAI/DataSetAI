@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.labeling.models import Task
+from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
 from apps.rooms.policies import can_invite_members
 from apps.users.models import User
@@ -70,6 +71,8 @@ def get_supported_export_formats(*, room: Room) -> list[dict[str, str]]:
     formats = [
         {"value": "native_json", "label": "Native JSON"},
     ]
+    if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION:
+        return formats
     if room.dataset_type in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
         formats.extend(
             [
@@ -90,6 +93,7 @@ def create_room(
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
+    annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     annotator_ids: list[int] | None = None,
     dataset_mode: str = "demo",
     test_task_count: int = 12,
@@ -114,6 +118,7 @@ def create_room(
             deadline=deadline,
             dataset_label=normalized_label,
             dataset_type=dataset_mode,
+            annotation_workflow=annotation_workflow,
             cross_validation_enabled=cross_validation_enabled,
             cross_validation_annotators_count=cross_validation_annotators_count,
             cross_validation_similarity_threshold=cross_validation_similarity_threshold,
@@ -141,6 +146,13 @@ def create_room(
                 media_manifest=media_manifest,
                 source_type=Task.SourceType.VIDEO,
             )
+
+        if (
+            annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+            and dataset_mode in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
+            and not label_definitions
+        ):
+            label_definitions = [{"name": "text", "color": "#FFC919"}]
 
         if label_definitions:
             _create_room_labels(room=room, label_definitions=label_definitions)
@@ -359,6 +371,11 @@ def _create_media_tasks(
         Task.objects.create(
             room=room,
             source_type=source_type,
+            workflow_stage=(
+                Task.WorkflowStage.TEXT_DETECTION
+                if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+                else Task.WorkflowStage.STANDARD
+            ),
             source_name=file_name,
             source_file=dataset_file,
             input_payload=input_payload,
@@ -427,6 +444,11 @@ def _create_video_frame_tasks(
             frame_task = Task(
                 room=room,
                 source_type=Task.SourceType.IMAGE,
+                workflow_stage=(
+                    Task.WorkflowStage.TEXT_DETECTION
+                    if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+                    else Task.WorkflowStage.STANDARD
+                ),
                 source_name=frame_name,
                 input_payload={
                     "dataset": dataset_label,
@@ -633,7 +655,9 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
 def export_room_annotations(*, room: Room, export_format: str, base_url: str | None = None) -> ExportArtifact:
     # Export only submitted tasks. Pending/in-progress tasks are intentionally
     # excluded so downstream datasets contain finalized results.
-    tasks = list(room.tasks.filter(status=Task.Status.SUBMITTED).prefetch_related("annotations").all())
+    if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":
+        raise ConflictError("Object detect + text rooms support only Native JSON export.")
+    tasks = list(get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).prefetch_related("annotations").all())
     labels = list(room.labels.all())
 
     if export_format == "native_json":

@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "none",
+    "lib": ["DOM", "DOM.Iterable", "ES2021"],
+    "strict": false,
+    "noImplicitAny": false,
+    "allowJs": false,
+    "skipLibCheck": true,
+    "moduleDetection": "legacy"
+  },
+  "include": ["apps/ui/static/ui/**/*.ts"]
+}
