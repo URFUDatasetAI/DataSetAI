@@ -11,8 +11,8 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(RoomMembership)
 class RoomMembershipAdmin(admin.ModelAdmin):
-    list_display = ("id", "room", "user", "status", "invited_by", "joined_at")
-    list_filter = ("status",)
+    list_display = ("id", "room", "user", "status", "role", "invited_by", "joined_at")
+    list_filter = ("status", "role")
     search_fields = ("room__title", "user__username", "invited_by__username")
 
 
