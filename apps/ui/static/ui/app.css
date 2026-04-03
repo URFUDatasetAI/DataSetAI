@@ -1299,6 +1299,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-card__id {
+    margin-bottom: 8px;
     color: var(--text-soft);
     font-size: 0.8rem;
     letter-spacing: 0.03em;
@@ -1390,6 +1391,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
     align-items: stretch;
+}
+
+.workspace-grid__side--stack.workspace-grid__side--stack-single {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .workspace-grid__side--room-work {
@@ -1614,6 +1619,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .summary-row strong {
     color: var(--text);
+}
+
+.role-assignment-box {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 4px;
+}
+
+.role-assignment-box__actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .activity-board {
@@ -2504,6 +2523,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     cursor: crosshair;
 }
 
+.media-overlay--readonly {
+    cursor: default;
+}
+
 .media-bbox {
     position: absolute;
     border: 2px solid var(--bbox-color, #b8b8b8);
@@ -2516,6 +2539,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .media-bbox:active {
     cursor: grabbing;
+}
+
+.media-bbox--readonly {
+    cursor: default;
+    pointer-events: none;
 }
 
 .media-bbox span {
@@ -2589,6 +2617,17 @@ input[type="file"]::-webkit-file-upload-button:hover {
     font-size: 0.78rem;
     color: var(--text-soft);
     overflow-wrap: anywhere;
+}
+
+.annotation-list--transcription {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.annotation-row--transcription textarea {
+    min-height: 88px;
+    resize: vertical;
 }
 
 @media (max-width: 980px) {

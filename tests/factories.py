@@ -13,6 +13,7 @@ def make_room(
     title: str = "Room",
     description: str = "",
     dataset_type: str = Room.DatasetType.DEMO,
+    annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
@@ -22,18 +23,27 @@ def make_room(
         description=description,
         created_by=customer,
         dataset_type=dataset_type,
+        annotation_workflow=annotation_workflow,
         cross_validation_enabled=cross_validation_enabled,
         cross_validation_annotators_count=cross_validation_annotators_count,
         cross_validation_similarity_threshold=cross_validation_similarity_threshold,
     )
 
 
-def invite_annotator(*, room: Room, annotator: User, invited_by: User, joined: bool = False) -> RoomMembership:
+def invite_annotator(
+    *,
+    room: Room,
+    annotator: User,
+    invited_by: User,
+    joined: bool = False,
+    role: str = RoomMembership.Role.ANNOTATOR,
+) -> RoomMembership:
     membership = RoomMembership.objects.create(
         room=room,
         user=annotator,
         invited_by=invited_by,
         status=RoomMembership.Status.JOINED if joined else RoomMembership.Status.INVITED,
+        role=role,
     )
     return membership
 
@@ -44,10 +54,14 @@ def make_task(
     payload: dict,
     source_type: str = Task.SourceType.TEXT,
     source_name: str = "",
+    workflow_stage: str = Task.WorkflowStage.STANDARD,
+    parent_task: Task | None = None,
 ) -> Task:
     return Task.objects.create(
         room=room,
         input_payload=payload,
         source_type=source_type,
         source_name=source_name,
+        workflow_stage=workflow_stage,
+        parent_task=parent_task,
     )

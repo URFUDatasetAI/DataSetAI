@@ -22,6 +22,10 @@ class Room(TimeStampedModel):
         IMAGE = "image", "Image"
         VIDEO = "video", "Video"
 
+    class AnnotationWorkflow(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        TEXT_DETECTION_TRANSCRIPTION = "text_detect_text", "Object detect + text"
+
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     access_password_hash = models.CharField(max_length=255, blank=True)
@@ -31,6 +35,11 @@ class Room(TimeStampedModel):
         max_length=16,
         choices=DatasetType.choices,
         default=DatasetType.DEMO,
+    )
+    annotation_workflow = models.CharField(
+        max_length=32,
+        choices=AnnotationWorkflow.choices,
+        default=AnnotationWorkflow.STANDARD,
     )
     cross_validation_enabled = models.BooleanField(default=False)
     cross_validation_annotators_count = models.PositiveSmallIntegerField(default=1)
@@ -92,6 +101,11 @@ class RoomMembership(TimeStampedModel):
         INVITED = "invited", "Invited"
         JOINED = "joined", "Joined"
 
+    class Role(models.TextChoices):
+        ANNOTATOR = "annotator", "Annotator"
+        ADMIN = "admin", "Admin"
+        TESTER = "tester", "Tester"
+
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -104,6 +118,7 @@ class RoomMembership(TimeStampedModel):
         related_name="sent_room_invitations",
     )
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.INVITED)
+    role = models.CharField(max_length=16, choices=Role.choices, default=Role.ANNOTATOR)
     joined_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

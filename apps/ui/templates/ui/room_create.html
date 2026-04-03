@@ -58,6 +58,13 @@
                         <option value="video">Видео</option>
                     </select>
                 </label>
+                <label id="annotation-workflow-field" class="field hidden">
+                    <span>Сценарий разметки</span>
+                    <select id="annotation-workflow-select" name="annotation_workflow">
+                        <option value="standard" selected>Обычная разметка</option>
+                        <option value="text_detect_text">Object detect + text</option>
+                    </select>
+                </label>
                 <label class="field">
                     <span>Название датасета</span>
                     <input name="dataset_label" type="text" value="Тестовый датасет">

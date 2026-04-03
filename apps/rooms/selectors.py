@@ -5,8 +5,20 @@ from django.db.models import Exists, OuterRef, QuerySet
 from django.utils import timezone
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
 from apps.rooms.models import Room, RoomMembership, RoomPin
+from apps.rooms.policies import (
+    can_annotate_room,
+    can_assign_room_roles,
+    can_delete_room,
+    can_export_room,
+    can_invite_members,
+    can_manage_room,
+    can_review_room,
+    get_room_actor_role,
+    get_room_membership,
+)
 from apps.rooms.services import get_supported_export_formats
 from apps.users.models import User
 from common.exceptions import NotFoundError
@@ -91,11 +103,22 @@ def build_activity_series(*, annotations_qs, days: int = 49) -> list[dict]:
     ]
 
 
+def _count_completed_items_for_user(*, room: Room, user: User) -> int:
+    completed_pairs = (
+        Task.objects.filter(room=room, annotations__annotator=user)
+        .order_by()
+        .values_list("id", "parent_task_id")
+        .distinct()
+    )
+    root_task_ids = {parent_task_id or task_id for task_id, parent_task_id in completed_pairs}
+    return len(root_task_ids)
+
+
 def build_room_dashboard(*, room: Room, actor: User) -> dict:
     # Dashboard payload is intentionally assembled here instead of serializers:
     # it mixes room metadata, aggregate stats and actor-specific slices.
-    total_tasks = Task.objects.filter(room=room).count()
-    completed_tasks = Task.objects.filter(room=room, status=Task.Status.SUBMITTED).count()
+    total_tasks = get_room_primary_tasks_queryset(room=room).count()
+    completed_tasks = get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).count()
     remaining_tasks = max(total_tasks - completed_tasks, 0)
     progress_percent = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0.0
 
@@ -106,11 +129,12 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         "progress_percent": progress_percent,
     }
 
-    actor_membership_status = RoomMembership.objects.filter(room=room, user=actor).values_list("status", flat=True).first()
-    actor_is_owner = room.created_by_id == actor.id
-    actor_room_role = "customer" if actor_is_owner else "annotator"
-    actor_can_manage = actor_is_owner
-    actor_can_annotate = actor_is_owner or actor_membership_status == RoomMembership.Status.JOINED
+    actor_membership = get_room_membership(room=room, user=actor)
+    actor_membership_status = actor_membership.status if actor_membership else None
+    actor_room_role = get_room_actor_role(room=room, user=actor, membership=actor_membership) or RoomMembership.Role.ANNOTATOR
+    actor_can_manage = can_manage_room(room=room, user=actor, membership=actor_membership)
+    actor_can_review = can_review_room(room=room, user=actor, membership=actor_membership)
+    actor_can_annotate = can_annotate_room(room=room, user=actor, membership=actor_membership)
 
     payload = {
         "room": {
@@ -119,6 +143,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "description": room.description,
             "dataset_label": room.dataset_label,
             "dataset_type": room.dataset_type,
+            "annotation_workflow": room.annotation_workflow,
             "cross_validation_enabled": room.cross_validation_enabled,
             "cross_validation_annotators_count": room.cross_validation_annotators_count,
             "cross_validation_similarity_threshold": room.cross_validation_similarity_threshold,
@@ -127,6 +152,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "is_pinned": RoomPin.objects.filter(room=room, user=actor).exists(),
             "created_by_id": room.created_by_id,
             "membership_status": "owner" if room.created_by_id == actor.id else actor_membership_status,
+            "membership_role": actor_room_role,
         },
         "labels": [
             {
@@ -139,17 +165,27 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         ],
         "export_formats": get_supported_export_formats(room=room),
         "overview": overview,
+        "membership_role_options": [
+            {"value": RoomMembership.Role.ANNOTATOR, "label": "Исполнитель"},
+            {"value": RoomMembership.Role.ADMIN, "label": "Админ"},
+            {"value": RoomMembership.Role.TESTER, "label": "Тестировщик"},
+        ],
         "actor": {
             "id": actor.id,
             "username": actor.username,
             "role": actor_room_role,
             "can_manage": actor_can_manage,
+            "can_review": actor_can_review,
             "can_annotate": actor_can_annotate,
+            "can_invite": can_invite_members(room=room, user=actor, membership=actor_membership),
+            "can_assign_roles": can_assign_room_roles(room=room, user=actor),
+            "can_export": can_export_room(room=room, user=actor),
+            "can_delete_room": can_delete_room(room=room, user=actor),
         },
     }
 
     if actor_can_annotate:
-        actor_completed = Annotation.objects.filter(task__room=room, annotator=actor).count()
+        actor_completed = _count_completed_items_for_user(room=room, user=actor)
         actor_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=actor,
@@ -168,14 +204,14 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "progress_percent": actor_progress,
             "activity": activity,
         }
-        if not actor_can_manage:
+        if not (actor_can_manage or actor_can_review):
             return payload
 
     annotators = []
     memberships = RoomMembership.objects.filter(room=room).select_related("user").order_by("user__username")
     for membership in memberships:
         user = membership.user
-        user_completed = Annotation.objects.filter(task__room=room, annotator=user).count()
+        user_completed = _count_completed_items_for_user(room=room, user=user)
         user_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=user,
@@ -189,6 +225,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
                 "user_id": user.id,
                 "username": user.username,
                 "status": membership.status,
+                "role": membership.role,
                 "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
                 "completed_tasks": user_completed,
                 "in_progress_tasks": user_in_progress,

@@ -88,6 +88,8 @@ def _media_payload_similarity(left_payload: dict, right_payload: dict) -> float:
                 continue
 
             score = _bbox_iou(left_item.get("points", []), right_item.get("points", []))
+            if "text" in left_item or "text" in right_item:
+                score *= _normalized_text_similarity(left_item.get("text"), right_item.get("text"))
             if score > best_score:
                 best_score = score
                 best_index = index
@@ -100,6 +102,14 @@ def _media_payload_similarity(left_payload: dict, right_payload: dict) -> float:
     if denominator == 0:
         return 1.0
     return (2 * matched_iou_sum) / denominator
+
+
+def _normalized_text_similarity(left_text, right_text) -> float:
+    return 1.0 if _normalize_text(left_text) == _normalize_text(right_text) else 0.0
+
+
+def _normalize_text(value) -> str:
+    return " ".join(str(value or "").strip().lower().split())
 
 
 def _bbox_iou(left_points, right_points) -> float:

@@ -10,9 +10,12 @@ from apps.labeling.api.v1.serializers import (
     ReviewTaskListItemSerializer,
     TaskSerializer,
 )
-from apps.labeling.selectors import get_task_for_owner_review, get_task_or_404
+from apps.labeling.selectors import get_task_for_review, get_task_or_404
 from apps.labeling.services import get_next_task_for_annotator, reject_task_annotation, submit_annotation
-from apps.rooms.selectors import get_room_for_owner, get_visible_room
+from apps.labeling.workflows import get_room_final_tasks_queryset
+from apps.rooms.policies import can_review_room
+from apps.rooms.selectors import get_visible_room
+from common.exceptions import AccessDeniedError
 
 """
 Labeling endpoints used by the annotator workflow:
@@ -51,8 +54,10 @@ class RoomReviewTaskListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, room_id: int):
-        room = get_room_for_owner(room_id=room_id, owner=request.user)
-        tasks = room.tasks.filter(status="submitted").prefetch_related("annotations").order_by("-updated_at", "-id")
+        room = get_visible_room(room_id=room_id, user=request.user)
+        if not can_review_room(room=room, user=request.user):
+            raise AccessDeniedError("You do not have permission to review tasks in this room.")
+        tasks = get_room_final_tasks_queryset(room=room).filter(status="submitted").prefetch_related("annotations").order_by("-updated_at", "-id")
         serializer = ReviewTaskListItemSerializer(tasks, many=True, context={"request": request})
         return Response(serializer.data)
 
@@ -61,7 +66,7 @@ class TaskReviewDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, task_id: int):
-        task = get_task_for_owner_review(task_id=task_id, owner=request.user)
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
         task = task.__class__.objects.select_related("room").prefetch_related("annotations__annotator", "annotations__assignment").get(
             id=task.id
         )
@@ -77,6 +82,6 @@ class TaskRejectView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, task_id: int):
-        task = get_task_for_owner_review(task_id=task_id, owner=request.user)
-        task = reject_task_annotation(task=task, owner=request.user)
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        task = reject_task_annotation(task=task, reviewer=request.user)
         return Response(TaskSerializer(task, context={"request": request}).data)

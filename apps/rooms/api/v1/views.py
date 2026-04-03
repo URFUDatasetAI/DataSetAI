@@ -10,6 +10,7 @@ from apps.rooms.api.v1.serializers import (
     RoomCreateSerializer,
     RoomJoinSerializer,
     RoomMembershipSerializer,
+    RoomMembershipRoleSerializer,
     RoomPinSerializer,
     RoomSerializer,
 )
@@ -21,7 +22,14 @@ from apps.rooms.selectors import (
     list_member_rooms,
     list_owned_rooms,
 )
-from apps.rooms.services import create_room, export_room_annotations, invite_user_to_room, join_room, set_room_pinned
+from apps.rooms.services import (
+    create_room,
+    export_room_annotations,
+    invite_user_to_room,
+    join_room,
+    set_room_membership_role,
+    set_room_pinned,
+)
 
 """
 Rooms API surface.
@@ -100,7 +108,7 @@ class RoomInviteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, room_id: int):
-        room = get_room_for_owner(room_id=room_id, owner=request.user)
+        room = get_visible_room(room_id=room_id, user=request.user)
         serializer = InviteAnnotatorSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         membership = invite_user_to_room(
@@ -112,6 +120,22 @@ class RoomInviteView(APIView):
             RoomMembershipSerializer(membership).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class RoomMembershipRoleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int, user_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomMembershipRoleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        membership = set_room_membership_role(
+            room=room,
+            owner=request.user,
+            target_user_id=user_id,
+            role=serializer.validated_data["role"],
+        )
+        return Response(RoomMembershipSerializer(membership).data)
 
 
 class MyRoomListView(APIView):

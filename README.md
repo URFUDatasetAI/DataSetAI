@@ -17,7 +17,7 @@ DataSetAI - Django-сервис для командной разметки да�
 
 - Backend: Django 5
 - API: Django REST Framework
-- Frontend: Django Templates + Vanilla JavaScript + CSS
+- Frontend: Django Templates + TypeScript + CSS
 - Database: PostgreSQL 14+
 - DB driver: `psycopg`
 - Config: `.env` + `python-dotenv`
@@ -64,6 +64,7 @@ source .venv/bin/activate
 ```bash
 python -m pip install --upgrade pip
 python -m pip install -r requirements/local.txt
+npm install
 ```
 
 ### 5. Создать `.env`
@@ -132,6 +133,8 @@ python manage.py runserver
 ## Полезные команды для локальной разработки
 
 ```bash
+npm run build:ui
+npm run check:types
 python scripts/check_db.py
 python manage.py check
 python manage.py test
@@ -181,6 +184,8 @@ bash bin/bootstrap_local.sh
 ## Структура репозитория
 
 - `apps/` - доменные Django-приложения
+- `apps/ui/static/ui/app.ts` - исходный TypeScript-код фронтенда
+- `apps/ui/static/ui/app.js` - скомпилированный браузерный бандл для Django templates
 - `config/` - settings, URL routing, ASGI/WSGI
 - `common/` - общая инфраструктура и middleware
 - `scripts/` - служебные Python-скрипты
