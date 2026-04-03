@@ -104,7 +104,7 @@ class RoomMembership(TimeStampedModel):
     class Role(models.TextChoices):
         ANNOTATOR = "annotator", "Annotator"
         ADMIN = "admin", "Admin"
-        TESTER = "tester", "Tester"
+        TESTER = "tester", "Inspector"
 
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(
