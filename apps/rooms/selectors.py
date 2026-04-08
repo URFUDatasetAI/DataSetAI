@@ -168,7 +168,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         "membership_role_options": [
             {"value": RoomMembership.Role.ANNOTATOR, "label": "Исполнитель"},
             {"value": RoomMembership.Role.ADMIN, "label": "Админ"},
-            {"value": RoomMembership.Role.TESTER, "label": "Тестировщик"},
+            {"value": RoomMembership.Role.TESTER, "label": "Инспектор"},
         ],
         "actor": {
             "id": actor.id,

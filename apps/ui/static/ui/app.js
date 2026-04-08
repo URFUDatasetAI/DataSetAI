@@ -30,7 +30,7 @@ const roleLabels = {
     customer: "Заказчик",
     annotator: "Исполнитель",
     admin: "Админ",
-    tester: "Тестировщик",
+    tester: "Инспектор",
     unknown: "Неизвестная роль",
 };
 const membershipLabels = {
@@ -53,11 +53,6 @@ const sourceTypeLabels = {
     text: "JSON / текст",
     image: "Фото",
     video: "Видео",
-};
-const workflowStageLabels = {
-    standard: "Обычная задача",
-    text_detection: "Выделение текста",
-    text_transcription: "Распознавание текста",
 };
 const labelColorPool = [
     "#FF6B6B",
@@ -122,9 +117,6 @@ function translateMembership(status) {
 }
 function translateTaskStatus(status) {
     return taskStatusLabels[status] || status;
-}
-function translateWorkflowStage(stage) {
-    return workflowStageLabels[stage] || stage;
 }
 function translateDatasetMode(mode) {
     return datasetModeLabels[mode] || mode;
@@ -868,8 +860,6 @@ function summarizeSelectedFiles(files) {
 function initRoomCreatePage() {
     const form = byId("room-create-form");
     const datasetModeSelect = byId("dataset-mode-select");
-    const annotationWorkflowField = byId("annotation-workflow-field");
-    const annotationWorkflowSelect = byId("annotation-workflow-select");
     const datasetFilesInput = byId("dataset-files-input");
     const datasetUploadHint = byId("dataset-upload-hint");
     const datasetFilesSummary = byId("dataset-files-summary");
@@ -944,17 +934,8 @@ function initRoomCreatePage() {
     }
     function syncDatasetMode() {
         const datasetMode = datasetModeSelect?.value || "demo";
-        const annotationWorkflow = annotationWorkflowSelect?.value || "standard";
         const config = datasetModeConfig[datasetMode];
-        const isMediaDataset = datasetMode === "image" || datasetMode === "video";
-        const isTextDetectWorkflow = annotationWorkflow === "text_detect_text";
-        annotationWorkflowField?.classList.toggle("hidden", !isMediaDataset);
-        if (!isMediaDataset && annotationWorkflowSelect) {
-            annotationWorkflowSelect.value = "standard";
-        }
-        datasetUploadHint.textContent = isTextDetectWorkflow
-            ? "Для каждого фото сначала создается задача на выделение текстовых областей, затем подтвержденное изображение уходит другому исполнителю на ввод текста по выделенным зонам."
-            : config.hint;
+        datasetUploadHint.textContent = config.hint;
         datasetFilesInput.disabled = !config.usesFiles;
         datasetFilesInput.accept = config.accept;
         datasetFilesInput.multiple = config.multiple;
@@ -963,8 +944,8 @@ function initRoomCreatePage() {
         }
         datasetFilesSummary.textContent = summarizeSelectedFiles(Array.from(datasetFilesInput.files || []));
         testTaskCountField.classList.toggle("hidden", datasetMode !== "demo");
-        labelEditorSection.classList.toggle("hidden", !config.usesLabels || isTextDetectWorkflow);
-        if (config.usesLabels && !isTextDetectWorkflow) {
+        labelEditorSection.classList.toggle("hidden", !config.usesLabels);
+        if (config.usesLabels) {
             ensureInitialLabelRow();
         }
     }
@@ -978,7 +959,6 @@ function initRoomCreatePage() {
         }
     }
     datasetModeSelect?.addEventListener("change", syncDatasetMode);
-    annotationWorkflowSelect?.addEventListener("change", syncDatasetMode);
     crossValidationToggle?.addEventListener("change", syncCrossValidationSettings);
     datasetFilesInput?.addEventListener("change", () => {
         datasetFilesSummary.textContent = summarizeSelectedFiles(Array.from(datasetFilesInput.files || []));
@@ -999,16 +979,13 @@ function initRoomCreatePage() {
             .filter((item) => Number.isInteger(item) && item > 0);
         const deadlineValue = rawFormData.get("deadline");
         const labels = collectLabels();
-        const annotationWorkflow = (rawFormData.get("annotation_workflow") || "standard").toString();
         const crossValidationEnabled = Boolean(crossValidationToggle?.checked);
         const crossValidationCount = Number(rawFormData.get("cross_validation_annotators_count") || 1);
         if (datasetMode !== "demo" && !datasetFiles.length) {
             showFlash("Загрузи файл или набор файлов для выбранного типа датасета.", "error");
             return;
         }
-        if ((datasetMode === "image" || datasetMode === "video") &&
-            annotationWorkflow !== "text_detect_text" &&
-            !labels.length) {
+        if ((datasetMode === "image" || datasetMode === "video") && !labels.length) {
             showFlash("Добавь хотя бы один лейбл для фото или видео.", "error");
             return;
         }
@@ -1029,7 +1006,6 @@ function initRoomCreatePage() {
         payload.append("description", rawFormData.get("description") || "");
         payload.append("password", rawFormData.get("password") || "");
         payload.append("dataset_mode", datasetMode);
-        payload.append("annotation_workflow", annotationWorkflow);
         payload.append("dataset_label", rawFormData.get("dataset_label") || "Тестовый датасет");
         payload.append("test_task_count", String(Number(rawFormData.get("test_task_count") || 12)));
         payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
@@ -1087,7 +1063,6 @@ function renderCurrentTask(taskBox, task) {
     const meta = [
         `Статус: ${translateTaskStatus(task.status)}`,
         `Тип: ${translateSourceType(task.source_type)}`,
-        `Этап: ${translateWorkflowStage(task.workflow_stage || "standard")}`,
     ];
     if (task.source_name) {
         meta.push(`Файл: ${task.source_name}`);
@@ -1164,6 +1139,37 @@ function getReviewPayloadAnnotations(payload) {
         annotation.points.length === 4 &&
         typeof annotation.label_id === "number");
 }
+function getReviewPayloadTextAnnotations(payload) {
+    return getReviewPayloadAnnotations(payload).filter((annotation) => typeof annotation.text === "string");
+}
+function buildReviewTextSummaryHtml(payload) {
+    const textAnnotations = getReviewPayloadTextAnnotations(payload);
+    if (!textAnnotations.length) {
+        return "";
+    }
+    return `
+    <div class="review-text-summary">
+      <div class="review-text-summary__title">Текст</div>
+      <div class="review-text-summary__list">
+        ${textAnnotations
+        .map((annotation, index) => {
+        const label = getRoomLabelById(annotation.label_id);
+        const title = label?.name || `Область ${index + 1}`;
+        const textValue = typeof annotation.text === "string" && annotation.text.length
+            ? annotation.text
+            : "Пустой текст";
+        return `
+              <div class="review-text-summary__item">
+                <span class="review-text-summary__label">${escapeHtml(title)}</span>
+                <span class="review-text-summary__value">${escapeHtml(textValue)}</span>
+              </div>
+            `;
+    })
+        .join("")}
+      </div>
+    </div>
+  `;
+}
 function renderReviewGraphicPreview(container, task, payload) {
     if (!container || !task?.source_file_url) {
         return;
@@ -1205,7 +1211,7 @@ function renderReviewGraphicPreview(container, task, payload) {
             box.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
             box.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
             box.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
-            box.innerHTML = `<span>${escapeHtml(annotation.text ? `${label?.name || `Label #${annotation.label_id}`}: ${annotation.text}` : label?.name || `Label #${annotation.label_id}`)}</span>`;
+            box.innerHTML = `<span>${escapeHtml(label?.name || `Label #${annotation.label_id}`)}</span>`;
             overlay.appendChild(box);
         });
     };
@@ -1245,6 +1251,7 @@ function renderReviewComparison(consensusContainer, annotationsContainer, compar
     const consensusHtml = detail.consensus_payload
         ? `
         <div class="review-media-preview hidden" data-review-consensus-preview></div>
+        ${buildReviewTextSummaryHtml(detail.consensus_payload)}
         ${state.appDebugMode
             ? `<pre class="payload-preview">${escapeHtml(JSON.stringify(detail.consensus_payload, null, 2))}</pre>`
             : ""}
@@ -1252,16 +1259,18 @@ function renderReviewComparison(consensusContainer, annotationsContainer, compar
         : '<div class="panel-note">Финальный payload для этой задачи пока отсутствует.</div>';
     const annotationsHtml = (detail.annotations || [])
         .map((annotation) => `
-        <div class="review-annotation-card">
-          <div class="review-annotation-card__head">
-            <strong>${escapeHtml(annotation.annotator_username || `#${annotation.annotator_id}`)}</strong>
+        <section class="review-annotation-entry">
+          <header class="review-annotation-entry__head">
+            <strong>Аннотация пользователя</strong>
+            <span>${escapeHtml(annotation.annotator_username || `#${annotation.annotator_id}`)}</span>
             <span>Раунд ${escapeHtml(annotation.round_number)} · ${escapeHtml(formatDate(annotation.submitted_at))}</span>
-          </div>
+          </header>
           <div class="review-media-preview hidden" data-review-annotation-preview data-annotation-id="${escapeHtml(annotation.id)}"></div>
+          ${buildReviewTextSummaryHtml(annotation.result_payload)}
           ${state.appDebugMode
         ? `<pre class="payload-preview">${escapeHtml(JSON.stringify(annotation.result_payload, null, 2))}</pre>`
         : ""}
-        </div>
+        </section>
       `)
         .join("");
     consensusContainer.className = "review-comparison-stack";
@@ -1741,7 +1750,6 @@ function initRoomDetailPage() {
 }
 function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, activeLabelNote, mediaStage, annotationList, clearBtn, resultJson, resultLabel, submitBtn, }) {
     const editor = {
-        mode: "bbox",
         annotations: [],
         activeLabelId: null,
         mediaElement: null,
@@ -1773,9 +1781,6 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
             return 0;
         }
         return Math.max(0, Math.round(editor.mediaElement.currentTime * getFrameRate()));
-    }
-    function isTextTranscriptionMode() {
-        return editor.mode === "text_transcription";
     }
     function isVisibleOnCurrentFrame(annotation) {
         if (state.currentTask?.source_type !== "video") {
@@ -1830,16 +1835,11 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
                 frame: annotation.frame,
                 attributes: annotation.attributes,
                 occluded: annotation.occluded,
-                ...(isTextTranscriptionMode() ? { text: annotation.text || "" } : {}),
             })),
         };
     }
     function updateSubmitState() {
         if (!submitBtn) {
-            return;
-        }
-        if (isTextTranscriptionMode()) {
-            submitBtn.disabled = !state.currentTask;
             return;
         }
         submitBtn.disabled = !state.currentTask || editor.annotations.some((annotation) => !annotation.label_id);
@@ -1854,48 +1854,11 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
     }
     function updateClearButtonVisibility() {
         clearBtn?.classList.toggle("hidden", !editor.annotations.length);
-        if (clearBtn) {
-            clearBtn.textContent = isTextTranscriptionMode() ? "Очистить тексты" : "Очистить разметку";
-        }
     }
     function renderAnnotationList() {
         if (!editor.annotations.length) {
             annotationList.className = "annotation-list empty-card";
-            annotationList.textContent = isTextTranscriptionMode()
-                ? "Подтвержденные текстовые области пока не найдены."
-                : "Разметка пока отсутствует.";
-            return;
-        }
-        if (isTextTranscriptionMode()) {
-            annotationList.className = "annotation-list annotation-list--transcription";
-            annotationList.innerHTML = editor.annotations
-                .map((annotation, index) => {
-                const label = getLabelById(annotation.label_id);
-                return `
-            <div class="annotation-row annotation-row--transcription">
-              <div class="annotation-row__meta">
-                <strong>#${index + 1}</strong>
-                <span>${label ? label.name : "Текст"}</span>
-                <small>[${annotation.points.join(", ")}]</small>
-              </div>
-              <label class="field field--compact">
-                <span>Текст в области</span>
-                <textarea rows="3" data-text-annotation-id="${annotation.local_id}" placeholder="Введи текст из этой области">${escapeHtml(annotation.text || "")}</textarea>
-              </label>
-            </div>
-          `;
-            })
-                .join("");
-            annotationList.querySelectorAll("[data-text-annotation-id]").forEach((input) => {
-                input.addEventListener("input", () => {
-                    const annotation = editor.annotations.find((item) => item.local_id === input.dataset.textAnnotationId);
-                    if (!annotation) {
-                        return;
-                    }
-                    annotation.text = input.value;
-                    updateResultPreview();
-                });
-            });
+            annotationList.textContent = "Разметка пока отсутствует.";
             return;
         }
         annotationList.className = "annotation-list";
@@ -1939,18 +1902,10 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
         const labelNode = element.querySelector("span");
         if (labelNode) {
-            const baseLabel = label ? label.name : "Без лейбла";
-            labelNode.textContent = annotation.text ? `${baseLabel}: ${annotation.text}` : baseLabel;
+            labelNode.textContent = label ? label.name : "Без лейбла";
         }
     }
     function createBoxElement(annotation) {
-        if (isTextTranscriptionMode()) {
-            const element = document.createElement("div");
-            element.className = "media-bbox media-bbox--readonly";
-            element.innerHTML = `<span></span>`;
-            editor.boxElements.set(annotation.local_id, element);
-            return element;
-        }
         const element = document.createElement("button");
         element.type = "button";
         element.className = "media-bbox";
@@ -1981,15 +1936,6 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         return element;
     }
     function renderPalette() {
-        if (isTextTranscriptionMode()) {
-            labelPalette.classList.add("hidden");
-            activeLabelNote.classList.add("hidden");
-            labelPalette.innerHTML = "";
-            activeLabelNote.textContent = "";
-            return;
-        }
-        labelPalette.classList.remove("hidden");
-        activeLabelNote.classList.remove("hidden");
         const labels = getLabels();
         if (!labels.length) {
             labelPalette.innerHTML = '<div class="empty-card">Лейблы для этой комнаты не заданы.</div>';
@@ -2265,14 +2211,12 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         if (!editor.overlayElement) {
             return;
         }
-        if (!isTextTranscriptionMode()) {
-            editor.overlayElement.addEventListener("mousedown", (event) => {
-                if (event.target !== editor.overlayElement) {
-                    return;
-                }
-                startDrawing(event);
-            });
-        }
+        editor.overlayElement.addEventListener("mousedown", (event) => {
+            if (event.target !== editor.overlayElement) {
+                return;
+            }
+            startDrawing(event);
+        });
         if (editor.eventsAttached) {
             return;
         }
@@ -2282,12 +2226,7 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         editor.eventsAttached = true;
     }
     clearBtn?.addEventListener("click", () => {
-        if (isTextTranscriptionMode()) {
-            editor.annotations = editor.annotations.map((annotation) => ({ ...annotation, text: "" }));
-        }
-        else {
-            editor.annotations = [];
-        }
+        editor.annotations = [];
         render();
     });
     function reset() {
@@ -2300,7 +2239,6 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         editor.boxElements.clear();
         editor.annotations = [];
         editor.activeLabelId = null;
-        editor.mode = "bbox";
         editor.mediaElement = null;
         editor.overlayElement = null;
         clearDraft();
@@ -2309,8 +2247,6 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
         mediaTool.classList.add("hidden");
         mediaStage.className = "media-stage empty-card";
         mediaStage.textContent = "Файл задачи загрузится после выбора задания.";
-        labelPalette.classList.remove("hidden");
-        activeLabelNote.classList.remove("hidden");
         resultLabel.textContent = "Результат разметки";
         resultJson.readOnly = false;
         render();
@@ -2321,33 +2257,17 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
             return;
         }
         mediaTool.classList.remove("hidden");
-        editor.mode = task.workflow_stage === "text_transcription" ? "text_transcription" : "bbox";
         instructions.textContent =
-            editor.mode === "text_transcription"
-                ? "Введи текст для каждой уже выделенной области. Координаты и лейблы фиксированы и пришли с предыдущего этапа."
-                : task.source_type === "video"
+            task.source_type === "video"
                 ? "Поставь видео на паузу на нужном кадре, зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label."
                 : "Зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label.";
-        resultLabel.textContent = editor.mode === "text_transcription"
-            ? "Результат object detect + text"
-            : "Результат bbox-разметки";
+        resultLabel.textContent = "Результат bbox-разметки";
         resultJson.readOnly = true;
-        editor.annotations = editor.mode === "text_transcription"
-            ? ((task.input_payload?.detected_annotations || []).map((annotation, index) => ({
-                local_id: `detected-${index + 1}`,
-                type: annotation.type || "bbox",
-                label_id: annotation.label_id,
-                points: annotation.points,
-                frame: Number(annotation.frame || 0),
-                attributes: Array.isArray(annotation.attributes) ? annotation.attributes : [],
-                occluded: Boolean(annotation.occluded),
-                text: annotation.text || "",
-            })))
-            : [];
+        editor.annotations = [];
         const wrapper = document.createElement("div");
         wrapper.className = "media-canvas";
         const overlay = document.createElement("div");
-        overlay.className = `media-overlay${editor.mode === "text_transcription" ? " media-overlay--readonly" : ""}`;
+        overlay.className = "media-overlay";
         let mediaElement;
         if (task.source_type === "video") {
             mediaElement = document.createElement("video");
@@ -2377,11 +2297,7 @@ function createMediaAnnotationEditor({ mediaTool, instructions, labelPalette, ac
     return {
         reset,
         loadTask,
-        isTextTranscriptionMode,
         hasUnlabeledAnnotations() {
-            if (isTextTranscriptionMode()) {
-                return false;
-            }
             return editor.annotations.some((annotation) => !annotation.label_id);
         },
     };

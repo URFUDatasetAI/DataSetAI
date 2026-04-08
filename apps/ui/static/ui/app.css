@@ -1788,20 +1788,68 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background: var(--soft-panel-background);
 }
 
-.review-annotation-card {
+.review-annotation-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.review-annotation-entry__head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: baseline;
+    color: var(--text-soft);
+}
+
+.review-annotation-entry__head strong {
+    color: var(--text);
+}
+
+.review-text-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     padding: 12px;
     border-radius: var(--radius-md);
     background: var(--soft-panel-background);
     border: 1px solid var(--line);
 }
 
-.review-annotation-card__head {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: baseline;
-    margin-bottom: 8px;
+.review-text-summary__title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
     color: var(--text-soft);
+}
+
+.review-text-summary__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.review-text-summary__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--calendar-background);
+    border: 1px solid var(--line);
+}
+
+.review-text-summary__label {
+    font-size: 0.82rem;
+    color: var(--text-soft);
+}
+
+.review-text-summary__value {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+    font-weight: 600;
 }
 
 .annotator-row {

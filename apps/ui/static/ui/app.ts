@@ -73,7 +73,7 @@ const roleLabels = {
   customer: "Заказчик",
   annotator: "Исполнитель",
   admin: "Админ",
-  tester: "Тестировщик",
+  tester: "Инспектор",
   unknown: "Неизвестная роль",
 };
 
@@ -1358,6 +1358,42 @@ function getReviewPayloadAnnotations(payload) {
   );
 }
 
+function getReviewPayloadTextAnnotations(payload) {
+  return getReviewPayloadAnnotations(payload).filter((annotation) => typeof annotation.text === "string");
+}
+
+function buildReviewTextSummaryHtml(payload) {
+  const textAnnotations = getReviewPayloadTextAnnotations(payload);
+  if (!textAnnotations.length) {
+    return "";
+  }
+
+  return `
+    <div class="review-text-summary">
+      <div class="review-text-summary__title">Текст</div>
+      <div class="review-text-summary__list">
+        ${textAnnotations
+          .map((annotation, index) => {
+            const label = getRoomLabelById(annotation.label_id);
+            const title = label?.name || `Область ${index + 1}`;
+            const textValue =
+              typeof annotation.text === "string" && annotation.text.length
+                ? annotation.text
+                : "Пустой текст";
+
+            return `
+              <div class="review-text-summary__item">
+                <span class="review-text-summary__label">${escapeHtml(title)}</span>
+                <span class="review-text-summary__value">${escapeHtml(textValue)}</span>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderReviewGraphicPreview(container: HTMLElement | null, task, payload) {
   if (!container || !task?.source_file_url) {
     return;
@@ -1457,6 +1493,7 @@ function renderReviewComparison(
   const consensusHtml = detail.consensus_payload
     ? `
         <div class="review-media-preview hidden" data-review-consensus-preview></div>
+        ${buildReviewTextSummaryHtml(detail.consensus_payload)}
         ${
           state.appDebugMode
             ? `<pre class="payload-preview">${escapeHtml(JSON.stringify(detail.consensus_payload, null, 2))}</pre>`
@@ -1468,18 +1505,20 @@ function renderReviewComparison(
   const annotationsHtml = (detail.annotations || [])
     .map(
       (annotation) => `
-        <div class="review-annotation-card">
-          <div class="review-annotation-card__head">
-            <strong>${escapeHtml(annotation.annotator_username || `#${annotation.annotator_id}`)}</strong>
+        <section class="review-annotation-entry">
+          <header class="review-annotation-entry__head">
+            <strong>Аннотация пользователя</strong>
+            <span>${escapeHtml(annotation.annotator_username || `#${annotation.annotator_id}`)}</span>
             <span>Раунд ${escapeHtml(annotation.round_number)} · ${escapeHtml(formatDate(annotation.submitted_at))}</span>
-          </div>
+          </header>
           <div class="review-media-preview hidden" data-review-annotation-preview data-annotation-id="${escapeHtml(annotation.id)}"></div>
+          ${buildReviewTextSummaryHtml(annotation.result_payload)}
           ${
             state.appDebugMode
               ? `<pre class="payload-preview">${escapeHtml(JSON.stringify(annotation.result_payload, null, 2))}</pre>`
               : ""
           }
-        </div>
+        </section>
       `
     )
     .join("");
