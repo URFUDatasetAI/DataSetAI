@@ -639,14 +639,32 @@ function initGlobalHeader() {
 function initRoomsPage() {
     const grid = byId("rooms-grid");
     const empty = byId("rooms-grid-empty");
+    const accessForm = byId("rooms-access-form");
     const roomIdInput = byId("rooms-room-id");
     const passwordInput = byId("rooms-room-password");
     const enterBtn = byId("rooms-enter-btn");
     function updateEnterButtonState() {
         const isReady = roomIdInput.value.trim().length > 0;
         enterBtn.disabled = !isReady;
-        enterBtn.classList.toggle("btn--primary", isReady);
+        enterBtn.classList.toggle("btn--secondary", isReady);
         enterBtn.classList.toggle("btn--muted", !isReady);
+    }
+    async function submitRoomAccess() {
+        const roomId = roomIdInput.value.trim();
+        if (!roomId) {
+            updateEnterButtonState();
+            roomIdInput.focus();
+            return;
+        }
+        clearFlash();
+        const response = await api("/api/v1/rooms/access/", {
+            method: "POST",
+            body: {
+                room_id: Number(roomId),
+                password: passwordInput.value,
+            },
+        });
+        window.location.href = response.redirect_url;
     }
     function sortRooms(rooms) {
         return [...rooms].sort((left, right) => {
@@ -745,17 +763,10 @@ function initRoomsPage() {
     }
     roomIdInput?.addEventListener("input", updateEnterButtonState);
     passwordInput?.addEventListener("input", updateEnterButtonState);
-    enterBtn?.addEventListener("click", async () => {
-        clearFlash();
+    accessForm?.addEventListener("submit", async (event) => {
+        event.preventDefault();
         try {
-            const response = await api("/api/v1/rooms/access/", {
-                method: "POST",
-                body: {
-                    room_id: Number(roomIdInput.value),
-                    password: passwordInput.value,
-                },
-            });
-            window.location.href = response.redirect_url;
+            await submitRoomAccess();
         }
         catch (error) {
             showFlash(getErrorMessage(error), "error");

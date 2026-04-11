@@ -778,6 +778,7 @@ function initGlobalHeader() {
 function initRoomsPage() {
   const grid = byId<HTMLDivElement>("rooms-grid");
   const empty = byId<HTMLElement>("rooms-grid-empty");
+  const accessForm = byId<HTMLFormElement>("rooms-access-form");
   const roomIdInput = byId<HTMLInputElement>("rooms-room-id");
   const passwordInput = byId<HTMLInputElement>("rooms-room-password");
   const enterBtn = byId<HTMLButtonElement>("rooms-enter-btn");
@@ -785,8 +786,27 @@ function initRoomsPage() {
   function updateEnterButtonState() {
     const isReady = roomIdInput.value.trim().length > 0;
     enterBtn.disabled = !isReady;
-    enterBtn.classList.toggle("btn--primary", isReady);
+    enterBtn.classList.toggle("btn--secondary", isReady);
     enterBtn.classList.toggle("btn--muted", !isReady);
+  }
+
+  async function submitRoomAccess() {
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) {
+      updateEnterButtonState();
+      roomIdInput.focus();
+      return;
+    }
+
+    clearFlash();
+    const response = await api("/api/v1/rooms/access/", {
+      method: "POST",
+      body: {
+        room_id: Number(roomId),
+        password: passwordInput.value,
+      },
+    });
+    window.location.href = response.redirect_url;
   }
 
   function sortRooms(rooms) {
@@ -903,17 +923,10 @@ function initRoomsPage() {
   roomIdInput?.addEventListener("input", updateEnterButtonState);
   passwordInput?.addEventListener("input", updateEnterButtonState);
 
-  enterBtn?.addEventListener("click", async () => {
-    clearFlash();
+  accessForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
     try {
-      const response = await api("/api/v1/rooms/access/", {
-        method: "POST",
-        body: {
-          room_id: Number(roomIdInput.value),
-          password: passwordInput.value,
-        },
-      });
-      window.location.href = response.redirect_url;
+      await submitRoomAccess();
     } catch (error) {
       showFlash(getErrorMessage(error), "error");
     }
