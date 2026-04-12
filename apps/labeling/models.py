@@ -18,6 +18,21 @@ def task_source_upload_to(instance, filename: str) -> str:
 
 
 class Task(TimeStampedModel):
+    """
+    Represents a single unit of work in a labeling Room.
+    
+    A Task could be:
+    - A single JSON object or Text string (for text tasks).
+    - A single image or a video frame (for media tasks).
+    
+    Attributes:
+        input_payload: JSON field storing dynamic properties like coordinates, original text, etc.
+        status: The current progression of the task (pending, in_progress, submitted).
+        current_round: Tracks the number of consensus-rounds this task has been through.
+        validation_score: Cross-validation match rate (if applicable).
+        consensus_payload: Final converged result once enough reviewers agree.
+        workflow_stage: For multi-stage pipelines (e.g. text_detection followed by text_transcription).
+    """
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         IN_PROGRESS = "in_progress", "In progress"
@@ -71,6 +86,12 @@ class Task(TimeStampedModel):
 
 
 class Annotation(TimeStampedModel):
+    """
+    Represents the final result (label/bounding-box) provided by an Annotator for a specific Task.
+    
+    Since multiple users can annotate the same Task (during cross-validation), this is cleanly separated
+    from the Task model itself.
+    """
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="annotations")
     assignment = models.OneToOneField(
         "labeling.TaskAssignment",
@@ -96,6 +117,12 @@ class Annotation(TimeStampedModel):
 
 
 class TaskAssignment(TimeStampedModel):
+    """
+    State mapping between a Task and an Annotator for a specific round of labeling.
+    
+    This is created lazily when an annotator requests a task. It ensures we do not over-assign
+    or lose track of progress for specific workers.
+    """
     class Status(models.TextChoices):
         IN_PROGRESS = "in_progress", "In progress"
         SUBMITTED = "submitted", "Submitted"

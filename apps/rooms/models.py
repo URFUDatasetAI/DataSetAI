@@ -16,6 +16,17 @@ The room is the aggregate root for labeling sessions:
 
 
 class Room(TimeStampedModel):
+    """
+    The aggregate root defining a labeling dataset container.
+    
+    A Room combines Dataset Configuration, Tasks to label, User memberships/roles,
+    and cross-validation requirements.
+    
+    Attributes:
+        cross_validation_enabled: If False, one review closes the task. If True, 
+            multiple views from different annotators are required before taking consensus.
+        annotation_workflow: Standard (classify/bbox) or specific pipelines like Object detect + text transcription.
+    """
     class DatasetType(models.TextChoices):
         DEMO = "demo", "Demo"
         JSON = "json", "JSON"
@@ -78,6 +89,11 @@ class Room(TimeStampedModel):
 
 
 class RoomLabel(TimeStampedModel):
+    """
+    Represents a specific tag/class/label available for annotators within a Room.
+    
+    Usually associated with a color and sorted by `sort_order` for UI consistency.
+    """
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="labels")
     name = models.CharField(max_length=64)
     color = models.CharField(
@@ -97,6 +113,14 @@ class RoomLabel(TimeStampedModel):
 
 
 class RoomMembership(TimeStampedModel):
+    """
+    Defines Access Control and the Role of a user inside a specific Room.
+    
+    Possible roles:
+    - ANNOTATOR: Fills out tasks.
+    - ADMIN: Manages room settings and invites.
+    - TESTER: Special role for verifying functionalities.
+    """
     class Status(models.TextChoices):
         INVITED = "invited", "Invited"
         JOINED = "joined", "Joined"

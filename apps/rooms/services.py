@@ -102,6 +102,15 @@ def create_room(
     labels: list[dict] | None = None,
     media_manifest: list[dict] | None = None,
 ) -> Room:
+    """
+    Creates a new Room, triggers initial parsing, and invites users.
+    
+    This is the core entry point for Room creation, separating the UI/Validation layer from the business logic.
+    Depending on the `dataset_mode`, it parses JSON, extracts Images, or breaks video into frames via ffmpeg.
+    
+    Important: The entire structure is wrapped in `transaction.atomic()`, ensuring we don't end up
+    with an orphaned Room if dataset parsing fails.
+    """
     # Keep defaults here so API/UI callers do not need to reproduce room
     # bootstrap logic. Every dataset mode eventually creates Task rows.
     normalized_label = dataset_label or "Тестовый датасет"
@@ -391,6 +400,13 @@ def _create_video_frame_tasks(
     metadata: dict,
     start_item_number: int,
 ) -> int:
+    """
+    Splits an uploaded video file into discrete frames (images) using ffmpeg.
+    Each frame is then represented as a separate Image Task.
+    
+    Agents: If this fails, make sure `ffmpeg` is installed on the host OS. Also,
+    if media doesn't load on frontend, verify `nginx` handles `MEDIA_ROOT`.
+    """
     # Video import depends on ffmpeg being available on the host machine.
     # Production setup must include ffmpeg, writable MEDIA_ROOT and nginx media
     # serving, otherwise video/image labeling breaks even if Django itself works.
@@ -653,6 +669,11 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 
 def export_room_annotations(*, room: Room, export_format: str, base_url: str | None = None) -> ExportArtifact:
+    """
+    Produces a complete export (YOLO, COCO, or Native JSON) mapping tasks to their finalized annotations.
+    
+    Only Tasks in a `SUBMITTED` state (meaning they reached consensus) are exported.
+    """
     # Export only submitted tasks. Pending/in-progress tasks are intentionally
     # excluded so downstream datasets contain finalized results.
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":
