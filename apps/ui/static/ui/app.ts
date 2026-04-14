@@ -1441,7 +1441,7 @@ function renderReviewGraphicPreview(container: HTMLElement | null, task, payload
       box.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
       box.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
       box.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
-      box.innerHTML = `<span>${escapeHtml(label?.name || `Label #${annotation.label_id}`)}</span>`;
+      box.innerHTML = `<span class="review-media-bbox__label">${escapeHtml(label?.name || `Label #${annotation.label_id}`)}</span>`;
       overlay.appendChild(box);
     });
   };
@@ -2093,6 +2093,11 @@ function createMediaAnnotationEditor({
   instructions,
   labelPalette,
   activeLabelNote,
+  zoomToolbar,
+  zoomRange,
+  zoomOutBtn,
+  zoomInBtn,
+  zoomResetBtn,
   mediaStage,
   annotationList,
   clearBtn,
@@ -2104,6 +2109,11 @@ function createMediaAnnotationEditor({
   instructions: HTMLElement;
   labelPalette: HTMLElement;
   activeLabelNote: HTMLElement;
+  zoomToolbar: HTMLElement | null;
+  zoomRange: HTMLInputElement | null;
+  zoomOutBtn: HTMLButtonElement | null;
+  zoomInBtn: HTMLButtonElement | null;
+  zoomResetBtn: HTMLButtonElement | null;
   mediaStage: HTMLElement;
   annotationList: HTMLElement;
   clearBtn: HTMLButtonElement | null;
@@ -2115,20 +2125,43 @@ function createMediaAnnotationEditor({
     annotations: [],
     activeLabelId: null,
     mediaElement: null,
+    wrapperElement: null,
     overlayElement: null,
     boxElements: new Map<string, HTMLButtonElement>(),
     draftElement: null,
     draftStart: null,
     dragState: null,
     resizeState: null,
+    panState: null,
+    panPointerId: null,
     suppressLabelClickUntil: 0,
     eventsAttached: false,
-    previewRafId: null,
-    previewAnnotation: null,
+    keyboardAttached: false,
+    isPanKeyActive: false,
+    activePointerId: null,
+    interactionMetrics: null,
+    zoomLevel: 1,
+    minZoom: 1,
+    maxZoom: 4,
+    zoomStep: 0.25,
+    baseCanvasWidth: 0,
+    baseCanvasHeight: 0,
   };
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function getLatestPointerSample(event: PointerEvent) {
+    const coalescedEvents = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
+    return coalescedEvents.length ? coalescedEvents[coalescedEvents.length - 1] : event;
+  }
+
+  function isEditableTarget(target) {
+    return (
+      target instanceof HTMLElement &&
+      (target.isContentEditable || Boolean(target.closest("input, textarea, select, button, [contenteditable='true']")))
+    );
   }
 
   function getLabels() {
@@ -2198,6 +2231,268 @@ function createMediaAnnotationEditor({
     };
   }
 
+  function measureInteractionMetrics() {
+    if (!editor.overlayElement) {
+      return null;
+    }
+
+    const bounds = editor.overlayElement.getBoundingClientRect();
+    const naturalSize = getNaturalSize();
+    return {
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+      naturalWidth: naturalSize.width,
+      naturalHeight: naturalSize.height,
+      scaleToNaturalX: bounds.width > 0 ? naturalSize.width / bounds.width : 1,
+      scaleToNaturalY: bounds.height > 0 ? naturalSize.height / bounds.height : 1,
+    };
+  }
+
+  function beginPointerInteraction(pointerId) {
+    editor.activePointerId = pointerId;
+    editor.interactionMetrics = measureInteractionMetrics();
+    if (editor.overlayElement) {
+      editor.overlayElement.setPointerCapture(pointerId);
+    }
+    return editor.interactionMetrics;
+  }
+
+  function endPointerInteraction(pointerId = editor.activePointerId) {
+    if (pointerId !== null && editor.overlayElement?.hasPointerCapture(pointerId)) {
+      editor.overlayElement.releasePointerCapture(pointerId);
+    }
+    editor.activePointerId = null;
+    editor.interactionMetrics = null;
+  }
+
+  function shouldStartPanning(event: PointerEvent) {
+    if (!editor.mediaElement || editor.zoomLevel <= 1) {
+      return false;
+    }
+    return event.button === 1 || (event.button === 0 && editor.isPanKeyActive);
+  }
+
+  function updateStageInteractionState() {
+    const canPan = Boolean(editor.mediaElement && editor.zoomLevel > 1);
+    mediaStage.classList.toggle("media-stage--zoomed", canPan);
+    mediaStage.classList.toggle("media-stage--pan-ready", canPan && editor.isPanKeyActive && !editor.panState);
+    mediaStage.classList.toggle("media-stage--panning", Boolean(editor.panState));
+  }
+
+  function startPanning(event: PointerEvent) {
+    if (editor.panState || !shouldStartPanning(event) || editor.activePointerId !== null) {
+      return false;
+    }
+
+    const sample = getLatestPointerSample(event);
+    event.preventDefault();
+    event.stopPropagation();
+    editor.panPointerId = event.pointerId;
+    editor.panState = {
+      startClientX: sample.clientX,
+      startClientY: sample.clientY,
+      startScrollLeft: mediaStage.scrollLeft,
+      startScrollTop: mediaStage.scrollTop,
+      moved: false,
+    };
+    mediaStage.setPointerCapture(event.pointerId);
+    updateStageInteractionState();
+    return true;
+  }
+
+  function updatePan(event: PointerEvent) {
+    if (!editor.panState || editor.panPointerId !== event.pointerId) {
+      return;
+    }
+
+    const sample = getLatestPointerSample(event);
+    const deltaX = sample.clientX - editor.panState.startClientX;
+    const deltaY = sample.clientY - editor.panState.startClientY;
+    editor.panState.moved =
+      editor.panState.moved || Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2;
+    mediaStage.scrollLeft = Math.max(editor.panState.startScrollLeft - deltaX, 0);
+    mediaStage.scrollTop = Math.max(editor.panState.startScrollTop - deltaY, 0);
+    event.preventDefault();
+  }
+
+  function finishPanning(event: PointerEvent | null = null) {
+    if (event && editor.panPointerId !== event.pointerId) {
+      return;
+    }
+    if (!editor.panState) {
+      return;
+    }
+
+    if (editor.panState.moved) {
+      editor.suppressLabelClickUntil = Date.now() + 150;
+    }
+    if (editor.panPointerId !== null && mediaStage.hasPointerCapture(editor.panPointerId)) {
+      mediaStage.releasePointerCapture(editor.panPointerId);
+    }
+    editor.panState = null;
+    editor.panPointerId = null;
+    updateStageInteractionState();
+  }
+
+  function normalizePoints(points, naturalWidth, naturalHeight) {
+    const xMin = clamp(Math.min(points[0], points[2]), 0, naturalWidth);
+    const yMin = clamp(Math.min(points[1], points[3]), 0, naturalHeight);
+    const xMax = clamp(Math.max(points[0], points[2]), 0, naturalWidth);
+    const yMax = clamp(Math.max(points[1], points[3]), 0, naturalHeight);
+    return [Math.round(xMin), Math.round(yMin), Math.round(xMax), Math.round(yMax)];
+  }
+
+  function commitAnnotationPoints(annotation, metrics = editor.interactionMetrics) {
+    const naturalWidth = metrics?.naturalWidth || getNaturalSize().width || 0;
+    const naturalHeight = metrics?.naturalHeight || getNaturalSize().height || 0;
+    annotation.points = normalizePoints(annotation.points, naturalWidth, naturalHeight);
+  }
+
+  function updateZoomControls() {
+    if (!zoomToolbar) {
+      return;
+    }
+
+    const hasMedia = Boolean(editor.mediaElement && editor.wrapperElement);
+    zoomToolbar.classList.toggle("hidden", !hasMedia);
+
+    const zoomPercent = Math.round(editor.zoomLevel * 100);
+    if (zoomRange) {
+      zoomRange.value = String(zoomPercent);
+      zoomRange.disabled = !hasMedia;
+    }
+    if (zoomResetBtn) {
+      zoomResetBtn.textContent = `${zoomPercent}%`;
+      zoomResetBtn.disabled = !hasMedia || editor.zoomLevel === 1;
+    }
+    if (zoomOutBtn) {
+      zoomOutBtn.disabled = !hasMedia || editor.zoomLevel <= editor.minZoom;
+    }
+    if (zoomInBtn) {
+      zoomInBtn.disabled = !hasMedia || editor.zoomLevel >= editor.maxZoom;
+    }
+    updateStageInteractionState();
+  }
+
+  function captureBaseCanvasSize() {
+    if (!editor.mediaElement) {
+      return false;
+    }
+
+    if (editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
+      return true;
+    }
+
+    const width = editor.mediaElement.clientWidth || editor.mediaElement.getBoundingClientRect().width;
+    const height = editor.mediaElement.clientHeight || editor.mediaElement.getBoundingClientRect().height;
+    if (!width || !height) {
+      return false;
+    }
+
+    editor.baseCanvasWidth = width;
+    editor.baseCanvasHeight = height;
+    return true;
+  }
+
+  function applyZoom(nextZoom, options: { preserveViewport?: boolean; anchorClientX?: number; anchorClientY?: number; force?: boolean } = {}) {
+    if (!editor.wrapperElement) {
+      editor.zoomLevel = editor.minZoom;
+      updateZoomControls();
+      return;
+    }
+
+    const previousZoom = editor.zoomLevel;
+    const clampedZoom = clamp(nextZoom, editor.minZoom, editor.maxZoom);
+    const shouldPreserveViewport = options.preserveViewport !== false;
+    const force = Boolean(options.force);
+
+    if (!force && Math.abs(previousZoom - clampedZoom) < 0.001) {
+      updateZoomControls();
+      return;
+    }
+
+    const stageRect = mediaStage.getBoundingClientRect();
+    const anchorX =
+      typeof options.anchorClientX === "number" ? options.anchorClientX - stageRect.left : mediaStage.clientWidth / 2;
+    const anchorY =
+      typeof options.anchorClientY === "number" ? options.anchorClientY - stageRect.top : mediaStage.clientHeight / 2;
+    const contentX = mediaStage.scrollLeft + anchorX;
+    const contentY = mediaStage.scrollTop + anchorY;
+
+    if (clampedZoom <= 1) {
+      finishPanning();
+      editor.zoomLevel = 1;
+      editor.wrapperElement.classList.remove("media-canvas--zoom-ready");
+      editor.wrapperElement.style.width = "";
+      editor.wrapperElement.style.height = "";
+      updateZoomControls();
+      window.requestAnimationFrame(() => {
+        renderBoxes();
+        if (shouldPreserveViewport && previousZoom > 1) {
+          const zoomRatio = 1 / previousZoom;
+          mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
+          mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+        }
+      });
+      return;
+    }
+
+    if (!captureBaseCanvasSize()) {
+      return;
+    }
+
+    editor.zoomLevel = clampedZoom;
+    editor.wrapperElement.classList.add("media-canvas--zoom-ready");
+    editor.wrapperElement.style.width = `${Math.round(editor.baseCanvasWidth * clampedZoom)}px`;
+    editor.wrapperElement.style.height = `${Math.round(editor.baseCanvasHeight * clampedZoom)}px`;
+    updateZoomControls();
+    window.requestAnimationFrame(() => {
+      renderBoxes();
+      if (shouldPreserveViewport) {
+        const zoomRatio = clampedZoom / previousZoom;
+        mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
+        mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+      }
+    });
+  }
+
+  function handleStageResize() {
+    if (editor.zoomLevel <= 1) {
+      captureBaseCanvasSize();
+    }
+    renderBoxes();
+  }
+
+  function handleStageWheel(event: WheelEvent) {
+    if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement) {
+      return;
+    }
+
+    event.preventDefault();
+    const direction = event.deltaY < 0 ? editor.zoomStep : -editor.zoomStep;
+    applyZoom(editor.zoomLevel + direction, {
+      anchorClientX: event.clientX,
+      anchorClientY: event.clientY,
+    });
+  }
+
+  function syncCanvasViewport() {
+    if (!editor.mediaElement || !editor.wrapperElement) {
+      return;
+    }
+
+    if (editor.zoomLevel > 1) {
+      applyZoom(editor.zoomLevel, { preserveViewport: false, force: true });
+      return;
+    }
+
+    captureBaseCanvasSize();
+    updateZoomControls();
+    renderBoxes();
+  }
+
   function buildPayload() {
     return {
       annotations: editor.annotations
@@ -2205,7 +2500,7 @@ function createMediaAnnotationEditor({
         .map((annotation) => ({
           type: annotation.type,
           label_id: annotation.label_id,
-          points: annotation.points,
+          points: normalizePoints(annotation.points, getNaturalSize().width || 0, getNaturalSize().height || 0),
           frame: annotation.frame,
           attributes: annotation.attributes,
           occluded: annotation.occluded,
@@ -2283,10 +2578,30 @@ function createMediaAnnotationEditor({
     element.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
     element.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
     element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
-    const labelNode = element.querySelector<HTMLSpanElement>("span");
+    const labelNode = element.firstElementChild instanceof HTMLSpanElement ? element.firstElementChild : null;
     if (labelNode) {
       labelNode.textContent = label ? label.name : "Без лейбла";
     }
+  }
+
+  function renderActiveBox(annotation, metrics = editor.interactionMetrics, overlayScale = null) {
+    if (!editor.overlayElement) {
+      return;
+    }
+
+    if (!isVisibleOnCurrentFrame(annotation)) {
+      removeBoxElement(annotation.local_id);
+      return;
+    }
+
+    const scale = overlayScale || getOverlayScale();
+    const scaleX = metrics ? (metrics.naturalWidth > 0 ? metrics.width / metrics.naturalWidth : 1) : scale.scaleX;
+    const scaleY = metrics ? (metrics.naturalHeight > 0 ? metrics.height / metrics.naturalHeight : 1) : scale.scaleY;
+    const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
+    if (element.parentNode !== editor.overlayElement) {
+      editor.overlayElement.appendChild(element);
+    }
+    updateBoxElement(element, annotation, scaleX, scaleY);
   }
 
   function createBoxElement(annotation) {
@@ -2294,13 +2609,13 @@ function createMediaAnnotationEditor({
     element.type = "button";
     element.className = "media-bbox";
     element.innerHTML = `
-      <span></span>
+      <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
-    element.addEventListener("mousedown", (event) => {
+    element.addEventListener("pointerdown", (event) => {
       startDragging(event, annotation);
     });
-    element.querySelector<HTMLElement>(".media-bbox__resize-handle")?.addEventListener("mousedown", (event) => {
+    element.querySelector<HTMLElement>(".media-bbox__resize-handle")?.addEventListener("pointerdown", (event) => {
       startResizing(event, annotation);
     });
     element.addEventListener("click", (event) => {
@@ -2360,7 +2675,7 @@ function createMediaAnnotationEditor({
       return;
     }
 
-    const { scaleX, scaleY } = getOverlayScale();
+    const overlayScale = getOverlayScale();
     const visibleIds = new Set();
 
     editor.annotations.forEach((annotation) => {
@@ -2370,11 +2685,7 @@ function createMediaAnnotationEditor({
       }
 
       visibleIds.add(annotation.local_id);
-      const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
-      if (element.parentNode !== editor.overlayElement) {
-        editor.overlayElement.appendChild(element);
-      }
-      updateBoxElement(element, annotation, scaleX, scaleY);
+      renderActiveBox(annotation, null, overlayScale);
     });
 
     Array.from(editor.boxElements.keys()).forEach((localId) => {
@@ -2398,38 +2709,8 @@ function createMediaAnnotationEditor({
     editor.draftStart = null;
   }
 
-  function flushPreviewUpdate() {
-    editor.previewRafId = null;
-
-    if (!editor.previewAnnotation || !editor.overlayElement) {
-      return;
-    }
-
-    if (!isVisibleOnCurrentFrame(editor.previewAnnotation)) {
-      removeBoxElement(editor.previewAnnotation.local_id);
-      editor.previewAnnotation = null;
-      return;
-    }
-
-    const { scaleX, scaleY } = getOverlayScale();
-    const element = editor.boxElements.get(editor.previewAnnotation.local_id) || createBoxElement(editor.previewAnnotation);
-    if (element.parentNode !== editor.overlayElement) {
-      editor.overlayElement.appendChild(element);
-    }
-    updateBoxElement(element, editor.previewAnnotation, scaleX, scaleY);
-    editor.previewAnnotation = null;
-  }
-
-  function schedulePreviewUpdate(annotation) {
-    editor.previewAnnotation = annotation;
-    if (editor.previewRafId !== null) {
-      return;
-    }
-    editor.previewRafId = window.requestAnimationFrame(flushPreviewUpdate);
-  }
-
   function startDragging(event, annotation) {
-    if (event.button !== 0 || !editor.overlayElement) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -2440,6 +2721,7 @@ function createMediaAnnotationEditor({
 
     event.preventDefault();
     event.stopPropagation();
+    beginPointerInteraction(event.pointerId);
     editor.dragState = {
       annotation,
       startClientX: event.clientX,
@@ -2450,7 +2732,7 @@ function createMediaAnnotationEditor({
   }
 
   function startResizing(event, annotation) {
-    if (event.button !== 0 || !editor.overlayElement) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -2461,6 +2743,7 @@ function createMediaAnnotationEditor({
 
     event.preventDefault();
     event.stopPropagation();
+    beginPointerInteraction(event.pointerId);
     editor.resizeState = {
       annotation,
       startClientX: event.clientX,
@@ -2471,7 +2754,7 @@ function createMediaAnnotationEditor({
   }
 
   function startDrawing(event) {
-    if (event.button !== 0 || !editor.overlayElement) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -2480,10 +2763,15 @@ function createMediaAnnotationEditor({
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
+    const sample = getLatestPointerSample(event);
+    event.preventDefault();
+    const metrics = beginPointerInteraction(event.pointerId);
+    if (!metrics) {
+      return;
+    }
     editor.draftStart = {
-      x: Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width),
-      y: Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height),
+      x: Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width),
+      y: Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height),
     };
     editor.draftElement = document.createElement("div");
     editor.draftElement.className = "media-bbox media-bbox--draft";
@@ -2491,61 +2779,65 @@ function createMediaAnnotationEditor({
   }
 
   function updateDraft(event) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+
+    const metrics = editor.interactionMetrics;
+    if (!metrics) {
+      return;
+    }
+    const sample = getLatestPointerSample(event);
+    const clientX = sample.clientX;
+    const clientY = sample.clientY;
+
     if (editor.resizeState && editor.overlayElement) {
-      const bounds = editor.overlayElement.getBoundingClientRect();
-      const naturalSize = getNaturalSize();
-      const scaleX = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const scaleY = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-      const deltaX = Math.round((event.clientX - editor.resizeState.startClientX) * scaleX);
-      const deltaY = Math.round((event.clientY - editor.resizeState.startClientY) * scaleY);
+      const deltaX = (clientX - editor.resizeState.startClientX) * metrics.scaleToNaturalX;
+      const deltaY = (clientY - editor.resizeState.startClientY) * metrics.scaleToNaturalY;
       const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.originalPoints;
       const minWidth = 8;
       const minHeight = 8;
-      const maxWidth = Math.max((naturalSize.width || 0) - startXMin, minWidth);
-      const maxHeight = Math.max((naturalSize.height || 0) - startYMin, minHeight);
+      const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
+      const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
       const nextWidth = clamp((startXMax - startXMin) + deltaX, minWidth, maxWidth);
       const nextHeight = clamp((startYMax - startYMin) + deltaY, minHeight, maxHeight);
 
       editor.resizeState.moved =
         editor.resizeState.moved ||
-        Math.abs(event.clientX - editor.resizeState.startClientX) > 3 ||
-        Math.abs(event.clientY - editor.resizeState.startClientY) > 3;
+        Math.abs(clientX - editor.resizeState.startClientX) > 3 ||
+        Math.abs(clientY - editor.resizeState.startClientY) > 3;
       editor.resizeState.annotation.points = [
         startXMin,
         startYMin,
         startXMin + nextWidth,
         startYMin + nextHeight,
       ];
-      schedulePreviewUpdate(editor.resizeState.annotation);
+      renderActiveBox(editor.resizeState.annotation, metrics);
       return;
     }
 
     if (editor.dragState && editor.overlayElement) {
-      const bounds = editor.overlayElement.getBoundingClientRect();
-      const naturalSize = getNaturalSize();
-      const scaleX = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const scaleY = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-      const deltaX = Math.round((event.clientX - editor.dragState.startClientX) * scaleX);
-      const deltaY = Math.round((event.clientY - editor.dragState.startClientY) * scaleY);
+      const deltaX = (clientX - editor.dragState.startClientX) * metrics.scaleToNaturalX;
+      const deltaY = (clientY - editor.dragState.startClientY) * metrics.scaleToNaturalY;
       const [startXMin, startYMin, startXMax, startYMax] = editor.dragState.originalPoints;
       const boxWidth = startXMax - startXMin;
       const boxHeight = startYMax - startYMin;
-      const maxX = Math.max((naturalSize.width || 0) - boxWidth, 0);
-      const maxY = Math.max((naturalSize.height || 0) - boxHeight, 0);
+      const maxX = Math.max((metrics.naturalWidth || 0) - boxWidth, 0);
+      const maxY = Math.max((metrics.naturalHeight || 0) - boxHeight, 0);
       const nextXMin = clamp(startXMin + deltaX, 0, maxX);
       const nextYMin = clamp(startYMin + deltaY, 0, maxY);
 
       editor.dragState.moved =
         editor.dragState.moved ||
-        Math.abs(event.clientX - editor.dragState.startClientX) > 3 ||
-        Math.abs(event.clientY - editor.dragState.startClientY) > 3;
+        Math.abs(clientX - editor.dragState.startClientX) > 3 ||
+        Math.abs(clientY - editor.dragState.startClientY) > 3;
       editor.dragState.annotation.points = [
         nextXMin,
         nextYMin,
         nextXMin + boxWidth,
         nextYMin + boxHeight,
       ];
-      schedulePreviewUpdate(editor.dragState.annotation);
+      renderActiveBox(editor.dragState.annotation, metrics);
       return;
     }
 
@@ -2553,9 +2845,8 @@ function createMediaAnnotationEditor({
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
-    const currentX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
-    const currentY = Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height);
+    const currentX = Math.min(Math.max(clientX - metrics.left, 0), metrics.width);
+    const currentY = Math.min(Math.max(clientY - metrics.top, 0), metrics.height);
     const left = Math.min(editor.draftStart.x, currentX);
     const top = Math.min(editor.draftStart.y, currentY);
     const width = Math.abs(currentX - editor.draftStart.x);
@@ -2568,15 +2859,18 @@ function createMediaAnnotationEditor({
   }
 
   function finishDrawing(event) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+    const sample = getLatestPointerSample(event);
+
     if (editor.resizeState) {
       if (editor.resizeState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
-      if (editor.previewRafId !== null) {
-        window.cancelAnimationFrame(editor.previewRafId);
-        flushPreviewUpdate();
-      }
+      commitAnnotationPoints(editor.resizeState.annotation);
       editor.resizeState = null;
+      endPointerInteraction(event.pointerId);
       renderAnnotationList();
       updateResultPreview();
       return;
@@ -2586,42 +2880,37 @@ function createMediaAnnotationEditor({
       if (editor.dragState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
-      if (editor.previewRafId !== null) {
-        window.cancelAnimationFrame(editor.previewRafId);
-        flushPreviewUpdate();
-      }
+      commitAnnotationPoints(editor.dragState.annotation);
       editor.dragState = null;
+      endPointerInteraction(event.pointerId);
       renderAnnotationList();
       updateResultPreview();
       return;
     }
 
-    if (!editor.draftStart || !editor.overlayElement) {
+    const metrics = editor.interactionMetrics;
+    if (!editor.draftStart || !editor.overlayElement || !metrics) {
+      endPointerInteraction(event.pointerId);
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
-    const currentX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
-    const currentY = Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height);
+    const currentX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
+    const currentY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
     const left = Math.min(editor.draftStart.x, currentX);
     const top = Math.min(editor.draftStart.y, currentY);
     const width = Math.abs(currentX - editor.draftStart.x);
     const height = Math.abs(currentY - editor.draftStart.y);
 
     if (width >= 8 && height >= 8) {
-      const naturalSize = getNaturalSize();
-      const xScale = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const yScale = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-
       editor.annotations.push({
         local_id: `${Date.now()}-${Math.random()}`,
         type: "bbox",
         label_id: editor.activeLabelId,
         points: [
-          Math.round(left * xScale),
-          Math.round(top * yScale),
-          Math.round((left + width) * xScale),
-          Math.round((top + height) * yScale),
+          Math.round(left * metrics.scaleToNaturalX),
+          Math.round(top * metrics.scaleToNaturalY),
+          Math.round((left + width) * metrics.scaleToNaturalX),
+          Math.round((top + height) * metrics.scaleToNaturalY),
         ],
         frame: getCurrentFrame(),
         attributes: [],
@@ -2630,7 +2919,21 @@ function createMediaAnnotationEditor({
     }
 
     clearDraft();
+    endPointerInteraction(event.pointerId);
     render();
+  }
+
+  function cancelPointerInteraction(event) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+
+    editor.dragState = null;
+    editor.resizeState = null;
+    clearDraft();
+    endPointerInteraction(event.pointerId);
+    renderAnnotationList();
+    updateResultPreview();
   }
 
   function attachOverlayEvents() {
@@ -2638,20 +2941,22 @@ function createMediaAnnotationEditor({
       return;
     }
 
-    editor.overlayElement.addEventListener("mousedown", (event) => {
+    editor.overlayElement.addEventListener("pointerdown", (event) => {
       if (event.target !== editor.overlayElement) {
         return;
       }
       startDrawing(event);
     });
+    editor.overlayElement.addEventListener("pointermove", updateDraft);
+    editor.overlayElement.addEventListener("pointerrawupdate", updateDraft as EventListener);
+    editor.overlayElement.addEventListener("pointerup", finishDrawing);
+    editor.overlayElement.addEventListener("pointercancel", cancelPointerInteraction);
 
     if (editor.eventsAttached) {
       return;
     }
 
-    window.addEventListener("mousemove", updateDraft);
-    window.addEventListener("mouseup", finishDrawing);
-    window.addEventListener("resize", renderBoxes);
+    window.addEventListener("resize", handleStageResize);
     editor.eventsAttached = true;
   }
 
@@ -2660,26 +2965,91 @@ function createMediaAnnotationEditor({
     render();
   });
 
-  function reset() {
-    if (editor.previewRafId !== null) {
-      window.cancelAnimationFrame(editor.previewRafId);
-      editor.previewRafId = null;
+  zoomOutBtn?.addEventListener("click", () => {
+    applyZoom(editor.zoomLevel - editor.zoomStep);
+  });
+
+  zoomInBtn?.addEventListener("click", () => {
+    applyZoom(editor.zoomLevel + editor.zoomStep);
+  });
+
+  zoomResetBtn?.addEventListener("click", () => {
+    applyZoom(1);
+  });
+
+  zoomRange?.addEventListener("input", () => {
+    applyZoom(Number(zoomRange.value) / 100);
+  });
+
+  function handleStagePointerDown(event) {
+    startPanning(event);
+  }
+
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.code !== "Space" || isEditableTarget(event.target)) {
+      return;
     }
-    editor.previewAnnotation = null;
+    if (!editor.mediaElement || editor.zoomLevel <= 1) {
+      return;
+    }
+    event.preventDefault();
+    if (!editor.isPanKeyActive) {
+      editor.isPanKeyActive = true;
+      updateStageInteractionState();
+    }
+  }
+
+  function handleKeyUp(event: KeyboardEvent) {
+    if (event.code !== "Space") {
+      return;
+    }
+    editor.isPanKeyActive = false;
+    updateStageInteractionState();
+  }
+
+  function handleWindowBlur() {
+    editor.isPanKeyActive = false;
+    finishPanning();
+    updateStageInteractionState();
+  }
+
+  mediaStage.addEventListener("pointerdown", handleStagePointerDown, true);
+  mediaStage.addEventListener("pointermove", updatePan);
+  mediaStage.addEventListener("pointerup", finishPanning);
+  mediaStage.addEventListener("pointercancel", finishPanning);
+  mediaStage.addEventListener("wheel", handleStageWheel, { passive: false });
+
+  if (!editor.keyboardAttached) {
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+    editor.keyboardAttached = true;
+  }
+
+  function reset() {
+    finishPanning();
     editor.boxElements.forEach((element) => element.remove());
     editor.boxElements.clear();
     editor.annotations = [];
     editor.activeLabelId = null;
     editor.mediaElement = null;
+    editor.wrapperElement = null;
     editor.overlayElement = null;
     clearDraft();
     editor.dragState = null;
     editor.resizeState = null;
+    editor.isPanKeyActive = false;
+    editor.zoomLevel = 1;
+    editor.baseCanvasWidth = 0;
+    editor.baseCanvasHeight = 0;
+    endPointerInteraction();
     mediaTool.classList.add("hidden");
+    zoomToolbar?.classList.add("hidden");
     mediaStage.className = "media-stage empty-card";
     mediaStage.textContent = "Файл задачи загрузится после выбора задания.";
     resultLabel.textContent = "Результат разметки";
     resultJson.readOnly = false;
+    updateZoomControls();
     render();
   }
 
@@ -2697,37 +3067,51 @@ function createMediaAnnotationEditor({
     resultLabel.textContent = "Результат bbox-разметки";
     resultJson.readOnly = true;
     editor.annotations = [];
+    editor.zoomLevel = 1;
+    editor.baseCanvasWidth = 0;
+    editor.baseCanvasHeight = 0;
+    zoomToolbar?.classList.remove("hidden");
+    updateZoomControls();
 
     const wrapper = document.createElement("div");
     wrapper.className = "media-canvas";
     const overlay = document.createElement("div");
     overlay.className = "media-overlay";
+    const handleMediaReady = () => {
+      syncCanvasViewport();
+    };
 
     let mediaElement;
     if (task.source_type === "video") {
       mediaElement = document.createElement("video");
       mediaElement.controls = true;
       mediaElement.preload = "metadata";
-      mediaElement.addEventListener("loadedmetadata", renderBoxes);
+      mediaElement.addEventListener("loadedmetadata", handleMediaReady);
       mediaElement.addEventListener("seeked", renderBoxes);
       mediaElement.addEventListener("pause", renderBoxes);
     } else {
       mediaElement = document.createElement("img");
       mediaElement.alt = task.source_name || `Task ${task.id}`;
-      mediaElement.addEventListener("load", renderBoxes);
+      mediaElement.addEventListener("load", handleMediaReady);
     }
     mediaElement.className = "media-stage__asset";
+    mediaElement.draggable = false;
     mediaElement.src = task.source_file_url;
 
     wrapper.appendChild(mediaElement);
     wrapper.appendChild(overlay);
-    mediaStage.className = "media-stage";
+    mediaStage.className = "media-stage media-stage--interactive";
     mediaStage.innerHTML = "";
     mediaStage.appendChild(wrapper);
 
     editor.mediaElement = mediaElement;
+    editor.wrapperElement = wrapper;
     editor.overlayElement = overlay;
+    updateZoomControls();
     attachOverlayEvents();
+    if (task.source_type === "image" && mediaElement.complete) {
+      window.requestAnimationFrame(handleMediaReady);
+    }
     render();
   }
 
@@ -2760,6 +3144,11 @@ function initRoomWorkPage() {
     instructions: byId<HTMLElement>("work-media-instructions"),
     labelPalette: byId<HTMLElement>("work-label-palette"),
     activeLabelNote: byId<HTMLElement>("work-active-label"),
+    zoomToolbar: byId<HTMLElement>("work-media-toolbar"),
+    zoomRange: byId<HTMLInputElement>("work-zoom-range"),
+    zoomOutBtn: byId<HTMLButtonElement>("work-zoom-out-btn"),
+    zoomInBtn: byId<HTMLButtonElement>("work-zoom-in-btn"),
+    zoomResetBtn: byId<HTMLButtonElement>("work-zoom-reset-btn"),
     mediaStage: byId<HTMLElement>("work-media-stage"),
     annotationList: byId<HTMLElement>("work-annotation-list"),
     clearBtn: byId<HTMLButtonElement>("work-clear-annotations-btn"),
