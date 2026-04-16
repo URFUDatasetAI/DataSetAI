@@ -1,11 +1,14 @@
 from django.conf import settings
 from django.contrib.auth import login
 from django.contrib.auth.views import LogoutView
+from django.contrib.messages import get_messages
 from django.db import DatabaseError
 from django.db.utils import OperationalError, ProgrammingError
 from django.http import Http404
+from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
+from django.templatetags.static import static
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -19,8 +22,93 @@ from apps.users.models import User
 
 
 class UiContextMixin:
+    """
+    Builds the shared Django context and the bootstrap payload consumed by React.
+
+    Django still owns URL routing, access checks and form handling, while the
+    frontend renders a single React root and chooses the concrete page by
+    `page_key`.
+    """
+
+    template_name = "ui/base.html"
     active_page = "home"
     page_key = "home"
+    page_title = "DataSetAI"
+
+    def _serialize_form_state(self, form):
+        """Convert bound Django forms into JSON-safe state for React screens."""
+        if form is None:
+            return None
+
+        fields = {}
+        for name in form.fields:
+            bound_field = form[name]
+            value = bound_field.value()
+            if name in {"password", "password_repeat"}:
+                value = ""
+            fields[name] = {
+                "name": name,
+                "label": bound_field.label,
+                "value": "" if value in (None, False) else str(value),
+                "errors": [str(error) for error in bound_field.errors],
+                "widget_type": bound_field.field.widget.input_type or "text",
+            }
+
+        return {
+            "fields": fields,
+            "non_field_errors": [str(error) for error in form.non_field_errors()],
+        }
+
+    def get_page_payload(self, context):
+        """Return the page-specific fragment that should be exposed to React."""
+        payload = {}
+        form = context.get("form")
+        if form is not None:
+            payload["form"] = self._serialize_form_state(form)
+        return payload
+
+    def get_ui_bootstrap(self, context):
+        """
+        Build a stable bootstrap contract for the client.
+
+        Keeping this logic in one place helps React pages stay decoupled from
+        Django templates and prevents per-page ad hoc script tags.
+        """
+        messages = []
+        for message in get_messages(self.request):
+            if message.level_tag == "error":
+                toast_type = "error"
+            elif message.level_tag == "warning":
+                toast_type = "warning"
+            elif message.level_tag == "success":
+                toast_type = "success"
+            else:
+                toast_type = "info"
+
+            messages.append(
+                {
+                    "message": str(message),
+                    "type": toast_type,
+                    "persistent": "persistent" in message.tags or "sticky" in message.tags,
+                }
+            )
+
+        return {
+            "page": self.page_key,
+            "page_title": self.page_title,
+            "active_page": self.active_page,
+            "room_id": context.get("room_id"),
+            "profile_user_id": context.get("profile_user_id"),
+            "app_debug_mode": settings.APP_DEBUG_MODE,
+            "stats": context.get("stats"),
+            "auth_user": context.get("auth_user_data"),
+            "csrf_token": get_token(self.request),
+            "messages": messages,
+            "assets": {
+                "brand_mark": static("ui/datasetai-mark.png"),
+            },
+            "page_payload": self.get_page_payload(context),
+        }
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -31,6 +119,8 @@ class UiContextMixin:
         }
 
         try:
+            # Stats are best-effort only: UI should still render on a fresh DB
+            # state when tables are not ready yet.
             stats = {
                 "users": User.objects.count(),
                 "rooms": Room.objects.count(),
@@ -45,6 +135,7 @@ class UiContextMixin:
         context["room_id"] = kwargs.get("room_id")
         context["profile_user_id"] = kwargs.get("user_id")
         context["app_debug_mode"] = settings.APP_DEBUG_MODE
+        context["page_title"] = self.page_title
         context["auth_user_data"] = (
             {
                 "id": self.request.user.id,
@@ -53,37 +144,38 @@ class UiContextMixin:
             if self.request.user.is_authenticated
             else None
         )
+        context["ui_bootstrap"] = self.get_ui_bootstrap(context)
         return context
 
 
 class LandingView(UiContextMixin, TemplateView):
-    template_name = "ui/landing.html"
     active_page = "home"
     page_key = "home"
+    page_title = "DataSetAI | Главная"
 
 
 class RoomsView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/rooms.html"
     active_page = "rooms"
     page_key = "rooms"
+    page_title = "DataSetAI | Комнаты"
 
 
 class ProfileView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/profile.html"
     active_page = "profile"
     page_key = "profile"
+    page_title = "DataSetAI | Профиль"
 
 
 class RoomCreateView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/room_create.html"
     active_page = "rooms"
     page_key = "room-create"
+    page_title = "DataSetAI | Создание комнаты"
 
 
 class RoomEditView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/room_edit.html"
     active_page = "rooms"
     page_key = "room-edit"
+    page_title = "DataSetAI | Редактирование комнаты"
 
     def dispatch(self, request, *args, **kwargs):
         room_id = kwargs.get("room_id")
@@ -94,15 +186,15 @@ class RoomEditView(LoginRequiredMixin, UiContextMixin, TemplateView):
 
 
 class RoomWorkspaceView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/room_detail.html"
     active_page = "rooms"
     page_key = "room-detail"
+    page_title = "DataSetAI | Комната"
 
 
 class RoomWorkView(LoginRequiredMixin, UiContextMixin, TemplateView):
-    template_name = "ui/room_work.html"
     active_page = "rooms"
     page_key = "room-work"
+    page_title = "DataSetAI | Работа в комнате"
 
 
 class AuthContextMixin(UiContextMixin):
@@ -110,10 +202,10 @@ class AuthContextMixin(UiContextMixin):
 
 
 class LoginPageView(AuthContextMixin, FormView):
-    template_name = "ui/auth/login.html"
     form_class = LoginForm
     success_url = "/rooms/"
     page_key = "auth-login"
+    page_title = "DataSetAI | Вход"
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
@@ -131,10 +223,10 @@ class LoginPageView(AuthContextMixin, FormView):
 
 
 class RegisterPageView(AuthContextMixin, FormView):
-    template_name = "ui/auth/register.html"
     form_class = RegistrationForm
     success_url = "/rooms/"
     page_key = "auth-register"
+    page_title = "DataSetAI | Регистрация"
 
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:

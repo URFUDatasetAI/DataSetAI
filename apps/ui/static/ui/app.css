@@ -729,6 +729,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
     font-size: clamp(2rem, 5vw, 4rem);
     line-height: 1;
     letter-spacing: -0.06em;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .hero-card p,
@@ -757,6 +760,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .hero-card__main p,
 .page-topbar__copy p {
     max-width: 60ch;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-header-meta__stack {
@@ -1302,6 +1307,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-card__id {
@@ -1325,6 +1332,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
     -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-card__footer {
@@ -1623,8 +1632,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
     border-bottom: 1px solid var(--line);
 }
 
+.summary-row > * {
+    min-width: 0;
+}
+
+.summary-row span,
 .summary-row strong {
     color: var(--text);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.summary-row span {
+    color: var(--text-soft);
+}
+
+.summary-row strong {
+    text-align: right;
+}
+
+.panel-note {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .role-assignment-box {

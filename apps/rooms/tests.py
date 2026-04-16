@@ -102,6 +102,35 @@ class RoomListCreateViewTests(TestCase):
         self.assertEqual(room.dataset_label, "Новый датасет")
         self.assertFalse(room.has_password)
 
+    def test_create_room_rejects_too_long_description(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Room with oversized description",
+                "description": "x" * 2001,
+                "dataset_mode": Room.DatasetType.DEMO,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", response.data)
+
+    def test_update_room_rejects_too_long_dataset_label(self):
+        room = Room.objects.create(title="Update target", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "Updated title",
+                "dataset_label": "x" * 256,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("dataset_label", response.data)
+
     @staticmethod
     def _uploaded_file(name: str):
         from django.core.files.uploadedfile import SimpleUploadedFile
