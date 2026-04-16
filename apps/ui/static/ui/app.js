@@ -22265,7 +22265,7 @@
     const maxCount = Math.max(...calendarSeries.map((item) => item.count), 0);
     const calendarWidth = weeks * ACTIVITY_CELL_SIZE + (weeks - 1) * ACTIVITY_CELL_GAP + ACTIVITY_CALENDAR_PADDING;
     const monthLabels = buildActivityMonthLabels(calendarSeries);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: containerRef, children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: containerRef, className: "activity-board__viewport", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "activity-board__calendar", style: { width: `${calendarWidth}px`, maxWidth: "100%" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board__months", style: { gridTemplateColumns: `repeat(${weeks}, ${ACTIVITY_CELL_SIZE}px)` }, children: monthLabels.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "activity-board__month", style: { gridColumn: item.weekIndex + 1 }, children: item.label }, `${item.weekIndex}-${item.label}`)) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board__grid", style: { gridTemplateColumns: `repeat(${weeks}, ${ACTIVITY_CELL_SIZE}px)` }, children: calendarSeries.map((item) => {

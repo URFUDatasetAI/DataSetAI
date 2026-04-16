@@ -4,7 +4,6 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-import uuid
 from dataclasses import dataclass
 from itertools import cycle
 from pathlib import Path
@@ -15,7 +14,14 @@ from django.utils import timezone
 
 from apps.labeling.models import Task
 from apps.labeling.workflows import get_room_final_tasks_queryset
-from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
+from apps.rooms.models import (
+    Room,
+    RoomJoinRequest,
+    RoomLabel,
+    RoomMembership,
+    RoomPin,
+    generate_room_invite_token,
+)
 from apps.rooms.policies import can_edit_room, can_invite_members
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
@@ -230,7 +236,11 @@ def regenerate_room_invite(*, room: Room, actor: User) -> Room:
     if not can_invite_members(room=room, user=actor):
         raise AccessDeniedError("You do not have permission to regenerate the invite link for this room.")
 
-    room.invite_token = uuid.uuid4()
+    while True:
+        candidate = generate_room_invite_token()
+        if not Room.objects.filter(invite_token=candidate).exclude(id=room.id).exists():
+            room.invite_token = candidate
+            break
     room.save(update_fields=["invite_token", "updated_at"])
     return room
 

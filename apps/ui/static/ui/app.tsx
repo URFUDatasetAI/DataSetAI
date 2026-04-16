@@ -965,7 +965,7 @@ function ActivityBoard({ series }: { series: ActivitySeriesItem[] }) {
   const monthLabels = buildActivityMonthLabels(calendarSeries);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} className="activity-board__viewport">
       <div className="activity-board__calendar" style={{ width: `${calendarWidth}px`, maxWidth: "100%" }}>
         <div className="activity-board__months" style={{ gridTemplateColumns: `repeat(${weeks}, ${ACTIVITY_CELL_SIZE}px)` }}>
           {monthLabels.map((item) => (

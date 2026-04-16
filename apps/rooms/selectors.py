@@ -127,7 +127,7 @@ def _count_completed_items_for_user(*, room: Room, user: User) -> int:
 
 
 def _build_invite_link(*, room: Room, request=None) -> str:
-    invite_path = f"/invite/{room.invite_token}/"
+    invite_path = f"/i/{room.invite_token}/"
     if request is None:
         return invite_path
     return request.build_absolute_uri(invite_path)

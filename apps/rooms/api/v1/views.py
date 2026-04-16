@@ -157,7 +157,7 @@ class RoomInviteRegenerateView(APIView):
         return Response(
             {
                 "room_id": room.id,
-                "invite_url": request.build_absolute_uri(f"/invite/{room.invite_token}/"),
+                "invite_url": request.build_absolute_uri(f"/i/{room.invite_token}/"),
                 "invite_token": str(room.invite_token),
             }
         )

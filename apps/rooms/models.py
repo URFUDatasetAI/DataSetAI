@@ -1,4 +1,4 @@
-import uuid
+import secrets
 
 from django.conf import settings
 from django.db import models
@@ -17,6 +17,17 @@ The room is the aggregate root for labeling sessions:
 """
 
 
+ROOM_INVITE_TOKEN_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
+ROOM_INVITE_TOKEN_LENGTH = 10
+
+
+def generate_room_invite_token() -> str:
+    return "".join(
+        secrets.choice(ROOM_INVITE_TOKEN_ALPHABET)
+        for _ in range(ROOM_INVITE_TOKEN_LENGTH)
+    )
+
+
 class Room(TimeStampedModel):
     class DatasetType(models.TextChoices):
         DEMO = "demo", "Demo"
@@ -30,7 +41,12 @@ class Room(TimeStampedModel):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    invite_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    invite_token = models.CharField(
+        max_length=ROOM_INVITE_TOKEN_LENGTH,
+        default=generate_room_invite_token,
+        unique=True,
+        editable=False,
+    )
     access_password_hash = models.CharField(max_length=255, blank=True)
     deadline = models.DateTimeField(null=True, blank=True)
     dataset_label = models.CharField(max_length=255, blank=True)

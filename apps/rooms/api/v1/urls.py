@@ -22,8 +22,8 @@ from apps.rooms.api.v1.views import (
 urlpatterns = [
     path("rooms/", RoomListCreateView.as_view(), name="room-list-create"),
     path("rooms/access/", RoomAccessView.as_view(), name="room-access"),
-    path("rooms/invite/<uuid:invite_token>/", RoomInviteLinkView.as_view(), name="room-invite-preview"),
-    path("rooms/invite/<uuid:invite_token>/request/", RoomJoinRequestCreateView.as_view(), name="room-invite-request"),
+    path("rooms/invite/<str:invite_token>/", RoomInviteLinkView.as_view(), name="room-invite-preview"),
+    path("rooms/invite/<str:invite_token>/request/", RoomJoinRequestCreateView.as_view(), name="room-invite-request"),
     path("rooms/<int:room_id>/", RoomDetailView.as_view(), name="room-detail"),
     path("rooms/<int:room_id>/dashboard/", RoomDashboardView.as_view(), name="room-dashboard"),
     path("rooms/<int:room_id>/invite/", RoomInviteView.as_view(), name="room-invite"),
