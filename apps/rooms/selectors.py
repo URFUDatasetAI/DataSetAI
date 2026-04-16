@@ -10,6 +10,7 @@ from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_prim
 from apps.rooms.models import Room, RoomMembership, RoomPin
 from apps.rooms.policies import (
     can_annotate_room,
+    can_edit_room,
     can_assign_room_roles,
     can_delete_room,
     can_export_room,
@@ -179,6 +180,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "can_annotate": actor_can_annotate,
             "can_invite": can_invite_members(room=room, user=actor, membership=actor_membership),
             "can_assign_roles": can_assign_room_roles(room=room, user=actor),
+            "can_edit_room": can_edit_room(room=room, user=actor),
             "can_export": can_export_room(room=room, user=actor),
             "can_delete_room": can_delete_room(room=room, user=actor),
         },

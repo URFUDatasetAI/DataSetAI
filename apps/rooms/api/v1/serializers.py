@@ -126,6 +126,15 @@ class RoomCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class RoomUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=255)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
+    dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет")
+    deadline = serializers.DateTimeField(required=False, allow_null=True)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True, default="")
+    password_changed = serializers.BooleanField(required=False, default=False)
+
+
 class RoomLabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomLabel

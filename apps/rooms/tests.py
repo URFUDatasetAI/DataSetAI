@@ -78,6 +78,30 @@ class RoomListCreateViewTests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Room.objects.filter(id=room.id).exists())
 
+    def test_owner_can_update_room_settings(self):
+        room = Room.objects.create(title="Old room", description="Old description", created_by=self.user)
+        room.set_access_password("old-secret")
+        room.save(update_fields=["access_password_hash", "updated_at"])
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "New room",
+                "description": "New description",
+                "dataset_label": "Новый датасет",
+                "password_changed": True,
+                "password": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "New room")
+        self.assertEqual(room.description, "New description")
+        self.assertEqual(room.dataset_label, "Новый датасет")
+        self.assertFalse(room.has_password)
+
     @staticmethod
     def _uploaded_file(name: str):
         from django.core.files.uploadedfile import SimpleUploadedFile

@@ -15,7 +15,7 @@ from django.utils import timezone
 from apps.labeling.models import Task
 from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
-from apps.rooms.policies import can_invite_members
+from apps.rooms.policies import can_edit_room, can_invite_members
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
 
@@ -247,6 +247,41 @@ def set_room_pinned(*, room: Room, user: User, is_pinned: bool) -> bool:
 
     RoomPin.objects.filter(room=room, user=user).delete()
     return False
+
+
+def update_room(
+    *,
+    room: Room,
+    owner: User,
+    title: str,
+    description: str = "",
+    dataset_label: str = "",
+    deadline=None,
+    password: str = "",
+    password_changed: bool = False,
+) -> Room:
+    if not can_edit_room(room=room, user=owner):
+        raise AccessDeniedError("Only the room owner can edit room settings.")
+
+    room.title = title
+    room.description = description
+    room.dataset_label = dataset_label or "Тестовый датасет"
+    room.deadline = deadline
+
+    if password_changed:
+        room.set_access_password(password)
+
+    room.save(
+        update_fields=[
+            "title",
+            "description",
+            "dataset_label",
+            "deadline",
+            "access_password_hash",
+            "updated_at",
+        ]
+    )
+    return room
 
 
 def _create_demo_tasks(*, room: Room, task_count: int, dataset_label: str) -> None:

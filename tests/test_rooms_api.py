@@ -77,6 +77,46 @@ class RoomsApiTests(APITestCase):
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.INVITED)
 
+    def test_owner_can_update_room_metadata(self):
+        room = make_room(customer=self.customer, title="Initial room", description="Before update")
+
+        response = self.client.patch(
+            reverse("room-detail", kwargs={"room_id": room.id}),
+            {
+                "title": "Updated room",
+                "description": "After update",
+                "dataset_label": "Updated dataset",
+                "password_changed": True,
+                "password": "new-secret",
+            },
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Updated room")
+        self.assertEqual(room.description, "After update")
+        self.assertEqual(room.dataset_label, "Updated dataset")
+        self.assertTrue(room.check_access_password("new-secret"))
+
+    def test_non_owner_cannot_update_room_metadata(self):
+        room = make_room(customer=self.customer, title="Locked room")
+        invite_annotator(room=room, annotator=self.admin_user, invited_by=self.customer, joined=True, role=RoomMembership.Role.ADMIN)
+
+        response = self.client.patch(
+            reverse("room-detail", kwargs={"room_id": room.id}),
+            {
+                "title": "Should fail",
+            },
+            format="json",
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Locked room")
+
     def test_owner_can_assign_admin_and_tester_roles(self):
         room = make_room(customer=self.customer, title="Role room")
         invite_annotator(room=room, annotator=self.admin_user, invited_by=self.customer, joined=True)

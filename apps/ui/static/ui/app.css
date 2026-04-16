@@ -763,9 +763,15 @@ input[type="file"]::-webkit-file-upload-button:hover {
     width: min(100%, 320px);
 }
 
-.room-header-meta__delete {
-    width: 100%;
+.room-header-meta__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 8px;
+}
+
+.room-header-meta__actions .btn {
+    width: 100%;
 }
 
 .page-topbar--room {
@@ -2418,6 +2424,16 @@ input[type="file"]::-webkit-file-upload-button:hover {
     margin-top: 24px;
     padding: 24px;
     background: var(--soft-panel-background);
+}
+
+.room-edit-summary {
+    margin-bottom: 18px;
+}
+
+.room-edit-password-note,
+.room-edit-note {
+    margin-top: 0;
+    grid-column: 1 / -1;
 }
 
 .dataset-box__actions--stack {

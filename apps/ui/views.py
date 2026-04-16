@@ -3,6 +3,8 @@ from django.contrib.auth import login
 from django.contrib.auth.views import LogoutView
 from django.db import DatabaseError
 from django.db.utils import OperationalError, ProgrammingError
+from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
@@ -76,6 +78,19 @@ class RoomCreateView(LoginRequiredMixin, UiContextMixin, TemplateView):
     template_name = "ui/room_create.html"
     active_page = "rooms"
     page_key = "room-create"
+
+
+class RoomEditView(LoginRequiredMixin, UiContextMixin, TemplateView):
+    template_name = "ui/room_edit.html"
+    active_page = "rooms"
+    page_key = "room-edit"
+
+    def dispatch(self, request, *args, **kwargs):
+        room_id = kwargs.get("room_id")
+        if room_id is None:
+            raise Http404("Room not found.")
+        get_object_or_404(Room.objects.only("id"), id=room_id, created_by=request.user)
+        return super().dispatch(request, *args, **kwargs)
 
 
 class RoomWorkspaceView(LoginRequiredMixin, UiContextMixin, TemplateView):

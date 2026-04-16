@@ -1,0 +1,60 @@
+{% extends "ui/base.html" %}
+
+{% block title %}DataSetAI | Редактирование комнаты{% endblock %}
+
+{% block content %}
+    <section class="page-topbar">
+        <div class="page-topbar__copy">
+            <span class="eyebrow">Редактирование комнаты</span>
+            <h1>Настройки комнаты</h1>
+            <p>Обнови название, описание, дедлайн, название датасета и доступ по паролю без изменения самих задач и файлов.</p>
+        </div>
+    </section>
+
+    <section class="create-layout">
+        <form id="room-edit-form" class="form-card">
+            <div id="room-edit-readonly-summary" class="summary-stack room-edit-summary"></div>
+
+            <div class="form-grid">
+                <label class="field">
+                    <span>Название комнаты</span>
+                    <input id="room-edit-title" name="title" type="text" placeholder="Например, Разметка отзывов Q2" required>
+                </label>
+                <label class="field">
+                    <span>Название датасета</span>
+                    <input id="room-edit-dataset-label" name="dataset_label" type="text" placeholder="Например, Отзывы Q2">
+                </label>
+                <label class="field">
+                    <span>Дедлайн (необязательно)</span>
+                    <input id="room-edit-deadline" name="deadline" type="datetime-local">
+                </label>
+                <label class="field field--checkbox">
+                    <span>Защита паролем</span>
+                    <span class="field--checkbox__control">
+                        <span class="field--checkbox__text">Требовать пароль для входа</span>
+                        <input id="room-edit-password-enabled" type="checkbox">
+                    </span>
+                </label>
+                <label class="field field--full">
+                    <span>Описание</span>
+                    <textarea id="room-edit-description" name="description" rows="4" placeholder="Кратко опиши задачу и правила разметки"></textarea>
+                </label>
+                <label class="field field--full">
+                    <span>Новый пароль комнаты</span>
+                    <input id="room-edit-password" name="password" type="text" placeholder="Оставь пустым, чтобы не менять текущий пароль">
+                </label>
+                <div id="room-edit-password-note" class="panel-note room-edit-password-note">
+                    Если выключить защиту паролем и сохранить форму, пароль у комнаты будет удален.
+                </div>
+                <div class="panel-note room-edit-note">
+                    Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются.
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <a class="btn btn--muted" href="/rooms/{{ room_id }}/">Назад к комнате</a>
+                <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+            </div>
+        </form>
+    </section>
+{% endblock %}

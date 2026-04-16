@@ -102,6 +102,11 @@ const sourceTypeLabels = {
   video: "Видео",
 };
 
+const annotationWorkflowLabels = {
+  standard: "Обычная разметка",
+  text_detect_text: "Object detect + text",
+};
+
 const labelColorPool = [
   "#FF6B6B",
   "#4ECDC4",
@@ -184,6 +189,10 @@ function translateSourceType(sourceType) {
   return sourceTypeLabels[sourceType] || sourceType;
 }
 
+function translateAnnotationWorkflow(workflow) {
+  return annotationWorkflowLabels[workflow] || workflow;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -213,6 +222,25 @@ function formatDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatDateTimeLocal(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
 function normalizeFlashType(type) {
@@ -1242,6 +1270,133 @@ function initRoomCreatePage() {
   };
 }
 
+function initRoomEditPage() {
+  if (!currentRoomId) {
+    showFlash("Не удалось определить ID комнаты из URL.", "error");
+    state.pageRefresh = async () => {};
+    return;
+  }
+
+  const form = byId<HTMLFormElement>("room-edit-form");
+  const titleInput = byId<HTMLInputElement>("room-edit-title");
+  const descriptionInput = byId<HTMLTextAreaElement>("room-edit-description");
+  const datasetLabelInput = byId<HTMLInputElement>("room-edit-dataset-label");
+  const deadlineInput = byId<HTMLInputElement>("room-edit-deadline");
+  const passwordToggle = byId<HTMLInputElement>("room-edit-password-enabled");
+  const passwordInput = byId<HTMLInputElement>("room-edit-password");
+  const passwordNote = byId<HTMLElement>("room-edit-password-note");
+  const readonlySummary = byId<HTMLElement>("room-edit-readonly-summary");
+
+  let initialHasPassword = false;
+
+  function syncPasswordState() {
+    const passwordEnabled = Boolean(passwordToggle?.checked);
+    if (passwordInput) {
+      passwordInput.disabled = !passwordEnabled;
+      passwordInput.placeholder = initialHasPassword
+        ? "Оставь пустым, чтобы сохранить текущий пароль"
+        : "Задай новый пароль";
+      if (!passwordEnabled) {
+        passwordInput.value = "";
+      }
+    }
+    if (passwordNote) {
+      passwordNote.textContent = passwordEnabled
+        ? initialHasPassword
+          ? "Оставь поле пустым, если текущий пароль менять не нужно. Введи новый пароль, если хочешь его заменить."
+          : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
+        : "После сохранения доступ в комнату будет открыт без пароля.";
+    }
+  }
+
+  function renderReadonlySummary(room) {
+    if (!readonlySummary) {
+      return;
+    }
+
+    readonlySummary.innerHTML = `
+      <div class="summary-row"><span>ID комнаты</span><strong>#${room.id}</strong></div>
+      <div class="summary-row"><span>Тип датасета</span><strong>${escapeHtml(translateDatasetMode(room.dataset_type))}</strong></div>
+      <div class="summary-row"><span>Сценарий</span><strong>${escapeHtml(translateAnnotationWorkflow(room.annotation_workflow || "standard"))}</strong></div>
+      <div class="summary-row"><span>Доступ</span><strong>${room.has_password ? "С паролем" : "Без пароля"}</strong></div>
+    `;
+  }
+
+  async function loadRoom() {
+    const room = await api(`/api/v1/rooms/${currentRoomId}/`);
+    initialHasPassword = Boolean(room.has_password);
+
+    if (titleInput) {
+      titleInput.value = room.title || "";
+    }
+    if (descriptionInput) {
+      descriptionInput.value = room.description || "";
+    }
+    if (datasetLabelInput) {
+      datasetLabelInput.value = room.dataset_label || "Тестовый датасет";
+    }
+    if (deadlineInput) {
+      deadlineInput.value = formatDateTimeLocal(room.deadline);
+    }
+    if (passwordToggle) {
+      passwordToggle.checked = initialHasPassword;
+    }
+    if (passwordInput) {
+      passwordInput.value = "";
+    }
+
+    renderReadonlySummary(room);
+    syncPasswordState();
+  }
+
+  passwordToggle?.addEventListener("change", syncPasswordState);
+
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearFlash();
+
+    const passwordEnabled = Boolean(passwordToggle?.checked);
+    const nextPassword = passwordInput?.value.trim() || "";
+
+    if (!passwordEnabled && initialHasPassword === false) {
+      syncPasswordState();
+    }
+
+    if (passwordEnabled && !initialHasPassword && !nextPassword) {
+      showFlash("Укажи пароль, чтобы включить защиту комнаты.", "error");
+      return;
+    }
+
+    const passwordChanged = (!passwordEnabled && initialHasPassword) || Boolean(nextPassword);
+
+    try {
+      await api(`/api/v1/rooms/${currentRoomId}/`, {
+        method: "PATCH",
+        body: {
+          title: titleInput?.value.trim() || "",
+          description: descriptionInput?.value.trim() || "",
+          dataset_label: datasetLabelInput?.value.trim() || "Тестовый датасет",
+          deadline: deadlineInput?.value ? new Date(deadlineInput.value).toISOString() : null,
+          password_changed: passwordChanged,
+          password: passwordChanged ? (passwordEnabled ? nextPassword : "") : "",
+        },
+      });
+      showFlash(`Настройки комнаты #${currentRoomId} обновлены.`, "success");
+      window.setTimeout(() => {
+        window.location.href = `/rooms/${currentRoomId}/`;
+      }, 700);
+    } catch (error) {
+      showFlash(getErrorMessage(error), "error");
+    }
+  });
+
+  loadRoom().catch((error) => {
+    showFlash(getErrorMessage(error), "error");
+  });
+
+  state.pageRefresh = loadRoom;
+}
+
 function renderCurrentTask(taskBox, task) {
   if (!taskBox) {
     return;
@@ -1560,6 +1715,19 @@ function renderReviewTaskDetail(container, detail) {
 function renderRoomDashboardHeader(title, subtitle, roomHeaderMeta, roomMetrics, dashboard) {
   title.textContent = dashboard.room.title;
   subtitle.textContent = dashboard.room.description || "Описание для этой комнаты пока не заполнено.";
+
+  const roomActions = [];
+  if (dashboard.actor.can_edit_room) {
+    roomActions.push(
+      `<a class="btn btn--muted" href="/rooms/${dashboard.room.id}/edit/">Редактировать комнату</a>`
+    );
+  }
+  if (dashboard.actor.can_delete_room) {
+    roomActions.push(
+      '<button id="detail-delete-room-btn" class="btn btn--danger" type="button">Удалить комнату</button>'
+    );
+  }
+
   roomHeaderMeta.innerHTML = `
     <div class="summary-stack room-header-meta__stack">
       <div class="summary-row"><span>ID комнаты</span><strong>#${dashboard.room.id}</strong></div>
@@ -1567,11 +1735,7 @@ function renderRoomDashboardHeader(title, subtitle, roomHeaderMeta, roomMetrics,
       <div class="summary-row"><span>Тип</span><strong>${translateDatasetMode(dashboard.room.dataset_type)}</strong></div>
       <div class="summary-row"><span>Дедлайн</span><strong>${formatDate(dashboard.room.deadline)}</strong></div>
       <div class="summary-row"><span>Доступ</span><strong>${dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong></div>
-      ${
-        dashboard.actor.can_delete_room
-          ? '<button id="detail-delete-room-btn" class="btn btn--danger room-header-meta__delete" type="button">Удалить комнату</button>'
-          : ""
-      }
+      ${roomActions.length ? `<div class="room-header-meta__actions">${roomActions.join("")}</div>` : ""}
     </div>
   `;
 
@@ -2924,6 +3088,9 @@ function initPage() {
       break;
     case "room-create":
       initRoomCreatePage();
+      break;
+    case "room-edit":
+      initRoomEditPage();
       break;
     case "room-detail":
       initRoomDetailPage();
