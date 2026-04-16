@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}DataSetAI{% endblock %}</title>
+    <title>{{ page_title|default:"DataSetAI" }}</title>
     <script>
         (function () {
             var storedTheme = null;
@@ -17,69 +17,13 @@
             document.documentElement.dataset.theme = preferredTheme;
         })();
     </script>
-    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'ui/datasetai-favicon.png' %}?v=20260328-1">
-    <link rel="shortcut icon" href="{% static 'ui/datasetai-favicon.png' %}?v=20260328-1">
-    <link rel="stylesheet" href="{% static 'ui/app.css' %}?v=detect-text-review-20260403-1">
-    {{ stats|json_script:"app-stats-data" }}
-    {{ auth_user_data|json_script:"auth-user-data" }}
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'ui/datasetai-favicon.png' %}?v=react-20260416-1">
+    <link rel="shortcut icon" href="{% static 'ui/datasetai-favicon.png' %}?v=react-20260416-1">
+    <link rel="stylesheet" href="{% static 'ui/app.css' %}?v=react-20260416-1">
+    {{ ui_bootstrap|json_script:"ui-bootstrap-data" }}
 </head>
-<body data-page="{{ page_key }}"{% if room_id %} data-room-id="{{ room_id }}"{% endif %}{% if profile_user_id %} data-profile-user-id="{{ profile_user_id }}"{% endif %} data-app-debug-mode="{% if app_debug_mode %}true{% else %}false{% endif %}">
-    <div class="app-shell">
-        <header class="site-header">
-            <div class="site-header__left">
-                <a class="brand-mark" href="/">
-                    <span class="brand-mark__logo" aria-hidden="true">
-                        <img class="brand-mark__logo-image" src="{% static 'ui/datasetai-mark.png' %}" alt="">
-                    </span>
-                    <span class="brand-mark__text">
-                        <strong>DataSetAI</strong>
-                        <small>Платформа разметки</small>
-                    </span>
-                </a>
-                <nav class="site-nav">
-                    <a class="site-nav__link {% if active_page == 'home' %}is-active{% endif %}" href="/">Главная</a>
-                    <a class="site-nav__link {% if active_page == 'rooms' %}is-active{% endif %}" href="/rooms/">Комнаты</a>
-                </nav>
-            </div>
-
-            <div class="site-header__right">
-                <div class="auth-actions">
-                    <div class="theme-toggle-shell">
-                        <input id="theme-toggle" class="theme-toggle__checkbox" type="checkbox" aria-label="Переключить тему">
-                        <label for="theme-toggle" class="theme-toggle__label"></label>
-                    </div>
-                    {% if request.user.is_authenticated %}
-                        <a id="header-profile-link" class="btn btn--muted btn--compact" href="/users/{{ request.user.id }}/profile/">{{ request.user.username }}</a>
-                        <form action="/auth/logout/" method="post" class="logout-form">
-                            {% csrf_token %}
-                            <button class="btn btn--secondary btn--compact" type="submit">Выйти</button>
-                        </form>
-                    {% else %}
-                        <a class="btn btn--muted btn--compact" href="/auth/login/">Войти</a>
-                        <a class="btn btn--primary btn--compact" href="/auth/register/">Зарегистрироваться</a>
-                    {% endif %}
-                </div>
-            </div>
-        </header>
-
-        <div id="toast-region" class="toast-region" aria-live="polite" aria-relevant="additions text"></div>
-        <div id="toast-bootstrap" class="hidden" aria-hidden="true">
-            {% if messages %}
-                {% for message in messages %}
-                    <div
-                        data-toast-message="{{ message }}"
-                        data-toast-type="{% if message.level_tag == 'error' %}error{% elif message.level_tag == 'warning' %}warning{% elif message.level_tag == 'success' %}success{% else %}info{% endif %}"
-                        data-toast-persistent="{% if 'persistent' in message.tags or 'sticky' in message.tags %}true{% else %}false{% endif %}"
-                    ></div>
-                {% endfor %}
-            {% endif %}
-        </div>
-
-        <main class="page-layout">
-            {% block content %}{% endblock %}
-        </main>
-    </div>
-
-    <script src="{% static 'ui/app.js' %}?v=detect-text-review-20260403-1"></script>
+<body>
+    <div id="app-root"></div>
+    <script src="{% static 'ui/app.js' %}?v=react-20260416-1"></script>
 </body>
 </html>

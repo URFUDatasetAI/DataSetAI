@@ -2,10 +2,13 @@ import json
 
 from rest_framework import serializers
 
-from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
+from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
 from apps.rooms.services import get_supported_export_formats, validate_dataset_upload
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from common.exceptions import ConflictError
+
+ROOM_TEXT_MAX_LENGTH = 255
+ROOM_DESCRIPTION_MAX_LENGTH = 2000
 
 
 class JsonStringField(serializers.Field):
@@ -33,7 +36,7 @@ class RoomLabelDefinitionSerializer(serializers.Serializer):
 
 
 class MediaManifestItemSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=255)
+    name = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
     width = serializers.IntegerField(required=False, min_value=1)
     height = serializers.IntegerField(required=False, min_value=1)
     duration = serializers.FloatField(required=False, min_value=0)
@@ -41,9 +44,9 @@ class MediaManifestItemSerializer(serializers.Serializer):
 
 
 class RoomCreateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=255)
-    description = serializers.CharField(required=False, allow_blank=True)
-    password = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
     cross_validation_enabled = serializers.BooleanField(required=False, default=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
@@ -60,7 +63,7 @@ class RoomCreateSerializer(serializers.Serializer):
     )
     dataset_mode = serializers.ChoiceField(choices=Room.DatasetType.values, required=False, default=Room.DatasetType.DEMO)
     test_task_count = serializers.IntegerField(required=False, min_value=1, max_value=100, default=12)
-    dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет")
+    dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет", max_length=ROOM_TEXT_MAX_LENGTH)
     dataset_files = serializers.ListField(
         child=serializers.FileField(allow_empty_file=False),
         required=False,
@@ -124,6 +127,15 @@ class RoomCreateSerializer(serializers.Serializer):
             attrs["media_manifest"] = serializer.validated_data
 
         return attrs
+
+
+class RoomUpdateSerializer(serializers.Serializer):
+    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
+    description = serializers.CharField(required=False, allow_blank=True, default="", max_length=ROOM_DESCRIPTION_MAX_LENGTH)
+    dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет", max_length=ROOM_TEXT_MAX_LENGTH)
+    deadline = serializers.DateTimeField(required=False, allow_null=True)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True, default="", max_length=ROOM_TEXT_MAX_LENGTH)
+    password_changed = serializers.BooleanField(required=False, default=False)
 
 
 class RoomLabelSerializer(serializers.ModelSerializer):
@@ -231,6 +243,9 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
     room_id = serializers.IntegerField(read_only=True)
     user_id = serializers.IntegerField(read_only=True)
     invited_by_id = serializers.IntegerField(read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_full_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_display_name = serializers.CharField(source="user.display_name", read_only=True)
 
     class Meta:
         model = RoomMembership
@@ -239,9 +254,39 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
             "room_id",
             "user_id",
             "invited_by_id",
+            "user_email",
+            "user_full_name",
+            "user_display_name",
             "status",
             "role",
             "joined_at",
+            "created_at",
+            "updated_at",
+        )
+
+
+class RoomJoinRequestSerializer(serializers.ModelSerializer):
+    room_id = serializers.IntegerField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    reviewed_by_id = serializers.IntegerField(read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_full_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_display_name = serializers.CharField(source="user.display_name", read_only=True)
+    reviewed_by_display_name = serializers.CharField(source="reviewed_by.display_name", read_only=True)
+
+    class Meta:
+        model = RoomJoinRequest
+        fields = (
+            "id",
+            "room_id",
+            "user_id",
+            "user_email",
+            "user_full_name",
+            "user_display_name",
+            "status",
+            "reviewed_by_id",
+            "reviewed_by_display_name",
+            "reviewed_at",
             "created_at",
             "updated_at",
         )
@@ -262,6 +307,10 @@ class RoomAccessSerializer(serializers.Serializer):
 
 class RoomJoinSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True)
+
+
+class RoomJoinRequestDecisionSerializer(serializers.Serializer):
+    pass
 
 
 class RoomPinSerializer(serializers.Serializer):

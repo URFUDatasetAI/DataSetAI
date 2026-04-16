@@ -1,13 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2021",
-    "module": "none",
+    "module": "ESNext",
     "lib": ["DOM", "DOM.Iterable", "ES2021"],
+    "jsx": "react-jsx",
     "strict": false,
     "noImplicitAny": false,
     "allowJs": false,
     "skipLibCheck": true,
-    "moduleDetection": "legacy"
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true
   },
-  "include": ["apps/ui/static/ui/**/*.ts"]
+  "include": ["apps/ui/static/ui/**/*"]
 }

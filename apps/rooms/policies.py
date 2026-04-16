@@ -69,5 +69,9 @@ def can_export_room(*, room: Room, user: User) -> bool:
     return is_room_owner(room=room, user=user)
 
 
+def can_edit_room(*, room: Room, user: User) -> bool:
+    return is_room_owner(room=room, user=user)
+
+
 def can_delete_room(*, room: Room, user: User) -> bool:
     return is_room_owner(room=room, user=user)

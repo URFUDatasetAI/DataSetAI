@@ -7,9 +7,10 @@ from django.utils import timezone
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
-from apps.rooms.models import Room, RoomMembership, RoomPin
+from apps.rooms.models import Room, RoomJoinRequest, RoomMembership, RoomPin
 from apps.rooms.policies import (
     can_annotate_room,
+    can_edit_room,
     can_assign_room_roles,
     can_delete_room,
     can_export_room,
@@ -54,6 +55,17 @@ def list_member_rooms(*, user: User) -> QuerySet[Room]:
         .distinct()
         .order_by("-is_pinned", "-created_at", "-id")
     )
+
+
+def get_room_by_invite_token(*, invite_token) -> Room:
+    try:
+        return (
+            Room.objects.select_related("created_by")
+            .prefetch_related("memberships", "labels")
+            .get(invite_token=invite_token)
+        )
+    except Room.DoesNotExist as exc:
+        raise NotFoundError("Invite link not found.") from exc
 
 
 def get_room_for_owner(*, room_id: int, owner: User) -> Room:
@@ -114,7 +126,87 @@ def _count_completed_items_for_user(*, room: Room, user: User) -> int:
     return len(root_task_ids)
 
 
-def build_room_dashboard(*, room: Room, actor: User) -> dict:
+def _build_invite_link(*, room: Room, request=None) -> str:
+    invite_path = f"/i/{room.invite_token}/"
+    if request is None:
+        return invite_path
+    return request.build_absolute_uri(invite_path)
+
+
+def build_room_invite_preview(*, room: Room, actor: User | None, request=None) -> dict:
+    membership = None
+    join_request = None
+    access_status = "anonymous"
+    can_request_access = False
+
+    if actor and actor.is_authenticated:
+        if actor.id == room.created_by_id:
+            access_status = "owner"
+        else:
+            membership = RoomMembership.objects.filter(room=room, user=actor).first()
+            join_request = (
+                RoomJoinRequest.objects.select_related("reviewed_by")
+                .filter(room=room, user=actor)
+                .first()
+            )
+
+            if membership is not None:
+                access_status = membership.status
+            elif join_request is not None:
+                access_status = join_request.status
+            else:
+                access_status = "not_requested"
+                can_request_access = True
+
+    return {
+        "room": {
+            "id": room.id,
+            "title": room.title,
+            "description": room.description,
+            "dataset_label": room.dataset_label,
+            "has_password": room.has_password,
+            "created_by_display_name": room.created_by.display_name,
+        },
+        "invite_url": _build_invite_link(room=room, request=request),
+        "actor": (
+            {
+                "id": actor.id,
+                "email": actor.email,
+                "full_name": actor.full_name,
+                "display_name": actor.display_name,
+                "access_status": access_status,
+                "can_request_access": can_request_access,
+            }
+            if actor and actor.is_authenticated
+            else None
+        ),
+        "membership": (
+            {
+                "id": membership.id,
+                "status": membership.status,
+                "role": membership.role,
+                "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
+            }
+            if membership is not None
+            else None
+        ),
+        "join_request": (
+            {
+                "id": join_request.id,
+                "status": join_request.status,
+                "created_at": join_request.created_at.isoformat(),
+                "reviewed_at": join_request.reviewed_at.isoformat() if join_request.reviewed_at else None,
+                "reviewed_by_display_name": (
+                    join_request.reviewed_by.display_name if join_request.reviewed_by is not None else None
+                ),
+            }
+            if join_request is not None
+            else None
+        ),
+    }
+
+
+def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
     # Dashboard payload is intentionally assembled here instead of serializers:
     # it mixes room metadata, aggregate stats and actor-specific slices.
     total_tasks = get_room_primary_tasks_queryset(room=room).count()
@@ -154,6 +246,10 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             "membership_status": "owner" if room.created_by_id == actor.id else actor_membership_status,
             "membership_role": actor_room_role,
         },
+        "invite": {
+            "url": _build_invite_link(room=room, request=request),
+            "token": str(room.invite_token),
+        },
         "labels": [
             {
                 "id": label.id,
@@ -172,13 +268,16 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         ],
         "actor": {
             "id": actor.id,
-            "username": actor.username,
+            "email": actor.email,
+            "full_name": actor.full_name,
+            "display_name": actor.display_name,
             "role": actor_room_role,
             "can_manage": actor_can_manage,
             "can_review": actor_can_review,
             "can_annotate": actor_can_annotate,
             "can_invite": can_invite_members(room=room, user=actor, membership=actor_membership),
             "can_assign_roles": can_assign_room_roles(room=room, user=actor),
+            "can_edit_room": can_edit_room(room=room, user=actor),
             "can_export": can_export_room(room=room, user=actor),
             "can_delete_room": can_delete_room(room=room, user=actor),
         },
@@ -208,7 +307,7 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
             return payload
 
     annotators = []
-    memberships = RoomMembership.objects.filter(room=room).select_related("user").order_by("user__username")
+    memberships = RoomMembership.objects.filter(room=room).select_related("user").order_by("user__full_name", "user__email", "user_id")
     for membership in memberships:
         user = membership.user
         user_completed = _count_completed_items_for_user(room=room, user=user)
@@ -223,7 +322,9 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         annotators.append(
             {
                 "user_id": user.id,
-                "username": user.username,
+                "email": user.email,
+                "full_name": user.full_name,
+                "display_name": user.display_name,
                 "status": membership.status,
                 "role": membership.role,
                 "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
@@ -238,4 +339,25 @@ def build_room_dashboard(*, room: Room, actor: User) -> dict:
         )
 
     payload["annotators"] = annotators
+    if can_invite_members(room=room, user=actor, membership=actor_membership):
+        payload["join_requests"] = [
+            {
+                "id": join_request.id,
+                "user_id": join_request.user_id,
+                "email": join_request.user.email,
+                "full_name": join_request.user.full_name,
+                "display_name": join_request.user.display_name,
+                "status": join_request.status,
+                "created_at": join_request.created_at.isoformat(),
+                "reviewed_at": join_request.reviewed_at.isoformat() if join_request.reviewed_at else None,
+                "reviewed_by_display_name": (
+                    join_request.reviewed_by.display_name if join_request.reviewed_by is not None else None
+                ),
+            }
+            for join_request in (
+                RoomJoinRequest.objects.filter(room=room)
+                .select_related("user", "reviewed_by")
+                .order_by("-created_at", "-id")
+            )
+        ]
     return payload

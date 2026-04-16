@@ -16,7 +16,7 @@ from apps.users.models import User
 class RoomListCreateViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username="owner", password="secret123")
+        self.user = User.objects.create_user(email="owner@example.com", full_name="Owner", password="secret123")
         self.client.force_authenticate(self.user)
 
     def tearDown(self):
@@ -53,7 +53,7 @@ class RoomListCreateViewTests(TestCase):
         self.assertEqual(task.input_payload["height"], 50)
 
     def test_multipart_request_with_single_annotator_id_creates_membership(self):
-        annotator = User.objects.create_user(username="annotator", password="secret123")
+        annotator = User.objects.create_user(email="annotator@example.com", full_name="Annotator", password="secret123")
 
         response = self.client.post(
             "/api/v1/rooms/",
@@ -77,6 +77,59 @@ class RoomListCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Room.objects.filter(id=room.id).exists())
+
+    def test_owner_can_update_room_settings(self):
+        room = Room.objects.create(title="Old room", description="Old description", created_by=self.user)
+        room.set_access_password("old-secret")
+        room.save(update_fields=["access_password_hash", "updated_at"])
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "New room",
+                "description": "New description",
+                "dataset_label": "Новый датасет",
+                "password_changed": True,
+                "password": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "New room")
+        self.assertEqual(room.description, "New description")
+        self.assertEqual(room.dataset_label, "Новый датасет")
+        self.assertFalse(room.has_password)
+
+    def test_create_room_rejects_too_long_description(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Room with oversized description",
+                "description": "x" * 2001,
+                "dataset_mode": Room.DatasetType.DEMO,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", response.data)
+
+    def test_update_room_rejects_too_long_dataset_label(self):
+        room = Room.objects.create(title="Update target", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "Updated title",
+                "dataset_label": "x" * 256,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("dataset_label", response.data)
 
     @staticmethod
     def _uploaded_file(name: str):
