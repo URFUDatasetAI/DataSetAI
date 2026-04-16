@@ -13,7 +13,9 @@ type ToastType = "success" | "error" | "warning" | "info";
 
 type AuthUser = {
   id: number;
-  username: string;
+  email: string;
+  full_name: string;
+  display_name: string;
 } | null;
 
 type FormFieldState = {
@@ -53,6 +55,7 @@ type BootstrapData = {
   };
   page_payload: {
     form?: FormState | null;
+    invite_token?: string | null;
   };
 };
 
@@ -61,6 +64,7 @@ type ApiRequestOptions = {
   headers?: Record<string, string>;
   body?: unknown;
   formData?: FormData;
+  allowAnonymous?: boolean;
 };
 
 type LabelItem = {
@@ -102,7 +106,10 @@ type ActivitySeriesItem = {
 
 type UserProfile = {
   id: number;
-  username: string;
+  email: string;
+  full_name: string;
+  display_name: string;
+  can_edit?: boolean;
   overview: {
     accessible_rooms_count: number;
     created_rooms_count: number;
@@ -116,7 +123,9 @@ type UserProfile = {
 
 type DashboardAnnotator = {
   user_id: number;
-  username: string;
+  email: string;
+  full_name: string;
+  display_name: string;
   status: string;
   role: string;
   joined_at: string | null;
@@ -125,6 +134,18 @@ type DashboardAnnotator = {
   remaining_tasks: number;
   progress_percent: number;
   activity: ActivitySeriesItem[];
+};
+
+type JoinRequestItem = {
+  id: number;
+  user_id: number;
+  email: string;
+  full_name: string;
+  display_name: string;
+  status: string;
+  created_at: string;
+  reviewed_at: string | null;
+  reviewed_by_display_name: string | null;
 };
 
 type RoomDashboard = {
@@ -145,6 +166,10 @@ type RoomDashboard = {
     membership_status: string | null;
     membership_role: string | null;
   };
+  invite: {
+    url: string;
+    token: string;
+  };
   labels: LabelItem[];
   export_formats: Array<{ value: string; label: string }>;
   overview: {
@@ -156,7 +181,9 @@ type RoomDashboard = {
   membership_role_options: Array<{ value: string; label: string }>;
   actor: {
     id: number;
-    username: string;
+    email: string;
+    full_name: string;
+    display_name: string;
     role: string;
     can_manage: boolean;
     can_review: boolean;
@@ -167,6 +194,7 @@ type RoomDashboard = {
     can_export: boolean;
     can_delete_room: boolean;
   };
+  join_requests?: JoinRequestItem[];
   annotator_stats?: {
     completed_tasks: number;
     in_progress_tasks: number;
@@ -212,12 +240,45 @@ type AnnotationItem = {
   task_id: number;
   assignment_id: number;
   annotator_id: number;
-  annotator_username: string;
+  annotator_display_name: string;
   round_number: number;
   result_payload: Record<string, any>;
   submitted_at: string;
   created_at: string;
   updated_at: string;
+};
+
+type RoomInvitePreview = {
+  room: {
+    id: number;
+    title: string;
+    description: string;
+    dataset_label: string;
+    has_password: boolean;
+    created_by_display_name: string;
+  };
+  invite_url: string;
+  actor: {
+    id: number;
+    email: string;
+    full_name: string;
+    display_name: string;
+    access_status: string;
+    can_request_access: boolean;
+  } | null;
+  membership: {
+    id: number;
+    status: string;
+    role: string;
+    joined_at: string | null;
+  } | null;
+  join_request: {
+    id: number;
+    status: string;
+    created_at: string;
+    reviewed_at: string | null;
+    reviewed_by_display_name: string | null;
+  } | null;
 };
 
 type ReviewTaskDetail = {
@@ -236,6 +297,7 @@ type ToastItem = {
 type AppContextValue = {
   bootstrap: BootstrapData;
   authUser: AuthUser;
+  setAuthUser: React.Dispatch<React.SetStateAction<AuthUser>>;
   theme: string;
   setTheme: (theme: string) => void;
   addToast: (message: string, type?: ToastType, options?: { persistent?: boolean }) => void;
@@ -277,6 +339,9 @@ const membershipLabels: Record<string, string> = {
   owner: "Владелец",
   invited: "Приглашен",
   joined: "В комнате",
+  pending: "Ожидает решения",
+  approved: "Одобрено",
+  rejected: "Отклонено",
 };
 
 const taskStatusLabels: Record<string, string> = {
@@ -443,16 +508,18 @@ function formatApiError(data: any, fallbackStatus: number) {
 }
 
 async function apiRequest(path: string, authUser: AuthUser, options: ApiRequestOptions = {}) {
-  if (!authUser) {
+  if (!authUser && !options.allowAnonymous) {
     throw new Error("Сначала войди в аккаунт.");
   }
 
   // Backend expects the current user through the custom X-User-Id auth header.
   // This wrapper also normalizes HTML/JSON error responses into plain messages.
   const headers: Record<string, string> = {
-    "X-User-Id": String(authUser.id),
     ...(options.headers || {}),
   };
+  if (authUser) {
+    headers["X-User-Id"] = String(authUser.id);
+  }
   const requestOptions: RequestInit & { headers: Record<string, string> } = {
     method: options.method || "GET",
     headers,
@@ -569,6 +636,10 @@ function formatDateTimeLocal(value: string | null | undefined) {
   const minutes = String(date.getMinutes()).padStart(2, "0");
 
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function getDisplayName(entity: { display_name?: string | null; full_name?: string | null; email?: string | null }) {
+  return entity.display_name || entity.full_name || entity.email || "Без имени";
 }
 
 function translateRole(role: string | null | undefined) {
@@ -1063,6 +1134,7 @@ function ReviewTextSummary({
 
 function App() {
   const nextToastIdRef = useRef(bootstrap.messages.length);
+  const [authUser, setAuthUser] = useState<AuthUser>(bootstrap.auth_user);
   const [theme, setThemeState] = useState(document.documentElement.dataset.theme || "light");
   const [toasts, setToasts] = useState<ToastItem[]>(
     bootstrap.messages.map((message, index) => ({
@@ -1110,13 +1182,14 @@ function App() {
 
   const contextValue: AppContextValue = {
     bootstrap,
-    authUser: bootstrap.auth_user,
+    authUser,
+    setAuthUser,
     theme,
     setTheme,
     addToast,
     clearToasts,
     removeToast,
-    api: (path, options) => apiRequest(path, bootstrap.auth_user, options),
+    api: (path, options) => apiRequest(path, authUser, options),
   };
 
   return (
@@ -1179,7 +1252,7 @@ function Header() {
           {authUser ? (
             <>
               <a id="header-profile-link" className="btn btn--muted btn--compact" href={`/users/${authUser.id}/profile/`}>
-                {authUser.username}
+                {getDisplayName(authUser)}
               </a>
               <form action="/auth/logout/" method="post" className="logout-form">
                 <input type="hidden" name="csrfmiddlewaretoken" value={bootstrap.csrf_token} />
@@ -1224,6 +1297,8 @@ function PageRouter() {
       return <RoomDetailPage />;
     case "room-work":
       return <RoomWorkPage />;
+    case "room-invite":
+      return <RoomInvitePage />;
     case "auth-login":
       return <LoginPage />;
     case "auth-register":
@@ -1302,7 +1377,8 @@ function LandingPage() {
 function LoginPage() {
   const { bootstrap } = useApp();
   const formState = bootstrap.page_payload.form;
-  const usernameField = formState?.fields.username;
+  const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+  const emailField = formState?.fields.email;
   const passwordField = formState?.fields.password;
 
   return (
@@ -1313,14 +1389,15 @@ function LoginPage() {
 
         <form method="post" className="auth-form">
           <input type="hidden" name="csrfmiddlewaretoken" value={bootstrap.csrf_token} />
+          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
           {formState?.non_field_errors?.length ? (
             <div className="panel-note">{formState.non_field_errors.join(" ")}</div>
           ) : null}
           <label className="field">
-            <span>{usernameField?.label || "Логин"}</span>
-            <input name="username" type="text" defaultValue={usernameField?.value || ""} required />
+            <span>{emailField?.label || "Email"}</span>
+            <input name="email" type="email" defaultValue={emailField?.value || ""} required />
           </label>
-          {usernameField?.errors?.length ? <div className="panel-note">{usernameField.errors.join(" ")}</div> : null}
+          {emailField?.errors?.length ? <div className="panel-note">{emailField.errors.join(" ")}</div> : null}
           <label className="field">
             <span>{passwordField?.label || "Пароль"}</span>
             <input name="password" type="password" required />
@@ -1338,7 +1415,9 @@ function LoginPage() {
 function RegisterPage() {
   const { bootstrap } = useApp();
   const formState = bootstrap.page_payload.form;
-  const usernameField = formState?.fields.username;
+  const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+  const fullNameField = formState?.fields.full_name;
+  const emailField = formState?.fields.email;
   const passwordField = formState?.fields.password;
   const repeatField = formState?.fields.password_repeat;
 
@@ -1351,14 +1430,20 @@ function RegisterPage() {
 
         <form method="post" className="auth-form">
           <input type="hidden" name="csrfmiddlewaretoken" value={bootstrap.csrf_token} />
+          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
           {formState?.non_field_errors?.length ? (
             <div className="panel-note">{formState.non_field_errors.join(" ")}</div>
           ) : null}
           <label className="field">
-            <span>{usernameField?.label || "Логин"}</span>
-            <input name="username" type="text" defaultValue={usernameField?.value || ""} required />
+            <span>{fullNameField?.label || "ФИО"}</span>
+            <input name="full_name" type="text" defaultValue={fullNameField?.value || ""} required />
           </label>
-          {usernameField?.errors?.length ? <div className="panel-note">{usernameField.errors.join(" ")}</div> : null}
+          {fullNameField?.errors?.length ? <div className="panel-note">{fullNameField.errors.join(" ")}</div> : null}
+          <label className="field">
+            <span>{emailField?.label || "Email"}</span>
+            <input name="email" type="email" defaultValue={emailField?.value || ""} required />
+          </label>
+          {emailField?.errors?.length ? <div className="panel-note">{emailField.errors.join(" ")}</div> : null}
           <label className="field">
             <span>{passwordField?.label || "Пароль"}</span>
             <input name="password" type="password" required />
@@ -1542,8 +1627,11 @@ function RoomsPage() {
 }
 
 function ProfilePage() {
-  const { bootstrap, authUser, api, addToast } = useApp();
+  const { bootstrap, authUser, setAuthUser, api, addToast } = useApp();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -1557,6 +1645,8 @@ function ProfilePage() {
           profileUserId === authUser.id ? "/api/v1/me/profile/" : `/api/v1/users/${profileUserId}/profile/`
         );
         setProfile(nextProfile);
+        setFullName(nextProfile.full_name || "");
+        setEmail(nextProfile.email || "");
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -1599,6 +1689,42 @@ function ProfilePage() {
     });
   }
 
+  async function handleProfileSave(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!profile?.can_edit) {
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const nextProfile = await api<UserProfile>("/api/v1/me/profile/", {
+        method: "PATCH",
+        body: {
+          full_name: fullName.trim(),
+          email: email.trim().toLowerCase(),
+        },
+      });
+      setProfile(nextProfile);
+      setFullName(nextProfile.full_name || "");
+      setEmail(nextProfile.email || "");
+      setAuthUser((current) =>
+        current
+          ? {
+              ...current,
+              email: nextProfile.email,
+              full_name: nextProfile.full_name,
+              display_name: nextProfile.display_name,
+            }
+          : current
+      );
+      addToast("Профиль обновлен.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <section className="page-topbar page-topbar--profile">
@@ -1635,26 +1761,47 @@ function ProfilePage() {
         <div className="wide-card__column">
           <h2>О пользователе</h2>
           {profile ? (
-            <div className="summary-stack">
-              <div className="summary-row">
-                <span>Пользователь</span>
-                <strong>
-                  #{profile.id} {profile.username}
-                </strong>
+            <>
+              <div className="summary-stack">
+                <div className="summary-row">
+                  <span>Пользователь</span>
+                  <strong>
+                    #{profile.id} {profile.display_name}
+                  </strong>
+                </div>
+                <div className="summary-row">
+                  <span>Email</span>
+                  <strong>{profile.email}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Создано комнат</span>
+                  <strong>{profile.overview.created_rooms_count}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Комнат как исполнителю</span>
+                  <strong>{profile.overview.joined_rooms_count}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Приглашения / доступы</span>
+                  <strong>{profile.overview.invitations_count}</strong>
+                </div>
               </div>
-              <div className="summary-row">
-                <span>Создано комнат</span>
-                <strong>{profile.overview.created_rooms_count}</strong>
-              </div>
-              <div className="summary-row">
-                <span>Комнат как исполнителю</span>
-                <strong>{profile.overview.joined_rooms_count}</strong>
-              </div>
-              <div className="summary-row">
-                <span>Приглашения / доступы</span>
-                <strong>{profile.overview.invitations_count}</strong>
-              </div>
-            </div>
+              {profile.can_edit ? (
+                <form className="auth-form" onSubmit={handleProfileSave}>
+                  <label className="field">
+                    <span>ФИО</span>
+                    <input value={fullName} type="text" required onChange={(event) => setFullName(event.currentTarget.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Email</span>
+                    <input value={email} type="email" required onChange={(event) => setEmail(event.currentTarget.value)} />
+                  </label>
+                  <button className="btn btn--primary" type="submit" disabled={saving}>
+                    {saving ? "Сохраняем..." : "Сохранить профиль"}
+                  </button>
+                </form>
+              ) : null}
+            </>
           ) : (
             <div className="summary-stack empty-card">Данные профиля загружаются.</div>
           )}
@@ -1662,6 +1809,160 @@ function ProfilePage() {
         <div className="wide-card__column wide-card__column--activity">
           <h2>Активность</h2>
           <div className="activity-board">{profile ? <ActivityBoard series={profile.activity} /> : <div className="empty-card">Активность загружается.</div>}</div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function RoomInvitePage() {
+  const { bootstrap, authUser, api, addToast } = useApp();
+  const inviteToken = bootstrap.page_payload.invite_token || "";
+  const [preview, setPreview] = useState<RoomInvitePreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const nextPath = `${window.location.pathname}${window.location.search}`;
+
+  async function loadPreview() {
+    if (!inviteToken) {
+      addToast("Invite-токен не найден в URL.", "error");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const nextPreview = await api<RoomInvitePreview>(`/api/v1/rooms/invite/${inviteToken}/`, {
+        allowAnonymous: true,
+      });
+      setPreview(nextPreview);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPreview();
+  }, [inviteToken, authUser?.id]);
+
+  async function handleRequestAccess() {
+    if (!inviteToken) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await api(`/api/v1/rooms/invite/${inviteToken}/request/`, {
+        method: "POST",
+        body: {},
+      });
+      addToast("Заявка отправлена. Теперь ее должен принять владелец или администратор комнаты.", "success");
+      await loadPreview();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const accessStatus = preview?.actor?.access_status;
+
+  return (
+    <>
+      <section className="page-topbar page-topbar--room">
+        <div className="page-topbar__copy">
+          <span className="eyebrow">Invite</span>
+          <h1>{preview?.room.title || "Обрабатываем invite-ссылку..."}</h1>
+          <p>{preview?.room.description || "Проверяем доступ к комнате и текущее состояние заявки."}</p>
+        </div>
+      </section>
+
+      <section className="wide-card wide-card--stack wide-card--profile">
+        <div className="wide-card__column">
+          {loading ? (
+            <div className="empty-card">Загружаем данные по invite-ссылке.</div>
+          ) : preview ? (
+            <div className="summary-stack">
+              <div className="summary-row">
+                <span>Комната</span>
+                <strong>#{preview.room.id}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Датасет</span>
+                <strong>{preview.room.dataset_label || "Тестовый датасет"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Владелец</span>
+                <strong>{preview.room.created_by_display_name}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Доступ по паролю</span>
+                <strong>{preview.room.has_password ? "У комнаты есть пароль" : "Пароль не требуется"}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-card">Invite-ссылка недоступна.</div>
+          )}
+        </div>
+
+        <div className="wide-card__column">
+          {!authUser ? (
+            <div className="summary-stack">
+              <h2>Нужна авторизация</h2>
+              <p>Чтобы отправить заявку в комнату, сначала войди в аккаунт или создай его.</p>
+              <div className="form-actions">
+                <a className="btn btn--muted" href={`/auth/login/?next=${encodeURIComponent(nextPath)}`}>
+                  Войти
+                </a>
+                <a className="btn btn--primary" href={`/auth/register/?next=${encodeURIComponent(nextPath)}`}>
+                  Зарегистрироваться
+                </a>
+              </div>
+            </div>
+          ) : accessStatus === "owner" || accessStatus === "joined" || accessStatus === "invited" ? (
+            <div className="summary-stack">
+              <h2>Доступ уже есть</h2>
+              <p>
+                {accessStatus === "owner"
+                  ? "Ты владелец этой комнаты."
+                  : accessStatus === "joined"
+                    ? "Ты уже состоишь в комнате."
+                    : "Ты уже добавлен в комнату."}
+              </p>
+              <div className="form-actions">
+                <a className="btn btn--primary" href={`/rooms/${preview?.room.id}/`}>
+                  Открыть комнату
+                </a>
+              </div>
+            </div>
+          ) : accessStatus === "pending" ? (
+            <div className="summary-stack">
+              <h2>Заявка ожидает решения</h2>
+              <p>Владелец или администратор комнаты должны принять запрос на вступление.</p>
+            </div>
+          ) : accessStatus === "rejected" ? (
+            <div className="summary-stack">
+              <h2>Заявка отклонена</h2>
+              <p>Можно отправить новый запрос по этой invite-ссылке.</p>
+              <div className="form-actions">
+                <button className="btn btn--primary" type="button" disabled={submitting} onClick={handleRequestAccess}>
+                  {submitting ? "Отправляем..." : "Отправить заявку заново"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="summary-stack">
+              <h2>Запросить доступ</h2>
+              <p>После отправки заявки владелец или администратор комнаты смогут выдать доступ.</p>
+              <div className="form-actions">
+                <button className="btn btn--primary" type="button" disabled={submitting} onClick={handleRequestAccess}>
+                  {submitting ? "Отправляем..." : "Отправить заявку"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </>
@@ -2166,7 +2467,6 @@ function RoomDetailPage() {
   const roomId = bootstrap.room_id;
   const [dashboard, setDashboard] = useState<RoomDashboard | null>(null);
   const [loading, setLoading] = useState(true);
-  const [inviteUserId, setInviteUserId] = useState("");
   const [annotatorSearch, setAnnotatorSearch] = useState("");
   const [reviewSearch, setReviewSearch] = useState("");
   const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = useState<number | null>(null);
@@ -2174,6 +2474,8 @@ function RoomDetailPage() {
   const [reviewTasks, setReviewTasks] = useState<ReviewTaskListItem[]>([]);
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
 
   async function refresh() {
     if (!roomId) {
@@ -2213,7 +2515,7 @@ function RoomDetailPage() {
       return true;
     }
 
-    return [annotator.username, annotator.user_id, translateMembership(annotator.status), translateRole(annotator.role)]
+    return [annotator.display_name, annotator.email, annotator.user_id, translateMembership(annotator.status), translateRole(annotator.role)]
       .join(" ")
       .toLowerCase()
       .includes(searchTerm);
@@ -2275,27 +2577,57 @@ function RoomDetailPage() {
     loadReviewDetail();
   }, [selectedReviewTaskId]);
 
-  async function handleInviteSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleCopyInviteLink() {
+    if (!dashboard?.invite.url) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(dashboard.invite.url);
+      addToast("Invite-ссылка скопирована.", "success");
+    } catch (error) {
+      addToast("Не удалось скопировать invite-ссылку. Скопируй ее вручную из поля.", "warning");
+    }
+  }
+
+  async function handleRegenerateInvite() {
     if (!roomId) {
       return;
     }
 
     clearToasts();
+    setInviteBusy(true);
     try {
-      const invitedId = Number(inviteUserId);
-      if (!Number.isInteger(invitedId) || invitedId <= 0) {
-        throw new Error("Укажи корректный ID пользователя.");
-      }
-      await api(`/api/v1/rooms/${roomId}/invite/`, {
+      await api(`/api/v1/rooms/${roomId}/invite/regenerate/`, {
         method: "POST",
-        body: { annotator_id: invitedId },
+        body: {},
       });
-      setInviteUserId("");
-      addToast(`Пользователь #${invitedId} добавлен в комнату.`, "success");
+      addToast("Invite-ссылка обновлена. Старая ссылка больше не действует.", "success");
       await refresh();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function handleJoinRequestAction(joinRequestId: number, action: "approve" | "reject") {
+    if (!roomId) {
+      return;
+    }
+
+    clearToasts();
+    setJoinRequestBusyId(joinRequestId);
+    try {
+      await api(`/api/v1/rooms/${roomId}/join-requests/${joinRequestId}/${action}/`, {
+        method: "POST",
+        body: {},
+      });
+      addToast(action === "approve" ? "Заявка принята." : "Заявка отклонена.", "success");
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setJoinRequestBusyId(null);
     }
   }
 
@@ -2509,18 +2841,75 @@ function RoomDetailPage() {
                 {dashboard.actor.can_invite ? (
                   <div className="panel-card">
                     <div className="panel-card__head">
-                      <h2>Добавить исполнителя</h2>
+                      <h2>Invite-ссылка</h2>
                     </div>
-                    <form className="stack-form stack-form--compact" onSubmit={handleInviteSubmit}>
+                    <div className="stack-form stack-form--compact">
                       <label className="field">
-                        <span>ID пользователя</span>
-                        <input value={inviteUserId} type="number" min="1" placeholder="Например, 5" required onChange={(event) => setInviteUserId(event.currentTarget.value)} />
+                        <span>Ссылка для входа</span>
+                        <input value={dashboard.invite.url} type="text" readOnly />
                       </label>
-                      <button className="btn btn--primary" type="submit">
-                        Добавить в комнату
+                      <button className="btn btn--primary" type="button" onClick={handleCopyInviteLink}>
+                        Скопировать ссылку
                       </button>
-                    </form>
-                    <div className="panel-note">Пользователь будет добавлен в комнату и сможет зайти в нее как исполнитель.</div>
+                      <button className="btn btn--secondary" type="button" disabled={inviteBusy} onClick={handleRegenerateInvite}>
+                        {inviteBusy ? "Обновляем..." : "Перегенерировать invite"}
+                      </button>
+                    </div>
+                    <div className="panel-note">
+                      По этой ссылке пользователь сможет авторизоваться и отправить заявку на вступление в комнату. Старый invite перестает работать после регенерации.
+                    </div>
+                  </div>
+                ) : null}
+
+                {dashboard.actor.can_invite ? (
+                  <div className="panel-card">
+                    <div className="panel-card__head">
+                      <h2>Заявки на вступление</h2>
+                    </div>
+                    {dashboard.join_requests?.length ? (
+                      <div className="annotators-list">
+                        {dashboard.join_requests.map((joinRequest) => (
+                          <div key={joinRequest.id} className="annotator-row">
+                            <div className="annotator-row__meta">
+                              <strong>{joinRequest.display_name}</strong>
+                              <span>
+                                {joinRequest.email} · {translateMembership(joinRequest.status)}
+                              </span>
+                            </div>
+                            <div className="role-assignment-box__actions">
+                              {joinRequest.status === "pending" ? (
+                                <>
+                                  <button
+                                    className="btn btn--secondary btn--compact"
+                                    type="button"
+                                    disabled={joinRequestBusyId === joinRequest.id}
+                                    onClick={() => handleJoinRequestAction(joinRequest.id, "approve")}
+                                  >
+                                    Принять
+                                  </button>
+                                  <button
+                                    className="btn btn--muted btn--compact"
+                                    type="button"
+                                    disabled={joinRequestBusyId === joinRequest.id}
+                                    onClick={() => handleJoinRequestAction(joinRequest.id, "reject")}
+                                  >
+                                    Отклонить
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="panel-note">
+                                  {joinRequest.status === "approved"
+                                    ? `Принял: ${joinRequest.reviewed_by_display_name || "модератор"}`
+                                    : `Отклонил: ${joinRequest.reviewed_by_display_name || "модератор"}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-card">По invite-ссылке пока никто не запросил доступ.</div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -2569,7 +2958,7 @@ function RoomDetailPage() {
                         }
                       >
                         <div className="annotator-row__meta">
-                          <strong>{annotator.username}</strong>
+                          <strong>{annotator.display_name}</strong>
                           <span>
                             {translateMembership(annotator.status)} · {translateRole(annotator.role)}
                           </span>
@@ -2601,7 +2990,7 @@ function RoomDetailPage() {
                     <div className="summary-row">
                       <span>Исполнитель</span>
                       <strong>
-                        #{activeAnnotator.user_id} {activeAnnotator.username}
+                        #{activeAnnotator.user_id} {activeAnnotator.display_name}
                       </strong>
                     </div>
                     <div className="summary-row">
@@ -2764,7 +3153,7 @@ function RoomDetailPage() {
                         <section key={annotation.id} className="review-annotation-entry">
                           <header className="review-annotation-entry__head">
                             <strong>Аннотация пользователя</strong>
-                            <span>{annotation.annotator_username || `#${annotation.annotator_id}`}</span>
+                            <span>{annotation.annotator_display_name || `#${annotation.annotator_id}`}</span>
                             <span>
                               Раунд {annotation.round_number} · {formatDate(annotation.submitted_at)}
                             </span>

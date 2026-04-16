@@ -21747,7 +21747,10 @@
   var membershipLabels = {
     owner: "\u0412\u043B\u0430\u0434\u0435\u043B\u0435\u0446",
     invited: "\u041F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D",
-    joined: "\u0412 \u043A\u043E\u043C\u043D\u0430\u0442\u0435"
+    joined: "\u0412 \u043A\u043E\u043C\u043D\u0430\u0442\u0435",
+    pending: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0435\u0448\u0435\u043D\u0438\u044F",
+    approved: "\u041E\u0434\u043E\u0431\u0440\u0435\u043D\u043E",
+    rejected: "\u041E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E"
   };
   var taskStatusLabels = {
     pending: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
@@ -21886,13 +21889,15 @@
     return `HTTP ${fallbackStatus}`;
   }
   async function apiRequest(path, authUser, options = {}) {
-    if (!authUser) {
+    if (!authUser && !options.allowAnonymous) {
       throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0438 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442.");
     }
     const headers = {
-      "X-User-Id": String(authUser.id),
       ...options.headers || {}
     };
+    if (authUser) {
+      headers["X-User-Id"] = String(authUser.id);
+    }
     const requestOptions = {
       method: options.method || "GET",
       headers
@@ -21992,6 +21997,9 @@
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
     return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+  function getDisplayName(entity) {
+    return entity.display_name || entity.full_name || entity.email || "\u0411\u0435\u0437 \u0438\u043C\u0435\u043D\u0438";
   }
   function translateRole(role) {
     if (!role) {
@@ -22382,6 +22390,7 @@
   }
   function App() {
     const nextToastIdRef = (0, import_react.useRef)(bootstrap.messages.length);
+    const [authUser, setAuthUser] = (0, import_react.useState)(bootstrap.auth_user);
     const [theme, setThemeState] = (0, import_react.useState)(document.documentElement.dataset.theme || "light");
     const [toasts, setToasts] = (0, import_react.useState)(
       bootstrap.messages.map((message, index) => ({
@@ -22423,13 +22432,14 @@
     }
     const contextValue = {
       bootstrap,
-      authUser: bootstrap.auth_user,
+      authUser,
+      setAuthUser,
       theme,
       setTheme,
       addToast,
       clearToasts,
       removeToast,
-      api: (path, options) => apiRequest(path, bootstrap.auth_user, options)
+      api: (path, options) => apiRequest(path, authUser, options)
     };
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppContext.Provider, { value: contextValue, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "app-shell", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, {}),
@@ -22471,7 +22481,7 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("label", { htmlFor: "theme-toggle", className: "theme-toggle__label" })
         ] }),
         authUser ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { id: "header-profile-link", className: "btn btn--muted btn--compact", href: `/users/${authUser.id}/profile/`, children: authUser.username }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { id: "header-profile-link", className: "btn btn--muted btn--compact", href: `/users/${authUser.id}/profile/`, children: getDisplayName(authUser) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { action: "/auth/logout/", method: "post", className: "logout-form", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "hidden", name: "csrfmiddlewaretoken", value: bootstrap2.csrf_token }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "submit", children: "\u0412\u044B\u0439\u0442\u0438" })
@@ -22500,6 +22510,8 @@
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomDetailPage, {});
       case "room-work":
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomWorkPage, {});
+      case "room-invite":
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomInvitePage, {});
       case "auth-login":
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LoginPage, {});
       case "auth-register":
@@ -22561,19 +22573,21 @@
   function LoginPage() {
     const { bootstrap: bootstrap2 } = useApp();
     const formState = bootstrap2.page_payload.form;
-    const usernameField = formState?.fields.username;
+    const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+    const emailField = formState?.fields.email;
     const passwordField = formState?.fields.password;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "auth-page", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "auth-card", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0410\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0412\u0445\u043E\u0434 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { method: "post", className: "auth-form", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "hidden", name: "csrfmiddlewaretoken", value: bootstrap2.csrf_token }),
+        nextPath ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "hidden", name: "next", value: nextPath }) : null,
         formState?.non_field_errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: formState.non_field_errors.join(" ") }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: usernameField?.label || "\u041B\u043E\u0433\u0438\u043D" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "username", type: "text", defaultValue: usernameField?.value || "", required: true })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: emailField?.label || "Email" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "email", type: "email", defaultValue: emailField?.value || "", required: true })
         ] }),
-        usernameField?.errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: usernameField.errors.join(" ") }) : null,
+        emailField?.errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: emailField.errors.join(" ") }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: passwordField?.label || "\u041F\u0430\u0440\u043E\u043B\u044C" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "password", type: "password", required: true })
@@ -22586,7 +22600,9 @@
   function RegisterPage() {
     const { bootstrap: bootstrap2 } = useApp();
     const formState = bootstrap2.page_payload.form;
-    const usernameField = formState?.fields.username;
+    const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+    const fullNameField = formState?.fields.full_name;
+    const emailField = formState?.fields.email;
     const passwordField = formState?.fields.password;
     const repeatField = formState?.fields.password_repeat;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "auth-page", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "auth-card", children: [
@@ -22595,12 +22611,18 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438 \u0442\u044B \u0441\u043C\u043E\u0436\u0435\u0448\u044C \u0441\u043E\u0437\u0434\u0430\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438 \u0443\u0447\u0430\u0441\u0442\u0432\u043E\u0432\u0430\u0442\u044C \u0432 \u0447\u0443\u0436\u0438\u0445 \u043A\u043E\u043C\u043D\u0430\u0442\u0430\u0445 \u0431\u0435\u0437 \u0432\u044B\u0431\u043E\u0440\u0430 \u0433\u043B\u043E\u0431\u0430\u043B\u044C\u043D\u043E\u0439 \u0440\u043E\u043B\u0438." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { method: "post", className: "auth-form", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "hidden", name: "csrfmiddlewaretoken", value: bootstrap2.csrf_token }),
+        nextPath ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "hidden", name: "next", value: nextPath }) : null,
         formState?.non_field_errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: formState.non_field_errors.join(" ") }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: usernameField?.label || "\u041B\u043E\u0433\u0438\u043D" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "username", type: "text", defaultValue: usernameField?.value || "", required: true })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: fullNameField?.label || "\u0424\u0418\u041E" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "full_name", type: "text", defaultValue: fullNameField?.value || "", required: true })
         ] }),
-        usernameField?.errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: usernameField.errors.join(" ") }) : null,
+        fullNameField?.errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: fullNameField.errors.join(" ") }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: emailField?.label || "Email" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "email", type: "email", defaultValue: emailField?.value || "", required: true })
+        ] }),
+        emailField?.errors?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: emailField.errors.join(" ") }) : null,
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: passwordField?.label || "\u041F\u0430\u0440\u043E\u043B\u044C" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { name: "password", type: "password", required: true })
@@ -22783,8 +22805,11 @@
     ] });
   }
   function ProfilePage() {
-    const { bootstrap: bootstrap2, authUser, api, addToast } = useApp();
+    const { bootstrap: bootstrap2, authUser, setAuthUser, api, addToast } = useApp();
     const [profile, setProfile] = (0, import_react.useState)(null);
+    const [fullName, setFullName] = (0, import_react.useState)("");
+    const [email, setEmail] = (0, import_react.useState)("");
+    const [saving, setSaving] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       async function loadProfile() {
         if (!authUser) {
@@ -22796,6 +22821,8 @@
             profileUserId === authUser.id ? "/api/v1/me/profile/" : `/api/v1/users/${profileUserId}/profile/`
           );
           setProfile(nextProfile);
+          setFullName(nextProfile.full_name || "");
+          setEmail(nextProfile.email || "");
         } catch (error) {
           addToast(getErrorMessage(error), "error");
         }
@@ -22826,6 +22853,38 @@
         ] }, item.label);
       });
     }
+    async function handleProfileSave(event) {
+      event.preventDefault();
+      if (!profile?.can_edit) {
+        return;
+      }
+      setSaving(true);
+      try {
+        const nextProfile = await api("/api/v1/me/profile/", {
+          method: "PATCH",
+          body: {
+            full_name: fullName.trim(),
+            email: email.trim().toLowerCase()
+          }
+        });
+        setProfile(nextProfile);
+        setFullName(nextProfile.full_name || "");
+        setEmail(nextProfile.email || "");
+        setAuthUser(
+          (current) => current ? {
+            ...current,
+            email: nextProfile.email,
+            full_name: nextProfile.full_name,
+            display_name: nextProfile.display_name
+          } : current
+        );
+        addToast("\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D.", "success");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setSaving(false);
+      }
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--profile", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
@@ -22853,34 +22912,152 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "wide-card wide-card--stack wide-card--profile", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435" }),
-          profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
-                "#",
-                profile.id,
-                " ",
-                profile.username
+          profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                  "#",
+                  profile.id,
+                  " ",
+                  profile.display_name
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Email" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.email })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u043D\u043E \u043A\u043E\u043C\u043D\u0430\u0442" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.created_rooms_count })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442 \u043A\u0430\u043A \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.joined_rooms_count })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u044F / \u0434\u043E\u0441\u0442\u0443\u043F\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.invitations_count })
               ] })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u043D\u043E \u043A\u043E\u043C\u043D\u0430\u0442" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.created_rooms_count })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442 \u043A\u0430\u043A \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044E" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.joined_rooms_count })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u044F / \u0434\u043E\u0441\u0442\u0443\u043F\u044B" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: profile.overview.invitations_count })
-            ] })
+            profile.can_edit ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "auth-form", onSubmit: handleProfileSave, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0424\u0418\u041E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: fullName, type: "text", required: true, onChange: (event) => setFullName(event.currentTarget.value) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Email" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: email, type: "email", required: true, onChange: (event) => setEmail(event.currentTarget.value) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", disabled: saving, children: saving ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C" })
+            ] }) : null
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "summary-stack empty-card", children: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column wide-card__column--activity", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: profile.activity }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F." }) })
         ] })
+      ] })
+    ] });
+  }
+  function RoomInvitePage() {
+    const { bootstrap: bootstrap2, authUser, api, addToast } = useApp();
+    const inviteToken = bootstrap2.page_payload.invite_token || "";
+    const [preview, setPreview] = (0, import_react.useState)(null);
+    const [loading, setLoading] = (0, import_react.useState)(true);
+    const [submitting, setSubmitting] = (0, import_react.useState)(false);
+    const nextPath = `${window.location.pathname}${window.location.search}`;
+    async function loadPreview() {
+      if (!inviteToken) {
+        addToast("Invite-\u0442\u043E\u043A\u0435\u043D \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u0432 URL.", "error");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const nextPreview = await api(`/api/v1/rooms/invite/${inviteToken}/`, {
+          allowAnonymous: true
+        });
+        setPreview(nextPreview);
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    (0, import_react.useEffect)(() => {
+      loadPreview();
+    }, [inviteToken, authUser?.id]);
+    async function handleRequestAccess() {
+      if (!inviteToken) {
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await api(`/api/v1/rooms/invite/${inviteToken}/request/`, {
+          method: "POST",
+          body: {}
+        });
+        addToast("\u0417\u0430\u044F\u0432\u043A\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430. \u0422\u0435\u043F\u0435\u0440\u044C \u0435\u0435 \u0434\u043E\u043B\u0436\u0435\u043D \u043F\u0440\u0438\u043D\u044F\u0442\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u0438\u043B\u0438 \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.", "success");
+        await loadPreview();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setSubmitting(false);
+      }
+    }
+    const accessStatus = preview?.actor?.access_status;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "page-topbar page-topbar--room", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "Invite" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: preview?.room.title || "\u041E\u0431\u0440\u0430\u0431\u0430\u0442\u044B\u0432\u0430\u0435\u043C invite-\u0441\u0441\u044B\u043B\u043A\u0443..." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: preview?.room.description || "\u041F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0435 \u0438 \u0442\u0435\u043A\u0443\u0449\u0435\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 \u0437\u0430\u044F\u0432\u043A\u0438." })
+      ] }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "wide-card wide-card--stack wide-card--profile", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "wide-card__column", children: loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0434\u0430\u043D\u043D\u044B\u0435 \u043F\u043E invite-\u0441\u0441\u044B\u043B\u043A\u0435." }) : preview ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+              "#",
+              preview.room.id
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: preview.room.dataset_label || "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u043B\u0430\u0434\u0435\u043B\u0435\u0446" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: preview.room.created_by_display_name })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: preview.room.has_password ? "\u0423 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0435\u0441\u0442\u044C \u043F\u0430\u0440\u043E\u043B\u044C" : "\u041F\u0430\u0440\u043E\u043B\u044C \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F" })
+          ] })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430." }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "wide-card__column", children: !authUser ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041D\u0443\u0436\u043D\u0430 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u0430\u0446\u0438\u044F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0427\u0442\u043E\u0431\u044B \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443, \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0438 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 \u0438\u043B\u0438 \u0441\u043E\u0437\u0434\u0430\u0439 \u0435\u0433\u043E." }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-actions", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/auth/login/?next=${encodeURIComponent(nextPath)}`, children: "\u0412\u043E\u0439\u0442\u0438" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/auth/register/?next=${encodeURIComponent(nextPath)}`, children: "\u0417\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C\u0441\u044F" })
+          ] })
+        ] }) : accessStatus === "owner" || accessStatus === "joined" || accessStatus === "invited" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u043E\u0441\u0442\u0443\u043F \u0443\u0436\u0435 \u0435\u0441\u0442\u044C" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: accessStatus === "owner" ? "\u0422\u044B \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." : accessStatus === "joined" ? "\u0422\u044B \u0443\u0436\u0435 \u0441\u043E\u0441\u0442\u043E\u0438\u0448\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435." : "\u0422\u044B \u0443\u0436\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443." }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "form-actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${preview?.room.id}/`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) })
+        ] }) : accessStatus === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0430 \u043E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0412\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u0438\u043B\u0438 \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0434\u043E\u043B\u0436\u043D\u044B \u043F\u0440\u0438\u043D\u044F\u0442\u044C \u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435." })
+        ] }) : accessStatus === "rejected" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041C\u043E\u0436\u043D\u043E \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043D\u043E\u0432\u044B\u0439 \u0437\u0430\u043F\u0440\u043E\u0441 \u043F\u043E \u044D\u0442\u043E\u0439 invite-\u0441\u0441\u044B\u043B\u043A\u0435." }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "form-actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", disabled: submitting, onClick: handleRequestAccess, children: submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u0437\u0430\u043D\u043E\u0432\u043E" }) })
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041F\u043E\u0441\u043B\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 \u0437\u0430\u044F\u0432\u043A\u0438 \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446 \u0438\u043B\u0438 \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0441\u043C\u043E\u0433\u0443\u0442 \u0432\u044B\u0434\u0430\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F." }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "form-actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", disabled: submitting, onClick: handleRequestAccess, children: submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443" }) })
+        ] }) })
       ] })
     ] });
   }
@@ -23342,7 +23519,6 @@
     const roomId = bootstrap2.room_id;
     const [dashboard, setDashboard] = (0, import_react.useState)(null);
     const [loading, setLoading] = (0, import_react.useState)(true);
-    const [inviteUserId, setInviteUserId] = (0, import_react.useState)("");
     const [annotatorSearch, setAnnotatorSearch] = (0, import_react.useState)("");
     const [reviewSearch, setReviewSearch] = (0, import_react.useState)("");
     const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = (0, import_react.useState)(null);
@@ -23350,6 +23526,8 @@
     const [reviewTasks, setReviewTasks] = (0, import_react.useState)([]);
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
+    const [inviteBusy, setInviteBusy] = (0, import_react.useState)(false);
+    const [joinRequestBusyId, setJoinRequestBusyId] = (0, import_react.useState)(null);
     async function refresh() {
       if (!roomId) {
         addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438\u0437 URL.", "error");
@@ -23381,7 +23559,7 @@
       if (!searchTerm) {
         return true;
       }
-      return [annotator.username, annotator.user_id, translateMembership(annotator.status), translateRole(annotator.role)].join(" ").toLowerCase().includes(searchTerm);
+      return [annotator.display_name, annotator.email, annotator.user_id, translateMembership(annotator.status), translateRole(annotator.role)].join(" ").toLowerCase().includes(searchTerm);
     });
     const activeAnnotator = (dashboard?.annotators || []).find((item) => item.user_id === selectedAnnotatorUserId) || null;
     (0, import_react.useEffect)(() => {
@@ -23426,26 +23604,53 @@
       }
       loadReviewDetail();
     }, [selectedReviewTaskId]);
-    async function handleInviteSubmit(event) {
-      event.preventDefault();
+    async function handleCopyInviteLink() {
+      if (!dashboard?.invite.url) {
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(dashboard.invite.url);
+        addToast("Invite-\u0441\u0441\u044B\u043B\u043A\u0430 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D\u0430.", "success");
+      } catch (error) {
+        addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C invite-\u0441\u0441\u044B\u043B\u043A\u0443. \u0421\u043A\u043E\u043F\u0438\u0440\u0443\u0439 \u0435\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E \u0438\u0437 \u043F\u043E\u043B\u044F.", "warning");
+      }
+    }
+    async function handleRegenerateInvite() {
       if (!roomId) {
         return;
       }
       clearToasts();
+      setInviteBusy(true);
       try {
-        const invitedId = Number(inviteUserId);
-        if (!Number.isInteger(invitedId) || invitedId <= 0) {
-          throw new Error("\u0423\u043A\u0430\u0436\u0438 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 ID \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F.");
-        }
-        await api(`/api/v1/rooms/${roomId}/invite/`, {
+        await api(`/api/v1/rooms/${roomId}/invite/regenerate/`, {
           method: "POST",
-          body: { annotator_id: invitedId }
+          body: {}
         });
-        setInviteUserId("");
-        addToast(`\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C #${invitedId} \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443.`, "success");
+        addToast("Invite-\u0441\u0441\u044B\u043B\u043A\u0430 \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0430. \u0421\u0442\u0430\u0440\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0443\u0435\u0442.", "success");
         await refresh();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
+      } finally {
+        setInviteBusy(false);
+      }
+    }
+    async function handleJoinRequestAction(joinRequestId, action) {
+      if (!roomId) {
+        return;
+      }
+      clearToasts();
+      setJoinRequestBusyId(joinRequestId);
+      try {
+        await api(`/api/v1/rooms/${roomId}/join-requests/${joinRequestId}/${action}/`, {
+          method: "POST",
+          body: {}
+        });
+        addToast(action === "approve" ? "\u0417\u0430\u044F\u0432\u043A\u0430 \u043F\u0440\u0438\u043D\u044F\u0442\u0430." : "\u0417\u0430\u044F\u0432\u043A\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0430.", "success");
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setJoinRequestBusyId(null);
       }
     }
     async function handleRoleSubmit() {
@@ -23605,15 +23810,51 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
             ] }) : null,
             dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044F" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "stack-form stack-form--compact", onSubmit: handleInviteSubmit, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430" }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "stack-form stack-form--compact", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: inviteUserId, type: "number", min: "1", placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 5", required: true, onChange: (event) => setInviteUserId(event.currentTarget.value) })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0441\u044B\u043B\u043A\u0430 \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: dashboard.invite.url, type: "text", readOnly: true })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: handleCopyInviteLink, children: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", disabled: inviteBusy, onClick: handleRegenerateInvite, children: inviteBusy ? "\u041E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u043C..." : "\u041F\u0435\u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C invite" })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0431\u0443\u0434\u0435\u0442 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438 \u0441\u043C\u043E\u0436\u0435\u0442 \u0437\u0430\u0439\u0442\u0438 \u0432 \u043D\u0435\u0435 \u043A\u0430\u043A \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C." })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E \u044D\u0442\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0441\u043C\u043E\u0436\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443. \u0421\u0442\u0430\u0440\u044B\u0439 invite \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u043F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438." })
+            ] }) : null,
+            dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0438 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435" }) }),
+              dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    joinRequest.email,
+                    " \xB7 ",
+                    translateMembership(joinRequest.status)
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "role-assignment-box__actions", children: joinRequest.status === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: "btn btn--secondary btn--compact",
+                      type: "button",
+                      disabled: joinRequestBusyId === joinRequest.id,
+                      onClick: () => handleJoinRequestAction(joinRequest.id, "approve"),
+                      children: "\u041F\u0440\u0438\u043D\u044F\u0442\u044C"
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: "btn btn--muted btn--compact",
+                      type: "button",
+                      disabled: joinRequestBusyId === joinRequest.id,
+                      onClick: () => handleJoinRequestAction(joinRequest.id, "reject"),
+                      children: "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C"
+                    }
+                  )
+                ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "panel-note", children: joinRequest.status === "approved" ? `\u041F\u0440\u0438\u043D\u044F\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` : `\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` }) })
+              ] }, joinRequest.id)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E invite-\u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043A\u0430 \u043D\u0438\u043A\u0442\u043E \u043D\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u043B \u0434\u043E\u0441\u0442\u0443\u043F." })
             ] }) : null
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-work", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
@@ -23639,7 +23880,7 @@
                 onClick: () => setSelectedAnnotatorUserId((current) => current === annotator.user_id ? null : annotator.user_id),
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: annotator.username }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: annotator.display_name }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
                       translateMembership(annotator.status),
                       " \xB7 ",
@@ -23669,7 +23910,7 @@
                     "#",
                     activeAnnotator.user_id,
                     " ",
-                    activeAnnotator.username
+                    activeAnnotator.display_name
                   ] })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
@@ -23786,7 +24027,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-comparison-column", children: reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-comparison-stack", children: reviewDetail.annotations.length ? reviewDetail.annotations.map((annotation) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "review-annotation-entry", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "review-annotation-entry__head", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: annotation.annotator_username || `#${annotation.annotator_id}` }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: annotation.annotator_display_name || `#${annotation.annotator_id}` }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
                   "\u0420\u0430\u0443\u043D\u0434 ",
                   annotation.round_number,

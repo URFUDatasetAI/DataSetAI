@@ -19,8 +19,12 @@
                     </div>
                 {% endif %}
                 <label class="field">
-                    <span>{{ form.username.label }}</span>
-                    {{ form.username }}
+                    <span>{{ form.full_name.label }}</span>
+                    {{ form.full_name }}
+                </label>
+                <label class="field">
+                    <span>{{ form.email.label }}</span>
+                    {{ form.email }}
                 </label>
                 <label class="field">
                     <span>{{ form.password.label }}</span>

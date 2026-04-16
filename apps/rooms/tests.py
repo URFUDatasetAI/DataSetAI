@@ -16,7 +16,7 @@ from apps.users.models import User
 class RoomListCreateViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username="owner", password="secret123")
+        self.user = User.objects.create_user(email="owner@example.com", full_name="Owner", password="secret123")
         self.client.force_authenticate(self.user)
 
     def tearDown(self):
@@ -53,7 +53,7 @@ class RoomListCreateViewTests(TestCase):
         self.assertEqual(task.input_payload["height"], 50)
 
     def test_multipart_request_with_single_annotator_id_creates_membership(self):
-        annotator = User.objects.create_user(username="annotator", password="secret123")
+        annotator = User.objects.create_user(email="annotator@example.com", full_name="Annotator", password="secret123")
 
         response = self.client.post(
             "/api/v1/rooms/",

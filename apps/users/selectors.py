@@ -19,7 +19,9 @@ def build_user_profile(*, user: User) -> dict:
     )
     return {
         "id": user.id,
-        "username": user.username,
+        "email": user.email,
+        "full_name": user.full_name,
+        "display_name": user.display_name,
         "overview": {
             "accessible_rooms_count": accessible_rooms_count,
             "created_rooms_count": created_rooms_count,

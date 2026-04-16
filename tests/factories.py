@@ -3,8 +3,12 @@ from apps.rooms.models import Room, RoomMembership
 from apps.users.models import User
 
 
-def make_user(*, username: str, role: str, email: str | None = None) -> User:
-    return User.objects.create(username=username, email=email or f"{username}@example.com", role=role)
+def make_user(*, username: str, email: str | None = None, full_name: str | None = None) -> User:
+    normalized_email = email or f"{username}@example.com"
+    return User.objects.create(
+        email=normalized_email,
+        full_name=full_name or username.replace("_", " ").title(),
+    )
 
 
 def make_room(

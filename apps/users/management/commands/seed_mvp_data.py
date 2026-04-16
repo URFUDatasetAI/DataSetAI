@@ -12,33 +12,29 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         customer, _ = User.objects.get_or_create(
-            username="customer_demo",
+            email="customer@example.com",
             defaults={
-                "email": "customer@example.com",
-                "role": User.Role.USER,
+                "full_name": "Customer Demo",
             },
         )
 
         annotator_1, _ = User.objects.get_or_create(
-            username="annotator_alice",
+            email="alice@example.com",
             defaults={
-                "email": "alice@example.com",
-                "role": User.Role.USER,
+                "full_name": "Alice Annotator",
             },
         )
         annotator_2, _ = User.objects.get_or_create(
-            username="annotator_bob",
+            email="bob@example.com",
             defaults={
-                "email": "bob@example.com",
-                "role": User.Role.USER,
+                "full_name": "Bob Annotator",
             },
         )
 
         admin_user, created_admin = User.objects.get_or_create(
-            username="admin",
+            email="admin@example.com",
             defaults={
-                "email": "admin@example.com",
-                "role": User.Role.USER,
+                "full_name": "Administrator",
                 "is_staff": True,
             },
         )
@@ -47,10 +43,9 @@ class Command(BaseCommand):
             admin_user.save(update_fields=["password"])
 
         simple_user, created_simple_user = User.objects.get_or_create(
-            username="user",
+            email="user@example.com",
             defaults={
-                "email": "user@example.com",
-                "role": User.Role.USER,
+                "full_name": "Simple User",
             },
         )
         if created_simple_user or not simple_user.check_password("user"):
@@ -111,10 +106,10 @@ class Command(BaseCommand):
             )
 
         self.stdout.write(self.style.SUCCESS("Seed data is ready."))
-        self.stdout.write(f"Customer id: {customer.id} ({customer.username})")
-        self.stdout.write(f"Annotator Alice id: {annotator_1.id} ({annotator_1.username})")
-        self.stdout.write(f"Annotator Bob id: {annotator_2.id} ({annotator_2.username})")
-        self.stdout.write(f"Auth customer: {admin_user.username} / admin")
-        self.stdout.write(f"Auth annotator: {simple_user.username} / user")
+        self.stdout.write(f"Customer id: {customer.id} ({customer.email})")
+        self.stdout.write(f"Annotator Alice id: {annotator_1.id} ({annotator_1.email})")
+        self.stdout.write(f"Annotator Bob id: {annotator_2.id} ({annotator_2.email})")
+        self.stdout.write(f"Auth customer: {admin_user.email} / admin")
+        self.stdout.write(f"Auth annotator: {simple_user.email} / user")
         self.stdout.write(f"Room id: {room.id} ({room.title})")
         self.stdout.write("Room password: demo123")

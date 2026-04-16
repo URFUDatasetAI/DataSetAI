@@ -2,7 +2,7 @@ import json
 
 from rest_framework import serializers
 
-from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
+from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
 from apps.rooms.services import get_supported_export_formats, validate_dataset_upload
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from common.exceptions import ConflictError
@@ -243,6 +243,9 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
     room_id = serializers.IntegerField(read_only=True)
     user_id = serializers.IntegerField(read_only=True)
     invited_by_id = serializers.IntegerField(read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_full_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_display_name = serializers.CharField(source="user.display_name", read_only=True)
 
     class Meta:
         model = RoomMembership
@@ -251,9 +254,39 @@ class RoomMembershipSerializer(serializers.ModelSerializer):
             "room_id",
             "user_id",
             "invited_by_id",
+            "user_email",
+            "user_full_name",
+            "user_display_name",
             "status",
             "role",
             "joined_at",
+            "created_at",
+            "updated_at",
+        )
+
+
+class RoomJoinRequestSerializer(serializers.ModelSerializer):
+    room_id = serializers.IntegerField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    reviewed_by_id = serializers.IntegerField(read_only=True)
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+    user_full_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_display_name = serializers.CharField(source="user.display_name", read_only=True)
+    reviewed_by_display_name = serializers.CharField(source="reviewed_by.display_name", read_only=True)
+
+    class Meta:
+        model = RoomJoinRequest
+        fields = (
+            "id",
+            "room_id",
+            "user_id",
+            "user_email",
+            "user_full_name",
+            "user_display_name",
+            "status",
+            "reviewed_by_id",
+            "reviewed_by_display_name",
+            "reviewed_at",
             "created_at",
             "updated_at",
         )
@@ -274,6 +307,10 @@ class RoomAccessSerializer(serializers.Serializer):
 
 class RoomJoinSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True)
+
+
+class RoomJoinRequestDecisionSerializer(serializers.Serializer):
+    pass
 
 
 class RoomPinSerializer(serializers.Serializer):

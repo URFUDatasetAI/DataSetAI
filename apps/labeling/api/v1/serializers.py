@@ -118,7 +118,7 @@ class AnnotationSerializer(serializers.ModelSerializer):
     task_id = serializers.IntegerField(read_only=True)
     annotator_id = serializers.IntegerField(read_only=True)
     assignment_id = serializers.IntegerField(read_only=True)
-    annotator_username = serializers.CharField(source="annotator.username", read_only=True)
+    annotator_display_name = serializers.CharField(source="annotator.display_name", read_only=True)
     round_number = serializers.IntegerField(source="assignment.round_number", read_only=True)
 
     class Meta:
@@ -128,7 +128,7 @@ class AnnotationSerializer(serializers.ModelSerializer):
             "task_id",
             "assignment_id",
             "annotator_id",
-            "annotator_username",
+            "annotator_display_name",
             "round_number",
             "result_payload",
             "submitted_at",

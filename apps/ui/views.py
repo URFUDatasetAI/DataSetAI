@@ -9,6 +9,7 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
 from django.templatetags.static import static
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -65,6 +66,9 @@ class UiContextMixin:
         form = context.get("form")
         if form is not None:
             payload["form"] = self._serialize_form_state(form)
+        invite_token = context.get("invite_token")
+        if invite_token is not None:
+            payload["invite_token"] = str(invite_token)
         return payload
 
     def get_ui_bootstrap(self, context):
@@ -134,12 +138,15 @@ class UiContextMixin:
         context["page_key"] = self.page_key
         context["room_id"] = kwargs.get("room_id")
         context["profile_user_id"] = kwargs.get("user_id")
+        context["invite_token"] = kwargs.get("invite_token")
         context["app_debug_mode"] = settings.APP_DEBUG_MODE
         context["page_title"] = self.page_title
         context["auth_user_data"] = (
             {
                 "id": self.request.user.id,
-                "username": self.request.user.username,
+                "email": self.request.user.email,
+                "full_name": self.request.user.full_name,
+                "display_name": self.request.user.display_name,
             }
             if self.request.user.is_authenticated
             else None
@@ -197,6 +204,12 @@ class RoomWorkView(LoginRequiredMixin, UiContextMixin, TemplateView):
     page_title = "DataSetAI | Работа в комнате"
 
 
+class RoomInviteLandingView(UiContextMixin, TemplateView):
+    active_page = "home"
+    page_key = "room-invite"
+    page_title = "DataSetAI | Invite в комнату"
+
+
 class AuthContextMixin(UiContextMixin):
     active_page = "auth"
 
@@ -217,6 +230,16 @@ class LoginPageView(AuthContextMixin, FormView):
         kwargs["request"] = self.request
         return kwargs
 
+    def get_success_url(self):
+        next_url = self.request.GET.get("next") or self.request.POST.get("next")
+        if next_url and url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts={self.request.get_host()},
+            require_https=self.request.is_secure(),
+        ):
+            return next_url
+        return super().get_success_url()
+
     def form_valid(self, form):
         login(self.request, form.get_user())
         return super().form_valid(form)
@@ -232,6 +255,16 @@ class RegisterPageView(AuthContextMixin, FormView):
         if request.user.is_authenticated:
             return redirect(self.get_success_url())
         return super().dispatch(request, *args, **kwargs)
+
+    def get_success_url(self):
+        next_url = self.request.GET.get("next") or self.request.POST.get("next")
+        if next_url and url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts={self.request.get_host()},
+            require_https=self.request.is_secure(),
+        ):
+            return next_url
+        return super().get_success_url()
 
     def form_valid(self, form):
         user = form.save()

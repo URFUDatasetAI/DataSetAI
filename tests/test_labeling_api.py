@@ -11,11 +11,11 @@ from tests.factories import invite_annotator, make_room, make_task, make_user
 
 class LabelingApiTests(APITestCase):
     def setUp(self):
-        self.customer = make_user(username="customer", role=User.Role.CUSTOMER)
-        self.annotator = make_user(username="annotator", role=User.Role.ANNOTATOR)
-        self.other_annotator = make_user(username="annotator2", role=User.Role.ANNOTATOR)
-        self.admin_user = make_user(username="roomadmin", role=User.Role.ANNOTATOR)
-        self.tester_user = make_user(username="roomtester", role=User.Role.ANNOTATOR)
+        self.customer = make_user(username="customer", full_name="Customer")
+        self.annotator = make_user(username="annotator", full_name="Annotator")
+        self.other_annotator = make_user(username="annotator2", full_name="Annotator 2")
+        self.admin_user = make_user(username="roomadmin", full_name="Room Admin")
+        self.tester_user = make_user(username="roomtester", full_name="Room Tester")
         self.room = make_room(customer=self.customer, title="Dataset room")
         invite_annotator(room=self.room, annotator=self.annotator, invited_by=self.customer, joined=True)
         invite_annotator(room=self.room, annotator=self.other_annotator, invited_by=self.customer)
