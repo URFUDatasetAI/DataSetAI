@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="{% versioned_static 'ui/app.css' %}">
     {{ ui_bootstrap|json_script:"ui-bootstrap-data" }}
 </head>
-<body>
+<body data-page="{{ page_key|default:'home' }}">
     <div id="app-root"></div>
     <script src="{% versioned_static 'ui/app.js' %}"></script>
 </body>

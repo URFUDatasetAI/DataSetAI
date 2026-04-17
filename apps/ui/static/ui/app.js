@@ -22101,6 +22101,40 @@
     }
     return "\u043D\u0435\u0434\u0435\u043B\u044C";
   }
+  function createDefaultGenericPayload() {
+    return {
+      label: "positive",
+      confidence: 0.95
+    };
+  }
+  function getWorkEditorScenario(task) {
+    if (!task) {
+      return {
+        key: "bbox-media",
+        emptyStageMessage: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u043F\u043E\u0434\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438.",
+        annotationsTitle: "\u041E\u0431\u044A\u0435\u043A\u0442\u044B \u043D\u0430 \u0441\u0446\u0435\u043D\u0435"
+      };
+    }
+    if (task.workflow_stage === "text_transcription") {
+      return {
+        key: "text-transcription",
+        emptyStageMessage: "\u0420\u0430\u043C\u043A\u0438 \u0444\u0438\u043A\u0441\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u0434\u0435\u0442\u0435\u043A\u0446\u0438\u0435\u0439. \u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0441\u0442 \u0434\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0439 \u043E\u0431\u043B\u0430\u0441\u0442\u0438 \u0432 \u043F\u0430\u043D\u0435\u043B\u0438 \u0441\u043F\u0440\u0430\u0432\u0430.",
+        annotationsTitle: "\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0435 \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
+      };
+    }
+    if (task.source_type === "image" || task.source_type === "video") {
+      return {
+        key: "bbox-media",
+        emptyStageMessage: task.source_type === "video" ? "\u041F\u043E\u0441\u0442\u0430\u0432\u044C \u0432\u0438\u0434\u0435\u043E \u043D\u0430 \u043F\u0430\u0443\u0437\u0443 \u0438 \u0440\u0430\u0431\u043E\u0442\u0430\u0439 \u043F\u043E \u043D\u0443\u0436\u043D\u043E\u043C\u0443 \u043A\u0430\u0434\u0440\u0443." : "\u0412\u044B\u0434\u0435\u043B\u044F\u0439 \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u043F\u0440\u044F\u043C\u043E \u043D\u0430 \u0441\u0446\u0435\u043D\u0435 \u0438 \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0439 \u0438\u043C \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 label.",
+        annotationsTitle: "\u0412\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u044B\u0435 \u043E\u0431\u043B\u0430\u0441\u0442\u0438"
+      };
+    }
+    return {
+      key: "json",
+      emptyStageMessage: "\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u0441\u0446\u0435\u043D\u0430 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 payload-editor \u0441\u043F\u0440\u0430\u0432\u0430.",
+      annotationsTitle: "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 payload-\u0430"
+    };
+  }
   function buildActivityMonthLabels(series) {
     const labels = [];
     let previousMonthKey = null;
@@ -22467,10 +22501,20 @@
       removeToast,
       api: (path, options) => apiRequest(path, authUser, options)
     };
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppContext.Provider, { value: contextValue, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "app-shell", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { id: "toast-region", className: "toast-region", "aria-live": "polite", "aria-relevant": "additions text", children: toasts.map((toast) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToastCard, { toast, onClose: () => removeToast(toast.id) }, toast.id)) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", { className: "page-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageRouter, {}) })
+    const isEditorPage = bootstrap.page === "room-work";
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AppContext.Provider, { value: contextValue, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `app-shell${isEditorPage ? " app-shell--editor" : ""}`, children: [
+      isEditorPage ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Header, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "div",
+        {
+          id: "toast-region",
+          className: `toast-region${isEditorPage ? " toast-region--editor" : ""}`,
+          "aria-live": "polite",
+          "aria-relevant": "additions text",
+          children: toasts.map((toast) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ToastCard, { toast, onClose: () => removeToast(toast.id) }, toast.id))
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", { className: isEditorPage ? "page-layout page-layout--editor" : "page-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PageRouter, {}) })
     ] }) });
   }
   function Header() {
@@ -24281,6 +24325,9 @@
     function getTask() {
       return options.getTask();
     }
+    function isTextTranscriptionTask() {
+      return getTask()?.workflow_stage === "text_transcription";
+    }
     function getLabelById(labelId) {
       return getLabels().find((label) => label.id === labelId) || null;
     }
@@ -24450,7 +24497,8 @@
           points: normalizePoints(annotation.points, getNaturalSize().width || 0, getNaturalSize().height || 0),
           frame: annotation.frame,
           attributes: annotation.attributes,
-          occluded: annotation.occluded
+          occluded: annotation.occluded,
+          ...isTextTranscriptionTask() ? { text: typeof annotation.text === "string" ? annotation.text : "" } : {}
         }))
       };
     }
@@ -24576,10 +24624,15 @@
       renderBoxes();
     }
     function updateSubmitState() {
+      const hasUnlabeledAnnotations = editor.annotations.some((annotation) => !annotation.label_id);
+      options.onStateChange?.({
+        annotationCount: editor.annotations.length,
+        hasUnlabeledAnnotations
+      });
       if (!options.submitBtn) {
         return;
       }
-      options.submitBtn.disabled = !getTask() || editor.annotations.some((annotation) => !annotation.label_id);
+      options.submitBtn.disabled = !getTask() || hasUnlabeledAnnotations;
     }
     function updateResultPreview() {
       const payload = buildPayload();
@@ -24589,8 +24642,8 @@
     }
     function setActiveLabel(labelId) {
       editor.activeLabelId = labelId;
-      const label = getLabelById(labelId);
-      options.activeLabelNote.textContent = label ? `\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439 label: ${label.name}. \u041D\u043E\u0432\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u044F \u043F\u043E\u043B\u0443\u0447\u0430\u0442 \u0435\u0433\u043E \u0441\u0440\u0430\u0437\u0443, \u0437\u0430\u0436\u0430\u0442\u0438\u0435 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u0435\u0442 \u043E\u0431\u043B\u0430\u0441\u0442\u044C, \u043D\u0438\u0436\u043D\u0438\u0439 \u043F\u0440\u0430\u0432\u044B\u0439 \u0443\u0433\u043E\u043B \u043C\u0435\u043D\u044F\u0435\u0442 \u0440\u0430\u0437\u043C\u0435\u0440, \u0430 \u043E\u0434\u0438\u043D\u043E\u0447\u043D\u044B\u0439 \u043A\u043B\u0438\u043A \u043C\u0435\u043D\u044F\u0435\u0442 \u0435\u0435 label \u043D\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439.` : "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0439 label \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D.";
+      options.activeLabelNote.textContent = "";
+      options.activeLabelNote.classList.add("hidden");
       options.labelPalette.querySelectorAll("[data-label-id]").forEach((button) => {
         button.classList.toggle("is-active", Number(button.dataset.labelId) === labelId);
       });
@@ -24603,13 +24656,26 @@
       render();
     }
     function updateClearButtonVisibility() {
-      options.clearBtn?.classList.toggle("hidden", !editor.annotations.length);
+      options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask());
     }
     function renderPalette() {
       const labels = getLabels();
-      options.activeLabelNote.classList.toggle("hidden", !labels.length);
+      options.activeLabelNote.classList.add("hidden");
+      options.activeLabelNote.textContent = "";
       if (!labels.length) {
         options.labelPalette.innerHTML = '<div class="empty-card">\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B.</div>';
+        setActiveLabel(null);
+        return;
+      }
+      if (isTextTranscriptionTask()) {
+        options.labelPalette.innerHTML = labels.map(
+          (label) => `
+            <div class="label-chip label-chip--static" style="--label-color: ${label.color}">
+              <i></i>
+              <span>${label.name}</span>
+            </div>
+          `
+        ).join("");
         setActiveLabel(null);
         return;
       }
@@ -24638,7 +24704,36 @@
     function renderAnnotationList() {
       if (!editor.annotations.length) {
         options.annotationList.className = "annotation-list empty-card";
-        options.annotationList.textContent = "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442.";
+        options.annotationList.textContent = isTextTranscriptionTask() ? "\u0414\u0435\u0442\u0435\u043A\u0446\u0438\u044F \u043F\u043E\u043A\u0430 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u043B\u0430 \u043D\u0438 \u043E\u0434\u043D\u043E\u0439 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0439 \u043E\u0431\u043B\u0430\u0441\u0442\u0438." : "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442.";
+        return;
+      }
+      if (isTextTranscriptionTask()) {
+        options.annotationList.className = "annotation-list annotation-list--transcription";
+        options.annotationList.innerHTML = editor.annotations.map((annotation, index) => {
+          const label = getLabelById(annotation.label_id);
+          return `
+            <div class="annotation-row annotation-row--transcription ${isVisibleOnCurrentFrame(annotation) ? "is-current" : ""}">
+              <div class="annotation-row__meta">
+                <strong>#${index + 1}</strong>
+                <span>${label ? label.name : "\u0411\u0435\u0437 \u043B\u0435\u0439\u0431\u043B\u0430"}</span>
+                <small>frame ${annotation.frame}</small>
+              </div>
+              <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
+              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0441\u0442 \u0434\u043B\u044F \u043E\u0431\u043B\u0430\u0441\u0442\u0438">${annotation.text || ""}</textarea>
+            </div>
+          `;
+        }).join("");
+        options.annotationList.querySelectorAll("[data-text-id]").forEach((textarea) => {
+          textarea.addEventListener("input", (event) => {
+            const target = event.currentTarget;
+            const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
+            if (!annotation) {
+              return;
+            }
+            annotation.text = target.value;
+            updateResultPreview();
+          });
+        });
         return;
       }
       options.annotationList.className = "annotation-list";
@@ -24703,11 +24798,17 @@
     function createBoxElement(annotation) {
       const element = document.createElement("button");
       element.type = "button";
-      element.className = "media-bbox";
+      element.className = `media-bbox${isTextTranscriptionTask() ? " media-bbox--readonly" : ""}`;
       element.innerHTML = `
       <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
+      if (isTextTranscriptionTask()) {
+        element.tabIndex = -1;
+        element.setAttribute("aria-disabled", "true");
+        editor.boxElements.set(annotation.local_id, element);
+        return element;
+      }
       element.addEventListener("pointerdown", (event) => {
         startDragging(event, annotation);
       });
@@ -24763,6 +24864,9 @@
       editor.draftStart = null;
     }
     function startDragging(event, annotation) {
+      if (isTextTranscriptionTask()) {
+        return;
+      }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
         return;
       }
@@ -24782,6 +24886,9 @@
       };
     }
     function startResizing(event, annotation) {
+      if (isTextTranscriptionTask()) {
+        return;
+      }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
         return;
       }
@@ -24801,6 +24908,9 @@
       };
     }
     function startDrawing(event) {
+      if (isTextTranscriptionTask()) {
+        return;
+      }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
         return;
       }
@@ -24984,6 +25094,9 @@
       overlay.removeEventListener("pointercancel", cancelPointerInteraction);
     }
     function handleClearAnnotations() {
+      if (isTextTranscriptionTask()) {
+        return;
+      }
       editor.annotations = [];
       render();
     }
@@ -25070,7 +25183,7 @@
       window.removeEventListener("blur", handleWindowBlur);
       editor.eventsAttached = false;
     }
-    function reset() {
+    function reset(placeholderText) {
       finishPanning();
       detachOverlayEvents(editor.overlayElement);
       editor.boxElements.forEach((element) => element.remove());
@@ -25091,7 +25204,7 @@
       options.mediaTool.classList.add("hidden");
       options.zoomToolbar?.classList.add("hidden");
       options.mediaStage.className = "media-stage empty-card";
-      options.mediaStage.textContent = "\u0424\u0430\u0439\u043B \u0437\u0430\u0434\u0430\u0447\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435 \u0432\u044B\u0431\u043E\u0440\u0430 \u0437\u0430\u0434\u0430\u043D\u0438\u044F.";
+      options.mediaStage.textContent = placeholderText || "\u0424\u0430\u0439\u043B \u0437\u0430\u0434\u0430\u0447\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435 \u0432\u044B\u0431\u043E\u0440\u0430 \u0437\u0430\u0434\u0430\u043D\u0438\u044F.";
       options.instructions.classList.add("hidden");
       options.instructions.textContent = "";
       options.activeLabelNote.classList.add("hidden");
@@ -25114,12 +25227,26 @@
       clearDraft();
       endPointerInteraction();
       options.mediaTool.classList.remove("hidden");
-      options.instructions.classList.remove("hidden");
-      options.activeLabelNote.classList.remove("hidden");
-      options.instructions.textContent = task.source_type === "video" ? "\u041F\u043E\u0441\u0442\u0430\u0432\u044C \u0432\u0438\u0434\u0435\u043E \u043D\u0430 \u043F\u0430\u0443\u0437\u0443 \u043D\u0430 \u043D\u0443\u0436\u043D\u043E\u043C \u043A\u0430\u0434\u0440\u0435, \u0437\u0430\u0436\u043C\u0438 \u043B\u0435\u0432\u0443\u044E \u043A\u043D\u043E\u043F\u043A\u0443 \u043C\u044B\u0448\u0438 \u0438 \u0432\u044B\u0434\u0435\u043B\u0438 \u043E\u0431\u043B\u0430\u0441\u0442\u044C. \u041D\u043E\u0432\u043E\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0441\u0440\u0430\u0437\u0443 \u043F\u043E\u043B\u0443\u0447\u0438\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 label. \u0417\u0430\u0436\u043C\u0438 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C, \u0447\u0442\u043E\u0431\u044B \u043F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u044C \u0435\u0435, \u043F\u043E\u0442\u044F\u043D\u0438 \u0437\u0430 \u043F\u0440\u0430\u0432\u044B\u0439 \u043D\u0438\u0436\u043D\u0438\u0439 \u0443\u0433\u043E\u043B, \u0447\u0442\u043E\u0431\u044B \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0440, \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438 \u0434\u0440\u0443\u0433\u043E\u0439 label \u0438 \u043A\u043B\u0438\u043A\u043D\u0438 \u043F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438 \u043E\u0434\u0438\u043D \u0440\u0430\u0437, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u043C\u0435\u043D\u044F\u0442\u044C label." : "\u0417\u0430\u0436\u043C\u0438 \u043B\u0435\u0432\u0443\u044E \u043A\u043D\u043E\u043F\u043A\u0443 \u043C\u044B\u0448\u0438 \u0438 \u0432\u044B\u0434\u0435\u043B\u0438 \u043E\u0431\u043B\u0430\u0441\u0442\u044C. \u041D\u043E\u0432\u043E\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u0438\u0435 \u0441\u0440\u0430\u0437\u0443 \u043F\u043E\u043B\u0443\u0447\u0438\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0439 label. \u0417\u0430\u0436\u043C\u0438 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C, \u0447\u0442\u043E\u0431\u044B \u043F\u0435\u0440\u0435\u043C\u0435\u0441\u0442\u0438\u0442\u044C \u0435\u0435, \u043F\u043E\u0442\u044F\u043D\u0438 \u0437\u0430 \u043F\u0440\u0430\u0432\u044B\u0439 \u043D\u0438\u0436\u043D\u0438\u0439 \u0443\u0433\u043E\u043B, \u0447\u0442\u043E\u0431\u044B \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0440, \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438 \u0434\u0440\u0443\u0433\u043E\u0439 label \u0438 \u043A\u043B\u0438\u043A\u043D\u0438 \u043F\u043E \u043E\u0431\u043B\u0430\u0441\u0442\u0438 \u043E\u0434\u0438\u043D \u0440\u0430\u0437, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u043C\u0435\u043D\u044F\u0442\u044C label.";
-      options.resultLabel.textContent = "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438";
+      options.instructions.classList.add("hidden");
+      options.instructions.textContent = "";
+      options.activeLabelNote.classList.add("hidden");
+      options.activeLabelNote.textContent = "";
+      options.resultLabel.textContent = isTextTranscriptionTask() ? "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 OCR-\u0442\u0440\u0430\u043D\u0441\u043A\u0440\u0438\u0431\u0430\u0446\u0438\u0438" : "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438";
       options.resultJson.readOnly = true;
-      editor.annotations = [];
+      editor.annotations = isTextTranscriptionTask() ? (task.input_payload?.detected_annotations || []).map((annotation, index) => ({
+        local_id: `detected-${task.id}-${index}`,
+        type: annotation?.type || "bbox",
+        label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
+        points: Array.isArray(annotation?.points) ? normalizePoints(
+          annotation.points.map((point) => Number(point) || 0),
+          Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
+          Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
+        ) : [0, 0, 0, 0],
+        frame: Number(annotation?.frame || 0),
+        attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
+        occluded: Boolean(annotation?.occluded),
+        text: typeof annotation?.text === "string" ? annotation.text : ""
+      })) : [];
       editor.zoomLevel = 1;
       editor.baseCanvasWidth = 0;
       editor.baseCanvasHeight = 0;
@@ -25187,7 +25314,6 @@
     const { bootstrap: bootstrap2, api, addToast, clearToasts } = useApp();
     const roomId = bootstrap2.room_id;
     const formRef = (0, import_react.useRef)(null);
-    const submitBtnRef = (0, import_react.useRef)(null);
     const mediaToolRef = (0, import_react.useRef)(null);
     const instructionsRef = (0, import_react.useRef)(null);
     const labelPaletteRef = (0, import_react.useRef)(null);
@@ -25207,20 +25333,28 @@
     const labelsRef = (0, import_react.useRef)([]);
     const [dashboard, setDashboard] = (0, import_react.useState)(null);
     const [currentTask, setCurrentTask] = (0, import_react.useState)(null);
-    const [payloadText, setPayloadText] = (0, import_react.useState)(
-      JSON.stringify(
-        {
-          label: "positive",
-          confidence: 0.95
-        },
-        null,
-        2
-      )
-    );
+    const [payloadText, setPayloadText] = (0, import_react.useState)(JSON.stringify(createDefaultGenericPayload(), null, 2));
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     const [loading, setLoading] = (0, import_react.useState)(true);
+    const [activeInspector, setActiveInspector] = (0, import_react.useState)(null);
+    const [editorState, setEditorState] = (0, import_react.useState)({
+      annotationCount: 0,
+      hasUnlabeledAnnotations: false
+    });
     currentTaskRef.current = currentTask;
     labelsRef.current = dashboard?.labels || [];
+    const scenario = getWorkEditorScenario(currentTask);
+    const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
+    const stagePlaceholderText = loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0438 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : currentTask ? scenario.emptyStageMessage : "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443.";
+    const submitDisabled = submitting || !currentTask || isMediaTask && editorState.hasUnlabeledAnnotations;
+    const roomTitle = dashboard?.room.title || (roomId ? `\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${roomId}` : "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430");
+    const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430";
+    const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
+    const totalTasks = dashboard?.overview.total_tasks ?? 0;
+    const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
+    function toggleInspector(nextInspector) {
+      setActiveInspector((current) => current === nextInspector ? null : nextInspector);
+    }
     (0, import_react.useEffect)(() => {
       if (!mediaToolRef.current || !instructionsRef.current || !labelPaletteRef.current || !activeLabelNoteRef.current || !mediaStageRef.current || !annotationListRef.current || !resultJsonRef.current || !resultLabelRef.current) {
         return;
@@ -25240,11 +25374,12 @@
         clearBtn: clearAnnotationsBtnRef.current,
         resultJson: resultJsonRef.current,
         resultLabel: resultLabelRef.current,
-        submitBtn: submitBtnRef.current,
+        submitBtn: null,
         getLabels: () => labelsRef.current,
         getTask: () => currentTaskRef.current,
         showToast: (message, type) => addToast(message, type || "info"),
-        onPayloadChange: (payload) => setPayloadText(JSON.stringify(payload, null, 2))
+        onPayloadChange: (payload) => setPayloadText(JSON.stringify(payload, null, 2)),
+        onStateChange: setEditorState
       });
       mediaEditorRef.current = controller;
       return () => {
@@ -25260,8 +25395,8 @@
         mediaEditorRef.current.loadTask(currentTask);
         return;
       }
-      mediaEditorRef.current.reset();
-    }, [currentTask]);
+      mediaEditorRef.current.reset(stagePlaceholderText);
+    }, [currentTask, stagePlaceholderText]);
     async function loadDashboard() {
       if (!roomId) {
         addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438\u0437 URL.", "error");
@@ -25297,16 +25432,7 @@
           return null;
         }
         if (!["image", "video"].includes(task.source_type)) {
-          setPayloadText(
-            JSON.stringify(
-              {
-                label: "positive",
-                confidence: 0.95
-              },
-              null,
-              2
-            )
-          );
+          setPayloadText(JSON.stringify(createDefaultGenericPayload(), null, 2));
         }
         return task;
       } catch (error) {
@@ -25364,85 +25490,76 @@
         setSubmitting(false);
       }
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "workspace-grid workspace-grid--single", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card panel-card--workscreen", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow hero-card__eyebrow", children: "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "action-strip", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--workscreen-back", href: `/rooms/${roomId}/`, children: "\u041D\u0430\u0437\u0430\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            className: `btn btn--primary btn--workscreen-submit ${currentTask ? "" : "hidden"}`,
-            type: "button",
-            disabled: submitting || !currentTask,
-            onClick: () => formRef.current?.requestSubmit(),
-            children: submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442"
-          }
-        )
-      ] }),
-      bootstrap2.app_debug_mode ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: currentTask ? "task-box" : "empty-card", children: currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
-          "\u0417\u0430\u0434\u0430\u0447\u0430 #",
-          currentTask.id
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          "\u0421\u0442\u0430\u0442\u0443\u0441: ",
-          translateTaskStatus(currentTask.status)
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          "\u0422\u0438\u043F: ",
-          translateSourceType(currentTask.source_type)
-        ] }),
-        currentTask.source_name ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          "\u0424\u0430\u0439\u043B: ",
-          currentTask.source_name
-        ] }) : null,
-        currentTask.input_payload?.width && currentTask.input_payload?.height ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-          "\u0420\u0430\u0437\u043C\u0435\u0440: ",
-          currentTask.input_payload.width,
-          " \xD7 ",
-          currentTask.input_payload.height
-        ] }) : null,
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "payload-preview", children: JSON.stringify(currentTask.input_payload, null, 2) })
-      ] }) : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u0430." }) : null,
-      loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u0441\u0440\u0435\u0434\u044B." }) : null,
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { ref: formRef, className: currentTask ? "stack-form" : "stack-form hidden", onSubmit: handleSubmit, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: "media-tool hidden", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: instructionsRef, className: "panel-note hidden" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: activeLabelNoteRef, className: "panel-note hidden" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: zoomToolbarRef, className: "media-tool__toolbar hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomOutBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "-" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "100%" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomInBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "+" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "media-tool__hint", children: "Ctrl + \u043A\u043E\u043B\u0435\u0441\u043E \u043C\u0435\u043D\u044F\u0435\u0442 \u043C\u0430\u0441\u0448\u0442\u0430\u0431, \u0430 Space + \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u0438\u043B\u0438 \u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043A\u043D\u043E\u043F\u043A\u0430 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u044E\u0442 \u0443\u0432\u0435\u043B\u0438\u0447\u0435\u043D\u043D\u043E\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435." })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-tool__layout", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: "\u0424\u0430\u0439\u043B \u0437\u0430\u0434\u0430\u0447\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438." }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-tool__sidebar", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: annotationListRef, className: "annotation-list empty-card", children: "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442." }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: clearAnnotationsBtnRef, className: "btn btn--muted hidden", type: "button", children: "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" })
-            ] })
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { ref: formRef, className: "room-editor", onSubmit: handleSubmit, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "room-editor__topbar", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__identity", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "room-editor__home-link", href: "/", "aria-label": "\u0412\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u043D\u0430 \u0441\u0430\u0439\u0442", children: "DS" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: roomId ? `/rooms/${roomId}/` : "/rooms/", children: "\u041D\u0430\u0437\u0430\u0434" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__summary", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: stageTitle }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: summaryMeta })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { ref: resultLabelRef, children: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "textarea",
-            {
-              ref: resultJsonRef,
-              rows: 10,
-              value: payloadText,
-              readOnly: Boolean(currentTask && ["image", "video"].includes(currentTask.source_type)),
-              onChange: (event) => setPayloadText(event.currentTarget.value)
-            }
-          )
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: submitBtnRef, className: "btn btn--primary hidden", type: "submit", disabled: submitting, children: "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__actions", children: [
+          totalTasks ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
+            completedTasks,
+            "/",
+            totalTasks
+          ] }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: `btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("annotations"), children: [
+            "\u041E\u0431\u043B\u0430\u0441\u0442\u0438",
+            editorState.annotationCount ? ` ${editorState.annotationCount}` : ""
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: `btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("payload"), children: "JSON" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : currentTask ? "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C" : "\u041D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__body", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "room-editor__stage", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__canvas-shell", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: zoomToolbarRef, className: "media-tool__toolbar media-tool__toolbar--floating hidden", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomOutBtnRef, className: "editor-zoom-btn editor-zoom-btn--step", type: "button", "aria-label": "\u0423\u043C\u0435\u043D\u044C\u0448\u0438\u0442\u044C \u043C\u0430\u0441\u0448\u0442\u0430\u0431", children: "-25" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "editor-zoom-btn editor-zoom-btn--value", type: "button", children: "100%" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomInBtnRef, className: "editor-zoom-btn editor-zoom-btn--step", type: "button", "aria-label": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0442\u044C \u043C\u0430\u0441\u0448\u0442\u0430\u0431", children: "+25" })
+          ] }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: stagePlaceholderText }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: "editor-toolbar hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: instructionsRef, className: "hidden" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list editor-label-palette" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: activeLabelNoteRef, className: "hidden" })
+          ] })
+        ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: `room-editor__inspector ${activeInspector ? "is-open" : ""}`, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: activeInspector === "annotations" ? "editor-panel" : "editor-panel hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-panel__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-panel__title", children: [
+                scenario.annotationsTitle,
+                editorState.annotationCount ? ` (${editorState.annotationCount})` : ""
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-panel__actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: clearAnnotationsBtnRef, className: "btn btn--muted btn--compact hidden", type: "button", children: "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C" }) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: annotationListRef, className: "annotation-list empty-card", children: "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442." })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: activeInspector === "payload" ? "editor-panel" : "editor-panel hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-panel__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field editor-field editor-field--payload", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { ref: resultLabelRef, children: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "textarea",
+                {
+                  ref: resultJsonRef,
+                  rows: 16,
+                  value: payloadText,
+                  readOnly: Boolean(currentTask && isMediaTask),
+                  onChange: (event) => setPayloadText(event.currentTarget.value)
+                }
+              )
+            ] }),
+            bootstrap2.app_debug_mode && currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "payload-preview room-editor__debug", children: JSON.stringify(currentTask.input_payload, null, 2) }) : null
+          ] })
+        ] })
       ] })
-    ] }) }) });
+    ] });
   }
   (0, import_client.createRoot)(document.getElementById("app-root")).render(/* @__PURE__ */ (0, import_jsx_runtime.jsx)(App, {}));
 })();

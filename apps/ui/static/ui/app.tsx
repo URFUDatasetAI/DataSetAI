@@ -767,6 +767,54 @@ function formatWeeksLabel(count: number) {
   return "недель";
 }
 
+function createDefaultGenericPayload() {
+  return {
+    label: "positive",
+    confidence: 0.95,
+  };
+}
+
+type WorkEditorScenario = {
+  key: "bbox-media" | "text-transcription" | "json";
+  emptyStageMessage: string;
+  annotationsTitle: string;
+};
+
+function getWorkEditorScenario(task: TaskItem | null): WorkEditorScenario {
+  if (!task) {
+    return {
+      key: "bbox-media",
+      emptyStageMessage: "Следующая задача подгрузится автоматически.",
+      annotationsTitle: "Объекты на сцене",
+    };
+  }
+
+  if (task.workflow_stage === "text_transcription") {
+    return {
+      key: "text-transcription",
+      emptyStageMessage: "Рамки фиксируются детекцией. Введи текст для каждой области в панели справа.",
+      annotationsTitle: "Текстовые области",
+    };
+  }
+
+  if (task.source_type === "image" || task.source_type === "video") {
+    return {
+      key: "bbox-media",
+      emptyStageMessage:
+        task.source_type === "video"
+          ? "Поставь видео на паузу и работай по нужному кадру."
+          : "Выделяй объекты прямо на сцене и назначай им активный label.",
+      annotationsTitle: "Выделенные области",
+    };
+  }
+
+  return {
+    key: "json",
+    emptyStageMessage: "Для этой задачи визуальная сцена не требуется. Используй payload-editor справа.",
+    annotationsTitle: "Содержимое payload-а",
+  };
+}
+
 function buildActivityMonthLabels(series: ActivitySeriesItem[]) {
   const labels: Array<{ label: string; weekIndex: number }> = [];
   let previousMonthKey: string | null = null;
@@ -1223,17 +1271,23 @@ function App() {
     removeToast,
     api: (path, options) => apiRequest(path, authUser, options),
   };
+  const isEditorPage = bootstrap.page === "room-work";
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="app-shell">
-        <Header />
-        <div id="toast-region" className="toast-region" aria-live="polite" aria-relevant="additions text">
+      <div className={`app-shell${isEditorPage ? " app-shell--editor" : ""}`}>
+        {isEditorPage ? null : <Header />}
+        <div
+          id="toast-region"
+          className={`toast-region${isEditorPage ? " toast-region--editor" : ""}`}
+          aria-live="polite"
+          aria-relevant="additions text"
+        >
           {toasts.map((toast) => (
             <ToastCard key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
           ))}
         </div>
-        <main className="page-layout">
+        <main className={isEditorPage ? "page-layout page-layout--editor" : "page-layout"}>
           <PageRouter />
         </main>
       </div>
@@ -3407,7 +3461,7 @@ function RoomDetailPage() {
 }
 
 type MediaEditorController = {
-  reset: () => void;
+  reset: (placeholderText?: string) => void;
   loadTask: (task: TaskItem | null) => void;
   hasUnlabeledAnnotations: () => boolean;
   getPayload: () => Record<string, any>;
@@ -3434,6 +3488,7 @@ function createMediaAnnotationEditor(options: {
   getTask: () => TaskItem | null;
   showToast: (message: string, type?: ToastType) => void;
   onPayloadChange: (payload: Record<string, any>) => void;
+  onStateChange?: (state: { annotationCount: number; hasUnlabeledAnnotations: boolean }) => void;
 }): MediaEditorController {
   const editor = {
     annotations: [] as any[],
@@ -3467,6 +3522,10 @@ function createMediaAnnotationEditor(options: {
 
   function getTask() {
     return options.getTask();
+  }
+
+  function isTextTranscriptionTask() {
+    return getTask()?.workflow_stage === "text_transcription";
   }
 
   function getLabelById(labelId: number | null) {
@@ -3668,6 +3727,7 @@ function createMediaAnnotationEditor(options: {
           frame: annotation.frame,
           attributes: annotation.attributes,
           occluded: annotation.occluded,
+          ...(isTextTranscriptionTask() ? { text: typeof annotation.text === "string" ? annotation.text : "" } : {}),
         })),
     };
   }
@@ -3819,10 +3879,16 @@ function createMediaAnnotationEditor(options: {
   }
 
   function updateSubmitState() {
+    const hasUnlabeledAnnotations = editor.annotations.some((annotation) => !annotation.label_id);
+    options.onStateChange?.({
+      annotationCount: editor.annotations.length,
+      hasUnlabeledAnnotations,
+    });
+
     if (!options.submitBtn) {
       return;
     }
-    options.submitBtn.disabled = !getTask() || editor.annotations.some((annotation) => !annotation.label_id);
+    options.submitBtn.disabled = !getTask() || hasUnlabeledAnnotations;
   }
 
   function updateResultPreview() {
@@ -3834,10 +3900,8 @@ function createMediaAnnotationEditor(options: {
 
   function setActiveLabel(labelId: number | null) {
     editor.activeLabelId = labelId;
-    const label = getLabelById(labelId);
-    options.activeLabelNote.textContent = label
-      ? `Активный label: ${label.name}. Новые выделения получат его сразу, зажатие перемещает область, нижний правый угол меняет размер, а одиночный клик меняет ее label на активный.`
-      : "Активный label пока не выбран.";
+    options.activeLabelNote.textContent = "";
+    options.activeLabelNote.classList.add("hidden");
 
     options.labelPalette.querySelectorAll<HTMLButtonElement>("[data-label-id]").forEach((button) => {
       button.classList.toggle("is-active", Number(button.dataset.labelId) === labelId);
@@ -3854,14 +3918,30 @@ function createMediaAnnotationEditor(options: {
   }
 
   function updateClearButtonVisibility() {
-    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length);
+    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask());
   }
 
   function renderPalette() {
     const labels = getLabels();
-    options.activeLabelNote.classList.toggle("hidden", !labels.length);
+    options.activeLabelNote.classList.add("hidden");
+    options.activeLabelNote.textContent = "";
     if (!labels.length) {
       options.labelPalette.innerHTML = '<div class="empty-card">Лейблы для этой комнаты не заданы.</div>';
+      setActiveLabel(null);
+      return;
+    }
+
+    if (isTextTranscriptionTask()) {
+      options.labelPalette.innerHTML = labels
+        .map(
+          (label) => `
+            <div class="label-chip label-chip--static" style="--label-color: ${label.color}">
+              <i></i>
+              <span>${label.name}</span>
+            </div>
+          `
+        )
+        .join("");
       setActiveLabel(null);
       return;
     }
@@ -3896,7 +3976,42 @@ function createMediaAnnotationEditor(options: {
   function renderAnnotationList() {
     if (!editor.annotations.length) {
       options.annotationList.className = "annotation-list empty-card";
-      options.annotationList.textContent = "Разметка пока отсутствует.";
+      options.annotationList.textContent = isTextTranscriptionTask()
+        ? "Детекция пока не передала ни одной текстовой области."
+        : "Разметка пока отсутствует.";
+      return;
+    }
+
+    if (isTextTranscriptionTask()) {
+      options.annotationList.className = "annotation-list annotation-list--transcription";
+      options.annotationList.innerHTML = editor.annotations
+        .map((annotation, index) => {
+          const label = getLabelById(annotation.label_id);
+          return `
+            <div class="annotation-row annotation-row--transcription ${isVisibleOnCurrentFrame(annotation) ? "is-current" : ""}">
+              <div class="annotation-row__meta">
+                <strong>#${index + 1}</strong>
+                <span>${label ? label.name : "Без лейбла"}</span>
+                <small>frame ${annotation.frame}</small>
+              </div>
+              <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
+              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="Введи текст для области">${annotation.text || ""}</textarea>
+            </div>
+          `;
+        })
+        .join("");
+
+      options.annotationList.querySelectorAll<HTMLTextAreaElement>("[data-text-id]").forEach((textarea) => {
+        textarea.addEventListener("input", (event) => {
+          const target = event.currentTarget as HTMLTextAreaElement;
+          const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
+          if (!annotation) {
+            return;
+          }
+          annotation.text = target.value;
+          updateResultPreview();
+        });
+      });
       return;
     }
 
@@ -3971,11 +4086,18 @@ function createMediaAnnotationEditor(options: {
   function createBoxElement(annotation: any) {
     const element = document.createElement("button");
     element.type = "button";
-    element.className = "media-bbox";
+    element.className = `media-bbox${isTextTranscriptionTask() ? " media-bbox--readonly" : ""}`;
     element.innerHTML = `
       <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
+    if (isTextTranscriptionTask()) {
+      element.tabIndex = -1;
+      element.setAttribute("aria-disabled", "true");
+      editor.boxElements.set(annotation.local_id, element);
+      return element;
+    }
+
     element.addEventListener("pointerdown", (event) => {
       startDragging(event, annotation);
     });
@@ -4039,6 +4161,9 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startDragging(event: PointerEvent, annotation: any) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4061,6 +4186,9 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startResizing(event: PointerEvent, annotation: any) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4083,6 +4211,9 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startDrawing(event: PointerEvent) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4298,6 +4429,9 @@ function createMediaAnnotationEditor(options: {
   }
 
   function handleClearAnnotations() {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     editor.annotations = [];
     render();
   }
@@ -4399,7 +4533,7 @@ function createMediaAnnotationEditor(options: {
     editor.eventsAttached = false;
   }
 
-  function reset() {
+  function reset(placeholderText?: string) {
     finishPanning();
     detachOverlayEvents(editor.overlayElement);
     editor.boxElements.forEach((element) => element.remove());
@@ -4420,7 +4554,7 @@ function createMediaAnnotationEditor(options: {
     options.mediaTool.classList.add("hidden");
     options.zoomToolbar?.classList.add("hidden");
     options.mediaStage.className = "media-stage empty-card";
-    options.mediaStage.textContent = "Файл задачи загрузится после выбора задания.";
+    options.mediaStage.textContent = placeholderText || "Файл задачи загрузится после выбора задания.";
     options.instructions.classList.add("hidden");
     options.instructions.textContent = "";
     options.activeLabelNote.classList.add("hidden");
@@ -4445,15 +4579,30 @@ function createMediaAnnotationEditor(options: {
     clearDraft();
     endPointerInteraction();
     options.mediaTool.classList.remove("hidden");
-    options.instructions.classList.remove("hidden");
-    options.activeLabelNote.classList.remove("hidden");
-    options.instructions.textContent =
-      task.source_type === "video"
-        ? "Поставь видео на паузу на нужном кадре, зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label."
-        : "Зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label.";
-    options.resultLabel.textContent = "Результат bbox-разметки";
+    options.instructions.classList.add("hidden");
+    options.instructions.textContent = "";
+    options.activeLabelNote.classList.add("hidden");
+    options.activeLabelNote.textContent = "";
+    options.resultLabel.textContent = isTextTranscriptionTask() ? "Результат OCR-транскрибации" : "Результат bbox-разметки";
     options.resultJson.readOnly = true;
-    editor.annotations = [];
+    editor.annotations = isTextTranscriptionTask()
+      ? (task.input_payload?.detected_annotations || []).map((annotation: any, index: number) => ({
+          local_id: `detected-${task.id}-${index}`,
+          type: annotation?.type || "bbox",
+          label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
+          points: Array.isArray(annotation?.points)
+            ? normalizePoints(
+                annotation.points.map((point: any) => Number(point) || 0),
+                Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
+                Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
+              )
+            : [0, 0, 0, 0],
+          frame: Number(annotation?.frame || 0),
+          attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
+          occluded: Boolean(annotation?.occluded),
+          text: typeof annotation?.text === "string" ? annotation.text : "",
+        }))
+      : [];
     editor.zoomLevel = 1;
     editor.baseCanvasWidth = 0;
     editor.baseCanvasHeight = 0;
@@ -4529,7 +4678,6 @@ function RoomWorkPage() {
   const { bootstrap, api, addToast, clearToasts } = useApp();
   const roomId = bootstrap.room_id;
   const formRef = useRef<HTMLFormElement | null>(null);
-  const submitBtnRef = useRef<HTMLButtonElement | null>(null);
   const mediaToolRef = useRef<HTMLDivElement | null>(null);
   const instructionsRef = useRef<HTMLDivElement | null>(null);
   const labelPaletteRef = useRef<HTMLDivElement | null>(null);
@@ -4550,23 +4698,40 @@ function RoomWorkPage() {
 
   const [dashboard, setDashboard] = useState<RoomDashboard | null>(null);
   const [currentTask, setCurrentTask] = useState<TaskItem | null>(null);
-  const [payloadText, setPayloadText] = useState(
-    JSON.stringify(
-      {
-        label: "positive",
-        confidence: 0.95,
-      },
-      null,
-      2
-    )
-  );
+  const [payloadText, setPayloadText] = useState(JSON.stringify(createDefaultGenericPayload(), null, 2));
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeInspector, setActiveInspector] = useState<"annotations" | "payload" | null>(null);
+  const [editorState, setEditorState] = useState({
+    annotationCount: 0,
+    hasUnlabeledAnnotations: false,
+  });
 
   // The editor callbacks outlive individual renders, so refs expose the latest
   // task and labels without recreating the imperative editor on every update.
   currentTaskRef.current = currentTask;
   labelsRef.current = dashboard?.labels || [];
+  const scenario = getWorkEditorScenario(currentTask);
+  const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
+  const stagePlaceholderText = loading
+    ? "Загружаем редактор и следующую задачу."
+    : currentTask
+      ? scenario.emptyStageMessage
+      : "Доступных задач больше нет. Можно вернуться в комнату или позже запросить новую задачу.";
+  const submitDisabled = submitting || !currentTask || (isMediaTask && editorState.hasUnlabeledAnnotations);
+  const roomTitle = dashboard?.room.title || (roomId ? `Комната #${roomId}` : "Рабочая среда");
+  const stageTitle = currentTask
+    ? currentTask.source_name || `Задача #${currentTask.id}`
+    : loading
+      ? "Загружаем рабочую область"
+      : "Очередь задач пуста";
+  const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
+  const totalTasks = dashboard?.overview.total_tasks ?? 0;
+  const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
+
+  function toggleInspector(nextInspector: "annotations" | "payload") {
+    setActiveInspector((current) => (current === nextInspector ? null : nextInspector));
+  }
 
   useEffect(() => {
     if (
@@ -4597,11 +4762,12 @@ function RoomWorkPage() {
       clearBtn: clearAnnotationsBtnRef.current,
       resultJson: resultJsonRef.current,
       resultLabel: resultLabelRef.current,
-      submitBtn: submitBtnRef.current,
+      submitBtn: null,
       getLabels: () => labelsRef.current,
       getTask: () => currentTaskRef.current,
       showToast: (message, type) => addToast(message, type || "info"),
       onPayloadChange: (payload) => setPayloadText(JSON.stringify(payload, null, 2)),
+      onStateChange: setEditorState,
     });
     mediaEditorRef.current = controller;
 
@@ -4621,8 +4787,8 @@ function RoomWorkPage() {
       return;
     }
 
-    mediaEditorRef.current.reset();
-  }, [currentTask]);
+    mediaEditorRef.current.reset(stagePlaceholderText);
+  }, [currentTask, stagePlaceholderText]);
 
   async function loadDashboard() {
     if (!roomId) {
@@ -4665,16 +4831,7 @@ function RoomWorkPage() {
       }
 
       if (!["image", "video"].includes(task.source_type)) {
-        setPayloadText(
-          JSON.stringify(
-            {
-              label: "positive",
-              confidence: 0.95,
-            },
-            null,
-            2
-          )
-        );
+        setPayloadText(JSON.stringify(createDefaultGenericPayload(), null, 2));
       }
 
       return task;
@@ -4741,99 +4898,104 @@ function RoomWorkPage() {
   }
 
   return (
-    <section className="workspace-grid workspace-grid--single">
-      <div className="workspace-grid__main">
-        <div className="panel-card panel-card--workscreen">
-          <span className="eyebrow hero-card__eyebrow">Рабочая среда</span>
-          <div className="action-strip">
-            <a className="btn btn--muted btn--workscreen-back" href={`/rooms/${roomId}/`}>
-              Назад в комнату
-            </a>
-            <button
-              className={`btn btn--primary btn--workscreen-submit ${currentTask ? "" : "hidden"}`}
-              type="button"
-              disabled={submitting || !currentTask}
-              onClick={() => formRef.current?.requestSubmit()}
-            >
-              {submitting ? "Отправляем..." : "Отправить результат"}
-            </button>
+    <form ref={formRef} className="room-editor" onSubmit={handleSubmit}>
+      <header className="room-editor__topbar">
+        <div className="room-editor__identity">
+          <a className="room-editor__home-link" href="/" aria-label="Вернуться на сайт">
+            DS
+          </a>
+          <a className="btn btn--muted btn--compact" href={roomId ? `/rooms/${roomId}/` : "/rooms/"}>
+            Назад
+          </a>
+          <div className="room-editor__summary">
+            <strong>{stageTitle}</strong>
+            <small>{summaryMeta}</small>
           </div>
+        </div>
 
-          {bootstrap.app_debug_mode ? (
-            <div className={currentTask ? "task-box" : "empty-card"}>
-              {currentTask ? (
-                <>
-                  <strong>Задача #{currentTask.id}</strong>
-                  <div>Статус: {translateTaskStatus(currentTask.status)}</div>
-                  <div>Тип: {translateSourceType(currentTask.source_type)}</div>
-                  {currentTask.source_name ? <div>Файл: {currentTask.source_name}</div> : null}
-                  {currentTask.input_payload?.width && currentTask.input_payload?.height ? (
-                    <div>
-                      Размер: {currentTask.input_payload.width} × {currentTask.input_payload.height}
-                    </div>
-                  ) : null}
-                  <pre className="payload-preview">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
-                </>
-              ) : (
-                "Задача пока не выбрана."
-              )}
-            </div>
-          ) : null}
+        <div className="room-editor__actions">
+          {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
+          <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
+            Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
+          </button>
+          <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
+            JSON
+          </button>
+          <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+            {submitting ? "Отправляем..." : currentTask ? "Отправить" : "Нет задачи"}
+          </button>
+        </div>
+      </header>
 
-          {loading ? <div className="empty-card">Загрузка рабочей среды.</div> : null}
-
-          <form ref={formRef} className={currentTask ? "stack-form" : "stack-form hidden"} onSubmit={handleSubmit}>
-            <div ref={mediaToolRef} className="media-tool hidden">
-              <div ref={instructionsRef} className="panel-note hidden"></div>
-              <div ref={labelPaletteRef} className="label-chip-list"></div>
-              <div ref={activeLabelNoteRef} className="panel-note hidden"></div>
-              <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
-                <div className="media-zoom">
-                  <button ref={zoomOutBtnRef} className="btn btn--muted btn--compact" type="button">
-                    -
-                  </button>
-                  <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
-                  <button ref={zoomResetBtnRef} className="btn btn--muted btn--compact" type="button">
-                    100%
-                  </button>
-                  <button ref={zoomInBtnRef} className="btn btn--muted btn--compact" type="button">
-                    +
-                  </button>
-                </div>
-                <div className="media-tool__hint">Ctrl + колесо меняет масштаб, а Space + перетаскивание или средняя кнопка перемещают увеличенное изображение.</div>
-              </div>
-              <div className="media-tool__layout">
-                <div ref={mediaStageRef} className="media-stage empty-card">
-                  Файл задачи загрузится автоматически.
-                </div>
-                <div className="media-tool__sidebar">
-                  <div ref={annotationListRef} className="annotation-list empty-card">
-                    Разметка пока отсутствует.
-                  </div>
-                  <button ref={clearAnnotationsBtnRef} className="btn btn--muted hidden" type="button">
-                    Очистить разметку
-                  </button>
-                </div>
+      <div className="room-editor__body">
+        <section className="room-editor__stage">
+          <div className="room-editor__canvas-shell">
+            <div ref={zoomToolbarRef} className="media-tool__toolbar media-tool__toolbar--floating hidden">
+              <div className="media-zoom">
+                <button ref={zoomOutBtnRef} className="editor-zoom-btn editor-zoom-btn--step" type="button" aria-label="Уменьшить масштаб">
+                  -25
+                </button>
+                <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
+                <button ref={zoomResetBtnRef} className="editor-zoom-btn editor-zoom-btn--value" type="button">
+                  100%
+                </button>
+                <button ref={zoomInBtnRef} className="editor-zoom-btn editor-zoom-btn--step" type="button" aria-label="Увеличить масштаб">
+                  +25
+                </button>
               </div>
             </div>
 
-            <label className="field">
+            <div ref={mediaStageRef} className="media-stage empty-card">
+              {stagePlaceholderText}
+            </div>
+
+            <div ref={mediaToolRef} className="editor-toolbar hidden">
+              <div ref={instructionsRef} className="hidden"></div>
+              <div ref={labelPaletteRef} className="label-chip-list editor-label-palette"></div>
+              <div ref={activeLabelNoteRef} className="hidden"></div>
+            </div>
+          </div>
+        </section>
+
+        <aside className={`room-editor__inspector ${activeInspector ? "is-open" : ""}`}>
+          <section className={activeInspector === "annotations" ? "editor-panel" : "editor-panel hidden"}>
+            <div className="editor-panel__head">
+              <span className="editor-panel__title">
+                {scenario.annotationsTitle}
+                {editorState.annotationCount ? ` (${editorState.annotationCount})` : ""}
+              </span>
+              <div className="editor-panel__actions">
+                <button ref={clearAnnotationsBtnRef} className="btn btn--muted btn--compact hidden" type="button">
+                  Очистить
+                </button>
+              </div>
+            </div>
+            <div ref={annotationListRef} className="annotation-list empty-card">
+              Разметка пока отсутствует.
+            </div>
+          </section>
+
+          <section className={activeInspector === "payload" ? "editor-panel" : "editor-panel hidden"}>
+            <div className="editor-panel__head">
+              <span className="editor-panel__title">Результат</span>
+            </div>
+            <label className="field editor-field editor-field--payload">
               <span ref={resultLabelRef}>Результат разметки</span>
               <textarea
                 ref={resultJsonRef}
-                rows={10}
+                rows={16}
                 value={payloadText}
-                readOnly={Boolean(currentTask && ["image", "video"].includes(currentTask.source_type))}
+                readOnly={Boolean(currentTask && isMediaTask)}
                 onChange={(event) => setPayloadText(event.currentTarget.value)}
               ></textarea>
             </label>
-            <button ref={submitBtnRef} className="btn btn--primary hidden" type="submit" disabled={submitting}>
-              Отправить результат
-            </button>
-          </form>
-        </div>
+            {bootstrap.app_debug_mode && currentTask ? (
+              <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
+            ) : null}
+          </section>
+        </aside>
       </div>
-    </section>
+    </form>
   );
 }
 

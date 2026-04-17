@@ -18,6 +18,7 @@
 - Удерживать в рабочем состоянии MVP командной разметки без регрессий в room lifecycle: создание, редактирование, invite links, join requests, pinning, роли и вход в комнату.
 - Сохранять надёжность пайплайна разметки: выдача задач, submit, cross-validation, review/reject и экспорт готовых данных.
 - Поддерживать image/video и detect+text сценарии как основные, а не второстепенные кейсы.
+- Развивать `room-work` как отдельный fullscreen editor shell, где сцена, инструменты и отправка результата доступны без прокрутки всей страницы.
 - Не ломать текущую Django + React bootstrap-архитектуру при развитии UI.
 
 ## Durable Priorities
@@ -26,6 +27,7 @@
 - Конкурентная безопасность назначения и отправки задач обязательна: изменения не должны создавать двойные назначения, гонки раундов или потерю аннотаций.
 - Room/access workflow должен оставаться предсказуемым: invite links, join requests, password access, роли и visibility не должны деградировать.
 - Media и OCR-сценарии считаются first-class: import, review, progress и export для image/video и detect+text нельзя рассматривать как edge cases.
+- Производительность editor UX важна сама по себе: pointer-driven взаимодействия в `room-work` должны оставаться максимально прямыми, без ощутимого отставания курсора и лишних React re-render на hot path.
 - Архитектурный split Django/React нужно сохранять: Django отвечает за routing, auth, bootstrap и API, React - за экран и клиентскую интерактивность.
 
 ## Hotspots
@@ -42,6 +44,8 @@
   - Разделение primary/final tasks, особенно для `text_detect_text`.
 - `apps/ui/views.py`, `apps/ui/templates/ui/base.html`, `apps/ui/static/ui/app.tsx`
   - Django bootstrap + React page router + клиентские экраны.
+- `apps/ui/static/ui/app.css`
+  - Layout и interaction shell fullscreen editor-а, включая fixed-height workspace, media stage и internal scrolling панелей.
 - `apps/rooms/api/v1/*` и `apps/labeling/api/v1/*`
   - Валидация запросов и thin-controller слой над services/selectors.
 - `tests/test_rooms_api.py` и `tests/test_labeling_api.py`
@@ -57,6 +61,7 @@
 - Video import зависит от наличия `ffmpeg`. Если `ffmpeg` недоступен, импорт видео должен падать явно, а не деградировать в частично созданное состояние.
 - Image/video функциональность зависит от корректного `MEDIA_ROOT` и nginx media serving в production. Локально media обслуживается Django только при `DEBUG=true`.
 - UI не является отдельным SPA-сервером: Django задаёт `page_key` и bootstrap, React выбирает нужный экран по этому bootstrap-контракту.
+- `room-work` должен оставаться отдельной рабочей поверхностью: fullscreen layout, без page-level scroll на desktop, с internal scroll только у вспомогательных панелей и с приоритетом на быстрый pointer/keyboard feedback.
 - Header auth через `X-User-Id` всё ещё часть текущего MVP и уже встроен в API/UI сценарии; не ломать его случайными изменениями auth-слоя.
 
 ## Maintenance Protocol
