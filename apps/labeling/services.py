@@ -81,7 +81,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
     an atomic transaction. It intelligently skips tasks that the annotator has already
     worked on, or tasks that have already gathered enough reviews (cross-validation).
     
-    Agents: Notice the use of `select_for_update(skip_locked=True)`. This allows
+    Notice the use of `select_for_update(skip_locked=True)`. This allows
     multiple workers to call this function concurrently without deadlocking or waiting
     for each other to release row locks. If you change this query, verify lock contention.
     """

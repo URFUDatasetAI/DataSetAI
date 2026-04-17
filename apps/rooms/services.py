@@ -599,7 +599,7 @@ def _create_video_frame_tasks(
     Splits an uploaded video file into discrete frames (images) using ffmpeg.
     Each frame is then represented as a separate Image Task.
     
-    Agents: If this fails, make sure `ffmpeg` is installed on the host OS. Also,
+    If this fails, make sure `ffmpeg` is installed on the host OS. Also,
     if media doesn't load on frontend, verify `nginx` handles `MEDIA_ROOT`.
     """
     # Video import depends on ffmpeg being available on the host machine.
