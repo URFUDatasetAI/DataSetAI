@@ -9,29 +9,29 @@ class Command(BaseCommand):
     help = "Create or update a local user for manual testing."
 
     def add_arguments(self, parser):
-        parser.add_argument("username")
+        parser.add_argument("email")
         parser.add_argument("password")
-        parser.add_argument("--email", default="")
+        parser.add_argument("--full-name", default="")
         parser.add_argument("--staff", action="store_true")
         parser.add_argument("--superuser", action="store_true")
 
     def handle(self, *args, **options):
-        username = options["username"].strip()
+        email = options["email"].strip().lower()
         password = options["password"]
-        email = options["email"].strip()
+        full_name = options["full_name"].strip()
 
-        if not username:
-            raise CommandError("Username must not be empty.")
+        if not email:
+            raise CommandError("Email must not be empty.")
 
         user, created = User.objects.get_or_create(
-            username=username,
+            email=email,
             defaults={
-                "email": email,
+                "full_name": full_name,
             },
         )
 
-        if email:
-            user.email = email
+        if full_name:
+            user.full_name = full_name
 
         user.is_staff = bool(options["staff"] or options["superuser"])
         user.is_superuser = bool(options["superuser"])
@@ -39,4 +39,4 @@ class Command(BaseCommand):
         user.save()
 
         action = "created" if created else "updated"
-        self.stdout.write(self.style.SUCCESS(f"User {username!r} {action} successfully."))
+        self.stdout.write(self.style.SUCCESS(f"User {email!r} {action} successfully."))

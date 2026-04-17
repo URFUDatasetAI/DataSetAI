@@ -16,7 +16,7 @@ from apps.users.models import User
 class RoomListCreateViewTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = User.objects.create_user(username="owner", password="secret123")
+        self.user = User.objects.create_user(email="owner@example.com", full_name="Owner", password="secret123")
         self.client.force_authenticate(self.user)
 
     def tearDown(self):
@@ -53,7 +53,7 @@ class RoomListCreateViewTests(TestCase):
         self.assertEqual(task.input_payload["height"], 50)
 
     def test_multipart_request_with_single_annotator_id_creates_membership(self):
-        annotator = User.objects.create_user(username="annotator", password="secret123")
+        annotator = User.objects.create_user(email="annotator@example.com", full_name="Annotator", password="secret123")
 
         response = self.client.post(
             "/api/v1/rooms/",
@@ -77,6 +77,117 @@ class RoomListCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Room.objects.filter(id=room.id).exists())
+
+    def test_owner_can_update_room_settings(self):
+        room = Room.objects.create(
+            title="Original room",
+            description="Old description",
+            dataset_label="Old dataset",
+            created_by=self.user,
+        )
+        room.set_access_password("old-secret")
+        room.save(update_fields=["access_password_hash", "updated_at"])
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "Updated room",
+                "description": "Fresh description",
+                "dataset_label": "Vision batch",
+                "deadline": "2026-05-01T09:30:00Z",
+                "has_password": True,
+                "password": "new-secret",
+                "cross_validation_enabled": True,
+                "cross_validation_annotators_count": 2,
+                "cross_validation_similarity_threshold": 91,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Updated room")
+        self.assertEqual(room.description, "Fresh description")
+        self.assertEqual(room.dataset_label, "Vision batch")
+        self.assertTrue(room.cross_validation_enabled)
+        self.assertEqual(room.cross_validation_annotators_count, 2)
+        self.assertEqual(room.cross_validation_similarity_threshold, 91)
+        self.assertTrue(room.check_access_password("new-secret"))
+
+    def test_owner_can_disable_room_password(self):
+        room = Room.objects.create(title="Protected room", created_by=self.user)
+        room.set_access_password("top-secret")
+        room.save(update_fields=["access_password_hash", "updated_at"])
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={"has_password": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertFalse(room.has_password)
+        self.assertTrue(room.check_access_password(""))
+
+    def test_non_owner_cannot_update_room_settings(self):
+        outsider = User.objects.create_user(email="outsider@example.com", full_name="Outsider", password="secret123")
+        room = Room.objects.create(title="Owner room", created_by=self.user)
+
+        self.client.force_authenticate(outsider)
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={"title": "Should not work"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Owner room")
+
+    def test_cross_validation_update_requires_at_least_two_annotators(self):
+        room = Room.objects.create(title="Review room", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "cross_validation_enabled": True,
+                "cross_validation_annotators_count": 1,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("cross_validation_annotators_count", response.data)
+
+    def test_create_room_rejects_too_long_description(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Room with oversized description",
+                "description": "x" * 2001,
+                "dataset_mode": Room.DatasetType.DEMO,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("description", response.data)
+
+    def test_update_room_rejects_too_long_dataset_label(self):
+        room = Room.objects.create(title="Update target", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "title": "Updated title",
+                "dataset_label": "x" * 256,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("dataset_label", response.data)
 
     @staticmethod
     def _uploaded_file(name: str):

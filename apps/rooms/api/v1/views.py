@@ -8,6 +8,9 @@ from apps.rooms.api.v1.serializers import (
     RoomAccessSerializer,
     InviteAnnotatorSerializer,
     RoomCreateSerializer,
+    RoomJoinRequestDecisionSerializer,
+    RoomJoinRequestSerializer,
+    RoomUpdateSerializer,
     RoomJoinSerializer,
     RoomMembershipSerializer,
     RoomMembershipRoleSerializer,
@@ -15,20 +18,27 @@ from apps.rooms.api.v1.serializers import (
     RoomSerializer,
 )
 from apps.rooms.selectors import (
+    build_room_invite_preview,
     build_room_dashboard,
     get_room_by_id,
+    get_room_by_invite_token,
     get_room_for_owner,
     get_visible_room,
     list_member_rooms,
     list_owned_rooms,
 )
 from apps.rooms.services import (
+    approve_room_join_request,
     create_room,
     export_room_annotations,
     invite_user_to_room,
     join_room,
+    regenerate_room_invite,
+    reject_room_join_request,
     set_room_membership_role,
     set_room_pinned,
+    submit_room_join_request,
+    update_room,
 )
 
 """
@@ -90,6 +100,13 @@ class RoomDetailView(APIView):
         serializer = RoomSerializer(room, context={"request": request})
         return Response(serializer.data)
 
+    def patch(self, request, room_id: int):
+        room = get_room_for_owner(room_id=room_id, owner=request.user)
+        serializer = RoomUpdateSerializer(instance=room, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        room = update_room(room=room, owner=request.user, **serializer.validated_data)
+        return Response(RoomSerializer(room, context={"request": request}).data)
+
     def delete(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
         room.delete()
@@ -101,7 +118,16 @@ class RoomDashboardView(APIView):
 
     def get(self, request, room_id: int):
         room = get_visible_room(room_id=room_id, user=request.user)
-        return Response(build_room_dashboard(room=room, actor=request.user))
+        return Response(build_room_dashboard(room=room, actor=request.user, request=request))
+
+
+class RoomInviteLinkView(APIView):
+    permission_classes = []
+
+    def get(self, request, invite_token):
+        room = get_room_by_invite_token(invite_token=invite_token)
+        actor = request.user if getattr(request.user, "is_authenticated", False) else None
+        return Response(build_room_invite_preview(room=room, actor=actor, request=request))
 
 
 class RoomInviteView(APIView):
@@ -120,6 +146,60 @@ class RoomInviteView(APIView):
             RoomMembershipSerializer(membership).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class RoomInviteRegenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        room = regenerate_room_invite(room=room, actor=request.user)
+        return Response(
+            {
+                "room_id": room.id,
+                "invite_url": request.build_absolute_uri(f"/i/{room.invite_token}/"),
+                "invite_token": str(room.invite_token),
+            }
+        )
+
+
+class RoomJoinRequestCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, invite_token):
+        room = get_room_by_invite_token(invite_token=invite_token)
+        join_request = submit_room_join_request(room=room, applicant=request.user)
+        return Response(RoomJoinRequestSerializer(join_request).data, status=status.HTTP_201_CREATED)
+
+
+class RoomJoinRequestApproveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int, join_request_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomJoinRequestDecisionSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        join_request = approve_room_join_request(
+            room=room,
+            approver=request.user,
+            join_request_id=join_request_id,
+        )
+        return Response(RoomJoinRequestSerializer(join_request).data)
+
+
+class RoomJoinRequestRejectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int, join_request_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomJoinRequestDecisionSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        join_request = reject_room_join_request(
+            room=room,
+            approver=request.user,
+            join_request_id=join_request_id,
+        )
+        return Response(RoomJoinRequestSerializer(join_request).data)
 
 
 class RoomMembershipRoleView(APIView):
@@ -157,9 +237,16 @@ class RoomAccessView(APIView):
         room = get_room_by_id(room_id=serializer.validated_data["room_id"])
         password = serializer.validated_data.get("password", "")
 
-        # Access flow can create/update membership for a non-owner after password
-        # validation. Owners bypass membership handling and go straight to room UI.
         if room.created_by_id != request.user.id:
+            membership = room.memberships.filter(user=request.user).first()
+            if membership is None:
+                return Response(
+                    {
+                        "detail": "Доступ по ID комнаты доступен только участникам. Используйте invite-ссылку и дождитесь одобрения.",
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
             membership = join_room(room=room, annotator=request.user, password=password)
             return Response(
                 {

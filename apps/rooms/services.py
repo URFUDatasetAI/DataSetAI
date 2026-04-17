@@ -14,8 +14,15 @@ from django.utils import timezone
 
 from apps.labeling.models import Task
 from apps.labeling.workflows import get_room_final_tasks_queryset
-from apps.rooms.models import Room, RoomLabel, RoomMembership, RoomPin
-from apps.rooms.policies import can_invite_members
+from apps.rooms.models import (
+    Room,
+    RoomJoinRequest,
+    RoomLabel,
+    RoomMembership,
+    RoomPin,
+    generate_room_invite_token,
+)
+from apps.rooms.policies import can_edit_room, can_invite_members
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
 
@@ -58,6 +65,7 @@ DEFAULT_LABEL_COLORS = [
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 JSON_EXTENSIONS = {".json"}
+UNSET = object()
 
 
 @dataclass
@@ -198,6 +206,15 @@ def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> R
         membership.invited_by = inviter
         membership.save(update_fields=["invited_by", "updated_at"])
 
+    RoomJoinRequest.objects.filter(room=room, user=invited_user).exclude(
+        status=RoomJoinRequest.Status.APPROVED
+    ).update(
+        status=RoomJoinRequest.Status.APPROVED,
+        reviewed_by=inviter,
+        reviewed_at=timezone.now(),
+        updated_at=timezone.now(),
+    )
+
     return membership
 
 
@@ -225,21 +242,126 @@ def validate_room_password(*, room: Room, password: str = "") -> None:
         raise AccessDeniedError("Incorrect room password.")
 
 
+def regenerate_room_invite(*, room: Room, actor: User) -> Room:
+    if not can_invite_members(room=room, user=actor):
+        raise AccessDeniedError("You do not have permission to regenerate the invite link for this room.")
+
+    while True:
+        candidate = generate_room_invite_token()
+        if not Room.objects.filter(invite_token=candidate).exclude(id=room.id).exists():
+            room.invite_token = candidate
+            break
+    room.save(update_fields=["invite_token", "updated_at"])
+    return room
+
+
+def submit_room_join_request(*, room: Room, applicant: User) -> RoomJoinRequest:
+    if applicant.id == room.created_by_id:
+        raise ConflictError("Room owner already has access to this room.")
+
+    membership = RoomMembership.objects.filter(room=room, user=applicant).first()
+    if membership is not None:
+        if membership.status == RoomMembership.Status.JOINED:
+            raise ConflictError("You already have access to this room.")
+        raise ConflictError("You have already been invited to this room.")
+
+    join_request, created = RoomJoinRequest.objects.get_or_create(
+        room=room,
+        user=applicant,
+        defaults={
+            "status": RoomJoinRequest.Status.PENDING,
+        },
+    )
+
+    if not created and join_request.status != RoomJoinRequest.Status.PENDING:
+        join_request.status = RoomJoinRequest.Status.PENDING
+        join_request.reviewed_by = None
+        join_request.reviewed_at = None
+        join_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    return join_request
+
+
+def approve_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
+    if not can_invite_members(room=room, user=approver):
+        raise AccessDeniedError("You do not have permission to approve join requests for this room.")
+
+    try:
+        join_request = RoomJoinRequest.objects.select_related("user").get(id=join_request_id, room=room)
+    except RoomJoinRequest.DoesNotExist as exc:
+        raise NotFoundError("Join request not found.") from exc
+
+    approved_at = timezone.now()
+    membership, _ = RoomMembership.objects.get_or_create(
+        room=room,
+        user=join_request.user,
+        defaults={
+            "invited_by": approver,
+            "status": RoomMembership.Status.JOINED,
+            "role": RoomMembership.Role.ANNOTATOR,
+            "joined_at": approved_at,
+        },
+    )
+
+    membership_updates = []
+    if membership.invited_by_id != approver.id:
+        membership.invited_by = approver
+        membership_updates.append("invited_by")
+    if membership.status != RoomMembership.Status.JOINED:
+        membership.status = RoomMembership.Status.JOINED
+        membership_updates.append("status")
+    if membership.joined_at is None:
+        membership.joined_at = approved_at
+        membership_updates.append("joined_at")
+    if membership_updates:
+        membership.save(update_fields=[*membership_updates, "updated_at"])
+
+    if (
+        join_request.status != RoomJoinRequest.Status.APPROVED
+        or join_request.reviewed_by_id != approver.id
+        or join_request.reviewed_at is None
+    ):
+        join_request.status = RoomJoinRequest.Status.APPROVED
+        join_request.reviewed_by = approver
+        join_request.reviewed_at = approved_at
+        join_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    return join_request
+
+
+def reject_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
+    if not can_invite_members(room=room, user=approver):
+        raise AccessDeniedError("You do not have permission to reject join requests for this room.")
+
+    try:
+        join_request = RoomJoinRequest.objects.get(id=join_request_id, room=room)
+    except RoomJoinRequest.DoesNotExist as exc:
+        raise NotFoundError("Join request not found.") from exc
+
+    if RoomMembership.objects.filter(room=room, user=join_request.user).exists():
+        raise ConflictError("This user already has access to the room.")
+
+    if (
+        join_request.status != RoomJoinRequest.Status.REJECTED
+        or join_request.reviewed_by_id != approver.id
+        or join_request.reviewed_at is None
+    ):
+        join_request.status = RoomJoinRequest.Status.REJECTED
+        join_request.reviewed_by = approver
+        join_request.reviewed_at = timezone.now()
+        join_request.save(update_fields=["status", "reviewed_by", "reviewed_at", "updated_at"])
+
+    return join_request
+
+
 def join_room(*, room: Room, annotator: User, password: str | None = None) -> RoomMembership:
-    # `join` is idempotent: repeated calls should keep the same membership in a
-    # joined state instead of failing.
     if password is not None:
         validate_room_password(room=room, password=password)
 
-    membership, _ = RoomMembership.objects.get_or_create(
-        room=room,
-        user=annotator,
-        defaults={
-            "invited_by": room.created_by,
-            "status": RoomMembership.Status.JOINED,
-            "joined_at": timezone.now(),
-        },
-    )
+    try:
+        membership = RoomMembership.objects.get(room=room, user=annotator)
+    except RoomMembership.DoesNotExist as exc:
+        raise AccessDeniedError("You do not have access to this room. Use the invite link and wait for approval.") from exc
 
     if membership.status != RoomMembership.Status.JOINED or membership.joined_at is None:
         membership.status = RoomMembership.Status.JOINED
@@ -256,6 +378,79 @@ def set_room_pinned(*, room: Room, user: User, is_pinned: bool) -> bool:
 
     RoomPin.objects.filter(room=room, user=user).delete()
     return False
+
+
+def update_room(
+    *,
+    room: Room,
+    owner: User,
+    title=UNSET,
+    description=UNSET,
+    dataset_label=UNSET,
+    deadline=UNSET,
+    password=UNSET,
+    has_password=UNSET,
+    cross_validation_enabled=UNSET,
+    cross_validation_annotators_count=UNSET,
+    cross_validation_similarity_threshold=UNSET,
+) -> Room:
+    if not can_edit_room(room=room, user=owner):
+        raise AccessDeniedError("Only the room owner can edit room settings.")
+
+    update_fields: list[str] = []
+
+    if title is not UNSET and room.title != title:
+        room.title = title
+        update_fields.append("title")
+
+    if description is not UNSET and room.description != description:
+        room.description = description
+        update_fields.append("description")
+
+    if dataset_label is not UNSET:
+        normalized_dataset_label = dataset_label or "Тестовый датасет"
+        if room.dataset_label != normalized_dataset_label:
+            room.dataset_label = normalized_dataset_label
+            update_fields.append("dataset_label")
+
+    if deadline is not UNSET and room.deadline != deadline:
+        room.deadline = deadline
+        update_fields.append("deadline")
+
+    if cross_validation_enabled is not UNSET and room.cross_validation_enabled != cross_validation_enabled:
+        room.cross_validation_enabled = cross_validation_enabled
+        update_fields.append("cross_validation_enabled")
+
+    if (
+        cross_validation_annotators_count is not UNSET
+        and room.cross_validation_annotators_count != cross_validation_annotators_count
+    ):
+        room.cross_validation_annotators_count = cross_validation_annotators_count
+        update_fields.append("cross_validation_annotators_count")
+
+    if (
+        cross_validation_similarity_threshold is not UNSET
+        and room.cross_validation_similarity_threshold != cross_validation_similarity_threshold
+    ):
+        room.cross_validation_similarity_threshold = cross_validation_similarity_threshold
+        update_fields.append("cross_validation_similarity_threshold")
+
+    if has_password is not UNSET:
+        if not has_password:
+            if room.access_password_hash:
+                room.set_access_password("")
+                update_fields.append("access_password_hash")
+        elif password is not UNSET and password:
+            room.set_access_password(password)
+            update_fields.append("access_password_hash")
+    elif password is not UNSET and password:
+        room.set_access_password(password)
+        update_fields.append("access_password_hash")
+
+    if update_fields:
+        room.save(update_fields=[*dict.fromkeys(update_fields), "updated_at"])
+
+    return room
 
 
 def _create_demo_tasks(*, room: Room, task_count: int, dataset_label: str) -> None:

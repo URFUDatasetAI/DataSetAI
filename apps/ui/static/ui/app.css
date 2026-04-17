@@ -729,6 +729,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
     font-size: clamp(2rem, 5vw, 4rem);
     line-height: 1;
     letter-spacing: -0.06em;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .hero-card p,
@@ -757,15 +760,23 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .hero-card__main p,
 .page-topbar__copy p {
     max-width: 60ch;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-header-meta__stack {
     width: min(100%, 320px);
 }
 
-.room-header-meta__delete {
-    width: 100%;
+.room-header-meta__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     margin-top: 8px;
+}
+
+.room-header-meta__actions .btn {
+    width: 100%;
 }
 
 .page-topbar--room {
@@ -1156,6 +1167,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .wide-card--profile .wide-card__column {
     min-width: 0;
+    overflow: hidden;
 }
 
 .wide-card--profile .wide-card__column--activity {
@@ -1175,10 +1187,27 @@ input[type="file"]::-webkit-file-upload-button:hover {
     width: 100%;
     max-width: 100%;
     align-self: stretch;
+    min-width: 0;
+    align-items: stretch;
 }
 
 .wide-card--profile .wide-card__column--activity .activity-board__legend {
     text-align: right;
+}
+
+.wide-card--profile .summary-stack {
+    min-width: 0;
+}
+
+.wide-card--profile .summary-row {
+    display: grid;
+    grid-template-columns: minmax(148px, 180px) minmax(0, 1fr);
+    align-items: start;
+}
+
+.wide-card--profile .summary-row strong {
+    max-width: 100%;
+    text-align: left;
 }
 
 .room-toolbar-card {
@@ -1296,6 +1325,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-card__id {
@@ -1319,6 +1350,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
     -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .room-card__footer {
@@ -1617,8 +1650,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
     border-bottom: 1px solid var(--line);
 }
 
+.summary-row > * {
+    min-width: 0;
+}
+
+.summary-row span,
 .summary-row strong {
     color: var(--text);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.summary-row span {
+    color: var(--text-soft);
+}
+
+.summary-row strong {
+    text-align: right;
+}
+
+.panel-note {
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .role-assignment-box {
@@ -1641,6 +1694,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
+    min-width: 0;
+}
+
+.activity-board__viewport {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .activity-board__calendar {
@@ -2425,6 +2485,16 @@ input[type="file"]::-webkit-file-upload-button:hover {
     margin-top: 24px;
     padding: 24px;
     background: var(--soft-panel-background);
+}
+
+.room-edit-summary {
+    margin-bottom: 18px;
+}
+
+.room-edit-password-note,
+.room-edit-note {
+    margin-top: 0;
+    grid-column: 1 / -1;
 }
 
 .dataset-box__actions--stack {
