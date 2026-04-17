@@ -130,12 +130,47 @@ class RoomCreateSerializer(serializers.Serializer):
 
 
 class RoomUpdateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
-    description = serializers.CharField(required=False, allow_blank=True, default="", max_length=ROOM_DESCRIPTION_MAX_LENGTH)
-    dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет", max_length=ROOM_TEXT_MAX_LENGTH)
+    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH, required=False)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
+    dataset_label = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
-    password = serializers.CharField(required=False, allow_blank=True, write_only=True, default="", max_length=ROOM_TEXT_MAX_LENGTH)
-    password_changed = serializers.BooleanField(required=False, default=False)
+    password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
+    has_password = serializers.BooleanField(required=False)
+    cross_validation_enabled = serializers.BooleanField(required=False)
+    cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
+    cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+    def validate(self, attrs):
+        room = self.instance
+        cross_validation_enabled = attrs.get(
+            "cross_validation_enabled",
+            room.cross_validation_enabled if room is not None else False,
+        )
+        cross_validation_count = attrs.get(
+            "cross_validation_annotators_count",
+            room.cross_validation_annotators_count if room is not None else 1,
+        )
+
+        if cross_validation_enabled:
+            if cross_validation_count < 2:
+                raise serializers.ValidationError(
+                    {"cross_validation_annotators_count": "Set at least 2 independent annotators for cross validation."}
+                )
+        else:
+            attrs["cross_validation_annotators_count"] = 1
+
+        has_password = attrs.get("has_password")
+        password = attrs.get("password")
+        if has_password is None and password:
+            attrs["has_password"] = True
+            has_password = True
+
+        if has_password is True and not password and room is not None and not room.has_password:
+            raise serializers.ValidationError(
+                {"password": "Enter a password or disable password protection before saving."}
+            )
+
+        return attrs
 
 
 class RoomLabelSerializer(serializers.ModelSerializer):

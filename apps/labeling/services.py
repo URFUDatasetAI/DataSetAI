@@ -74,6 +74,17 @@ def _create_followup_transcription_task(*, task: Task, consensus_payload: dict, 
 
 
 def get_next_task_for_annotator(*, room: Room, annotator: User):
+    """
+    Finds and assigns the next available Task to the Annotator.
+    
+    This function is central to the labeling pipeline. It MUST be executed within
+    an atomic transaction. It intelligently skips tasks that the annotator has already
+    worked on, or tasks that have already gathered enough reviews (cross-validation).
+    
+    Agents: Notice the use of `select_for_update(skip_locked=True)`. This allows
+    multiple workers to call this function concurrently without deadlocking or waiting
+    for each other to release row locks. If you change this query, verify lock contention.
+    """
     _assert_joined_membership(room=room, annotator=annotator)
 
     with transaction.atomic():
@@ -155,6 +166,17 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
 
 
 def submit_annotation(*, task: Task, annotator: User, result_payload):
+    """
+    Saves an annotation payload and closes the task assignment.
+    
+    If room requires multiple reviews (cross-validation), this will check if the current
+    round has gathered enough submissions. If it has, `evaluate_annotation_consensus` is called.
+    
+    Depending on consensus, the task is either:
+    1. Marked SUBMITTED with a final consensus payload.
+    2. Reset to PENDING and round incremented for another human to review.
+    3. Triggers child task creation if in a multi-stage workflow.
+    """
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
         if locked_task.status != Task.Status.IN_PROGRESS:

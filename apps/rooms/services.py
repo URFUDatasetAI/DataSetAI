@@ -65,6 +65,7 @@ DEFAULT_LABEL_COLORS = [
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 JSON_EXTENSIONS = {".json"}
+UNSET = object()
 
 
 @dataclass
@@ -109,6 +110,15 @@ def create_room(
     labels: list[dict] | None = None,
     media_manifest: list[dict] | None = None,
 ) -> Room:
+    """
+    Creates a new Room, triggers initial parsing, and invites users.
+    
+    This is the core entry point for Room creation, separating the UI/Validation layer from the business logic.
+    Depending on the `dataset_mode`, it parses JSON, extracts Images, or breaks video into frames via ffmpeg.
+    
+    Important: The entire structure is wrapped in `transaction.atomic()`, ensuring we don't end up
+    with an orphaned Room if dataset parsing fails.
+    """
     # Keep defaults here so API/UI callers do not need to reproduce room
     # bootstrap logic. Every dataset mode eventually creates Task rows.
     normalized_label = dataset_label or "Тестовый датасет"
@@ -374,34 +384,72 @@ def update_room(
     *,
     room: Room,
     owner: User,
-    title: str,
-    description: str = "",
-    dataset_label: str = "",
-    deadline=None,
-    password: str = "",
-    password_changed: bool = False,
+    title=UNSET,
+    description=UNSET,
+    dataset_label=UNSET,
+    deadline=UNSET,
+    password=UNSET,
+    has_password=UNSET,
+    cross_validation_enabled=UNSET,
+    cross_validation_annotators_count=UNSET,
+    cross_validation_similarity_threshold=UNSET,
 ) -> Room:
     if not can_edit_room(room=room, user=owner):
         raise AccessDeniedError("Only the room owner can edit room settings.")
 
-    room.title = title
-    room.description = description
-    room.dataset_label = dataset_label or "Тестовый датасет"
-    room.deadline = deadline
+    update_fields: list[str] = []
 
-    if password_changed:
+    if title is not UNSET and room.title != title:
+        room.title = title
+        update_fields.append("title")
+
+    if description is not UNSET and room.description != description:
+        room.description = description
+        update_fields.append("description")
+
+    if dataset_label is not UNSET:
+        normalized_dataset_label = dataset_label or "Тестовый датасет"
+        if room.dataset_label != normalized_dataset_label:
+            room.dataset_label = normalized_dataset_label
+            update_fields.append("dataset_label")
+
+    if deadline is not UNSET and room.deadline != deadline:
+        room.deadline = deadline
+        update_fields.append("deadline")
+
+    if cross_validation_enabled is not UNSET and room.cross_validation_enabled != cross_validation_enabled:
+        room.cross_validation_enabled = cross_validation_enabled
+        update_fields.append("cross_validation_enabled")
+
+    if (
+        cross_validation_annotators_count is not UNSET
+        and room.cross_validation_annotators_count != cross_validation_annotators_count
+    ):
+        room.cross_validation_annotators_count = cross_validation_annotators_count
+        update_fields.append("cross_validation_annotators_count")
+
+    if (
+        cross_validation_similarity_threshold is not UNSET
+        and room.cross_validation_similarity_threshold != cross_validation_similarity_threshold
+    ):
+        room.cross_validation_similarity_threshold = cross_validation_similarity_threshold
+        update_fields.append("cross_validation_similarity_threshold")
+
+    if has_password is not UNSET:
+        if not has_password:
+            if room.access_password_hash:
+                room.set_access_password("")
+                update_fields.append("access_password_hash")
+        elif password is not UNSET and password:
+            room.set_access_password(password)
+            update_fields.append("access_password_hash")
+    elif password is not UNSET and password:
         room.set_access_password(password)
+        update_fields.append("access_password_hash")
 
-    room.save(
-        update_fields=[
-            "title",
-            "description",
-            "dataset_label",
-            "deadline",
-            "access_password_hash",
-            "updated_at",
-        ]
-    )
+    if update_fields:
+        room.save(update_fields=[*dict.fromkeys(update_fields), "updated_at"])
+
     return room
 
 
@@ -547,6 +595,13 @@ def _create_video_frame_tasks(
     metadata: dict,
     start_item_number: int,
 ) -> int:
+    """
+    Splits an uploaded video file into discrete frames (images) using ffmpeg.
+    Each frame is then represented as a separate Image Task.
+    
+    Agents: If this fails, make sure `ffmpeg` is installed on the host OS. Also,
+    if media doesn't load on frontend, verify `nginx` handles `MEDIA_ROOT`.
+    """
     # Video import depends on ffmpeg being available on the host machine.
     # Production setup must include ffmpeg, writable MEDIA_ROOT and nginx media
     # serving, otherwise video/image labeling breaks even if Django itself works.
@@ -809,6 +864,11 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 
 def export_room_annotations(*, room: Room, export_format: str, base_url: str | None = None) -> ExportArtifact:
+    """
+    Produces a complete export (YOLO, COCO, or Native JSON) mapping tasks to their finalized annotations.
+    
+    Only Tasks in a `SUBMITTED` state (meaning they reached consensus) are exported.
+    """
     # Export only submitted tasks. Pending/in-progress tasks are intentionally
     # excluded so downstream datasets contain finalized results.
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":

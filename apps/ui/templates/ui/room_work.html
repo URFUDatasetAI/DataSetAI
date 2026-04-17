@@ -18,6 +18,15 @@
                         <div id="work-media-instructions" class="panel-note hidden"></div>
                         <div id="work-label-palette" class="label-chip-list"></div>
                         <div id="work-active-label" class="panel-note hidden"></div>
+                        <div id="work-media-toolbar" class="media-tool__toolbar hidden">
+                            <div class="media-zoom">
+                                <button id="work-zoom-out-btn" class="btn btn--muted btn--compact" type="button" aria-label="Уменьшить масштаб">−</button>
+                                <input id="work-zoom-range" class="media-zoom__range" type="range" min="100" max="400" step="25" value="100" aria-label="Масштаб изображения">
+                                <button id="work-zoom-in-btn" class="btn btn--muted btn--compact" type="button" aria-label="Увеличить масштаб">+</button>
+                                <button id="work-zoom-reset-btn" class="btn btn--muted btn--compact" type="button">100%</button>
+                            </div>
+                            <span class="media-tool__hint">Ctrl + колесо меняет масштаб. Space + перетаскивание или средняя кнопка мыши двигают увеличенный кадр внутри рабочей области.</span>
+                        </div>
                         <div class="media-tool__layout">
                             <div id="work-media-stage" class="media-stage empty-card">Файл задачи загрузится автоматически.</div>
                             <div class="media-tool__sidebar">

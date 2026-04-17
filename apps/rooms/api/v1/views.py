@@ -102,7 +102,7 @@ class RoomDetailView(APIView):
 
     def patch(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
-        serializer = RoomUpdateSerializer(data=request.data)
+        serializer = RoomUpdateSerializer(instance=room, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         room = update_room(room=room, owner=request.user, **serializer.validated_data)
         return Response(RoomSerializer(room, context={"request": request}).data)

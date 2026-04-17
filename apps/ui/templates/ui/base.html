@@ -1,4 +1,4 @@
-{% load static %}
+{% load ui_static %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -17,13 +17,13 @@
             document.documentElement.dataset.theme = preferredTheme;
         })();
     </script>
-    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'ui/datasetai-favicon.png' %}?v=react-20260416-1">
-    <link rel="shortcut icon" href="{% static 'ui/datasetai-favicon.png' %}?v=react-20260416-1">
-    <link rel="stylesheet" href="{% static 'ui/app.css' %}?v=react-20260416-1">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% versioned_static 'ui/datasetai-favicon.png' %}">
+    <link rel="shortcut icon" href="{% versioned_static 'ui/datasetai-favicon.png' %}">
+    <link rel="stylesheet" href="{% versioned_static 'ui/app.css' %}">
     {{ ui_bootstrap|json_script:"ui-bootstrap-data" }}
 </head>
 <body>
     <div id="app-root"></div>
-    <script src="{% static 'ui/app.js' %}?v=react-20260416-1"></script>
+    <script src="{% versioned_static 'ui/app.js' %}"></script>
 </body>
 </html>

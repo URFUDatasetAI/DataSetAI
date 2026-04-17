@@ -638,6 +638,38 @@ function formatDateTimeLocal(value: string | null | undefined) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function readStoredDisclosureState(storageKey: string | null, defaultOpen = false) {
+  if (!storageKey) {
+    return defaultOpen;
+  }
+
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    if (value === "1") {
+      return true;
+    }
+    if (value === "0") {
+      return false;
+    }
+  } catch (error) {
+    return defaultOpen;
+  }
+
+  return defaultOpen;
+}
+
+function writeStoredDisclosureState(storageKey: string | null, isOpen: boolean) {
+  if (!storageKey) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(storageKey, isOpen ? "1" : "0");
+  } catch (error) {
+    // Ignore storage errors in restricted environments.
+  }
+}
+
 function getDisplayName(entity: { display_name?: string | null; full_name?: string | null; email?: string | null }) {
   return entity.display_name || entity.full_name || entity.email || "Без имени";
 }
@@ -1090,7 +1122,7 @@ function ReviewGraphicPreview({
                   ["--bbox-color" as any]: label?.color || "#B8B8B8",
                 }}
               >
-                <span>{label?.name || `Label #${annotation.label_id}`}</span>
+                <span className="review-media-bbox__label">{label?.name || `Label #${annotation.label_id}`}</span>
               </div>
             );
           })}
@@ -2282,6 +2314,9 @@ function RoomEditPage() {
   const [deadline, setDeadline] = useState("");
   const [passwordEnabled, setPasswordEnabled] = useState(false);
   const [password, setPassword] = useState("");
+  const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
+  const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = useState("2");
+  const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = useState("80");
   const [initialHasPassword, setInitialHasPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2302,6 +2337,9 @@ function RoomEditPage() {
         setInitialHasPassword(Boolean(nextRoom.has_password));
         setPasswordEnabled(Boolean(nextRoom.has_password));
         setPassword("");
+        setCrossValidationEnabled(Boolean(nextRoom.cross_validation_enabled));
+        setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
+        setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -2322,9 +2360,15 @@ function RoomEditPage() {
     try {
       const nextPassword = password.trim();
       const passwordChanged = (!passwordEnabled && initialHasPassword) || Boolean(nextPassword);
+      const nextCrossValidationCount = Math.max(Number(crossValidationAnnotatorsCount || 0), 0);
+      const nextCrossValidationThreshold = clamp(Number(crossValidationSimilarityThreshold || 0), 1, 100);
 
       if (passwordEnabled && !initialHasPassword && !nextPassword) {
         throw new Error("Укажи пароль, чтобы включить защиту комнаты.");
+      }
+
+      if (crossValidationEnabled && nextCrossValidationCount < 2) {
+        throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
       }
 
       await api(`/api/v1/rooms/${roomId}/`, {
@@ -2334,8 +2378,11 @@ function RoomEditPage() {
           description: description.trim(),
           dataset_label: datasetLabel.trim() || "Тестовый датасет",
           deadline: deadline ? new Date(deadline).toISOString() : null,
-          password_changed: passwordChanged,
           password: passwordChanged ? (passwordEnabled ? nextPassword : "") : "",
+          has_password: passwordEnabled,
+          cross_validation_enabled: crossValidationEnabled,
+          cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
+          cross_validation_similarity_threshold: nextCrossValidationThreshold,
         },
       });
       addToast(`Настройки комнаты #${roomId} обновлены.`, "success");
@@ -2417,6 +2464,39 @@ function RoomEditPage() {
                 <input checked={passwordEnabled} type="checkbox" onChange={(event) => setPasswordEnabled(event.currentTarget.checked)} />
               </span>
             </label>
+            <label className="field field--checkbox">
+              <span>Перекрестная разметка</span>
+              <span className="field--checkbox__control">
+                <span className="field--checkbox__text">Включить</span>
+                <input
+                  checked={crossValidationEnabled}
+                  type="checkbox"
+                  onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
+                />
+              </span>
+            </label>
+            <label className="field">
+              <span>Независимых исполнителей (n)</span>
+              <input
+                value={crossValidationAnnotatorsCount}
+                type="number"
+                min="2"
+                max="20"
+                disabled={!crossValidationEnabled}
+                onChange={(event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Порог сходства (%)</span>
+              <input
+                value={crossValidationSimilarityThreshold}
+                type="number"
+                min="1"
+                max="100"
+                disabled={!crossValidationEnabled}
+                onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
+              />
+            </label>
             <label className="field field--full">
               <span>Описание</span>
               <textarea
@@ -2445,7 +2525,10 @@ function RoomEditPage() {
                   : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
                 : "После сохранения доступ в комнату будет открыт без пароля."}
             </div>
-            <div className="panel-note room-edit-note">Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются.</div>
+            <div className="panel-note room-edit-note">
+              Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Перекрестную разметку можно
+              включить или перенастроить здесь, не меняя сам состав задач.
+            </div>
           </div>
 
           <div className="form-actions">
@@ -2476,6 +2559,71 @@ function RoomDetailPage() {
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
+  const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
+  const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
+  const [manageSectionOpen, setManageSectionOpen] = useState(() => readStoredDisclosureState(manageSectionStorageKey, false));
+  const [reviewSectionOpen, setReviewSectionOpen] = useState(() => readStoredDisclosureState(reviewSectionStorageKey, false));
+  const [reviewTasksLoading, setReviewTasksLoading] = useState(false);
+
+  useEffect(() => {
+    writeStoredDisclosureState(manageSectionStorageKey, manageSectionOpen);
+  }, [manageSectionOpen, manageSectionStorageKey]);
+
+  useEffect(() => {
+    writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
+  }, [reviewSectionOpen, reviewSectionStorageKey]);
+
+  async function loadReviewTasks(nextRoomId = roomId) {
+    if (!nextRoomId) {
+      setReviewTasks([]);
+      return [];
+    }
+
+    setReviewTasksLoading(true);
+    try {
+      const tasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${nextRoomId}/review/tasks/`);
+      const nextTasks = tasks || [];
+      setReviewTasks(nextTasks);
+      return nextTasks;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setReviewTasks([]);
+      return [];
+    } finally {
+      setReviewTasksLoading(false);
+    }
+  }
+
+  function getManageSectionSummary(currentDashboard: RoomDashboard | null) {
+    if (!currentDashboard) {
+      return "Настройки, доступ и выгрузка собраны в одном разделе.";
+    }
+
+    const summaryParts = [
+      currentDashboard.actor.can_edit_room ? "настройки" : null,
+      currentDashboard.actor.can_export ? "экспорт" : null,
+      currentDashboard.actor.can_invite ? "доступ" : null,
+    ].filter(Boolean);
+
+    return summaryParts.length
+      ? `${summaryParts.join(" • ")} собраны в одном разделе.`
+      : "Управляющие инструменты появятся здесь, когда будут доступны.";
+  }
+
+  function getReviewSectionSummary(currentDashboard: RoomDashboard | null) {
+    if (!currentDashboard) {
+      return "Список участников и итоговая проверка собраны в одном разделе.";
+    }
+
+    const annotatorsCount = Number(currentDashboard.annotators?.length || 0);
+    if (reviewTasksLoading) {
+      return `${annotatorsCount} участников • загружаем объекты для проверки.`;
+    }
+    if (reviewTasks.length) {
+      return `${annotatorsCount} участников • ${reviewTasks.length} объектов готовы к просмотру.`;
+    }
+    return `${annotatorsCount} участников • открой раздел, чтобы загрузить результаты проверки.`;
+  }
 
   async function refresh() {
     if (!roomId) {
@@ -2490,10 +2638,10 @@ function RoomDetailPage() {
       const nextDashboard = await api<RoomDashboard>(`/api/v1/rooms/${roomId}/dashboard/`);
       setDashboard(nextDashboard);
 
-      if (nextDashboard.actor.can_review) {
-        const tasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${roomId}/review/tasks/`);
-        setReviewTasks(tasks || []);
+      if (nextDashboard.actor.can_review && reviewSectionOpen) {
+        await loadReviewTasks(roomId);
       } else {
+        setReviewTasksLoading(false);
         setReviewTasks([]);
         setSelectedReviewTaskId(null);
         setReviewDetail(null);
@@ -2508,6 +2656,22 @@ function RoomDetailPage() {
   useEffect(() => {
     refresh();
   }, []);
+
+  useEffect(() => {
+    if (!dashboard?.actor.can_review || !reviewSectionOpen) {
+      return;
+    }
+
+    if (!reviewSectionOpen) {
+      setSelectedReviewTaskId(null);
+      setReviewDetail(null);
+      return;
+    }
+
+    if (!reviewTasks.length && !reviewTasksLoading) {
+      loadReviewTasks();
+    }
+  }, [dashboard?.actor.can_review, reviewSectionOpen]);
 
   const filteredAnnotators = (dashboard?.annotators || []).filter((annotator) => {
     const searchTerm = annotatorSearch.trim().toLowerCase();
@@ -2558,11 +2722,11 @@ function RoomDetailPage() {
     if (!filteredReviewTasks.some((task) => task.id === selectedReviewTaskId)) {
       setSelectedReviewTaskId(filteredReviewTasks[0].id);
     }
-  }, [dashboard?.actor.can_review, filteredReviewTasks.map((item) => item.id).join(","), selectedReviewTaskId]);
+  }, [dashboard?.actor.can_review, reviewSectionOpen, filteredReviewTasks.map((item) => item.id).join(","), selectedReviewTaskId]);
 
   useEffect(() => {
     async function loadReviewDetail() {
-      if (!selectedReviewTaskId) {
+      if (!reviewSectionOpen || !selectedReviewTaskId) {
         setReviewDetail(null);
         return;
       }
@@ -2575,7 +2739,7 @@ function RoomDetailPage() {
     }
 
     loadReviewDetail();
-  }, [selectedReviewTaskId]);
+  }, [selectedReviewTaskId, reviewSectionOpen]);
 
   async function handleCopyInviteLink() {
     if (!dashboard?.invite.url) {
@@ -2755,18 +2919,6 @@ function RoomDetailPage() {
                   <span>Доступ</span>
                   <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
                 </div>
-                <div className="room-header-meta__actions">
-                  {dashboard.actor.can_edit_room ? (
-                    <a className="btn btn--muted" href={`/rooms/${dashboard.room.id}/edit/`}>
-                      Редактировать комнату
-                    </a>
-                  ) : null}
-                  {dashboard.actor.can_delete_room ? (
-                    <button className="btn btn--danger" type="button" onClick={handleDeleteRoom}>
-                      Удалить комнату
-                    </button>
-                  ) : null}
-                </div>
               </div>
             ) : (
               <div className="empty-card">Загрузка.</div>
@@ -2813,107 +2965,159 @@ function RoomDetailPage() {
           </div>
 
           <div className="workspace-grid__side workspace-grid__side--room-controls">
-            {(dashboard.actor.can_export || dashboard.actor.can_invite) && (
-              <div className={`workspace-grid__side--stack ${(Number(Boolean(dashboard.actor.can_export)) + Number(Boolean(dashboard.actor.can_invite))) === 1 ? "workspace-grid__side--stack-single" : ""}`}>
-                {dashboard.actor.can_export ? (
-                  <div className="panel-card">
-                    <div className="panel-card__head">
-                      <h2>Экспорт и лейблы</h2>
-                    </div>
-                    <div className="label-chip-list label-chip-list--static">
-                      {dashboard.labels.length ? (
-                        dashboard.labels.map((label) => (
-                          <span key={label.id} className="label-chip label-chip--static" style={{ ["--label-color" as any]: label.color }}>
-                            <i></i>
-                            <span>{label.name}</span>
-                          </span>
-                        ))
-                      ) : (
-                        <div className="empty-card">Лейблы для этой комнаты пока не заданы.</div>
-                      )}
-                    </div>
-                    <button className="btn btn--secondary" type="button" onClick={handleExport}>
-                      Выгрузить датасет
-                    </button>
+            {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite) ? (
+              <details
+                className="panel-card section-disclosure"
+                open={manageSectionOpen}
+                onToggle={(event) => setManageSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="section-disclosure__summary">
+                  <div className="section-disclosure__copy">
+                    <span className="eyebrow section-disclosure__eyebrow">Управление</span>
+                    <strong>Настройки и доступ</strong>
+                    <p className="section-disclosure__note">{getManageSectionSummary(dashboard)}</p>
                   </div>
-                ) : null}
-
-                {dashboard.actor.can_invite ? (
-                  <div className="panel-card">
-                    <div className="panel-card__head">
-                      <h2>Invite-ссылка</h2>
-                    </div>
-                    <div className="stack-form stack-form--compact">
-                      <label className="field">
-                        <span>Ссылка для входа</span>
-                        <input value={dashboard.invite.url} type="text" readOnly />
-                      </label>
-                      <button className="btn btn--primary" type="button" onClick={handleCopyInviteLink}>
-                        Скопировать ссылку
-                      </button>
-                      <button className="btn btn--secondary" type="button" disabled={inviteBusy} onClick={handleRegenerateInvite}>
-                        {inviteBusy ? "Обновляем..." : "Перегенерировать invite"}
-                      </button>
-                    </div>
-                    <div className="panel-note">
-                      По этой ссылке пользователь сможет авторизоваться и отправить заявку на вступление в комнату. Старый invite перестает работать после регенерации.
-                    </div>
-                  </div>
-                ) : null}
-
-                {dashboard.actor.can_invite ? (
-                  <div className="panel-card">
-                    <div className="panel-card__head">
-                      <h2>Заявки на вступление</h2>
-                    </div>
-                    {dashboard.join_requests?.length ? (
-                      <div className="annotators-list">
-                        {dashboard.join_requests.map((joinRequest) => (
-                          <div key={joinRequest.id} className="annotator-row">
-                            <div className="annotator-row__meta">
-                              <strong>{joinRequest.display_name}</strong>
-                              <span>
-                                {joinRequest.email} · {translateMembership(joinRequest.status)}
-                              </span>
-                            </div>
-                            <div className="role-assignment-box__actions">
-                              {joinRequest.status === "pending" ? (
-                                <>
-                                  <button
-                                    className="btn btn--secondary btn--compact"
-                                    type="button"
-                                    disabled={joinRequestBusyId === joinRequest.id}
-                                    onClick={() => handleJoinRequestAction(joinRequest.id, "approve")}
-                                  >
-                                    Принять
-                                  </button>
-                                  <button
-                                    className="btn btn--muted btn--compact"
-                                    type="button"
-                                    disabled={joinRequestBusyId === joinRequest.id}
-                                    onClick={() => handleJoinRequestAction(joinRequest.id, "reject")}
-                                  >
-                                    Отклонить
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="panel-note">
-                                  {joinRequest.status === "approved"
-                                    ? `Принял: ${joinRequest.reviewed_by_display_name || "модератор"}`
-                                    : `Отклонил: ${joinRequest.reviewed_by_display_name || "модератор"}`}
-                                </span>
-                              )}
-                            </div>
+                  <span className="section-disclosure__icon" aria-hidden="true"></span>
+                </summary>
+                <div className="section-disclosure__content">
+                  <div className="workspace-grid__side--stack">
+                    {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room) ? (
+                      <div className="panel-card room-settings-panel">
+                        <div className="panel-card__head">
+                          <h2>Параметры комнаты</h2>
+                          {dashboard.actor.can_edit_room ? <span className="eyebrow room-settings-panel__eyebrow">Только владелец</span> : null}
+                        </div>
+                        <div className="room-settings-panel__locks">
+                          <article className="room-settings-panel__lock">
+                            <span>Тип датасета</span>
+                            <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                          </article>
+                          <article className="room-settings-panel__lock">
+                            <span>Сценарий разметки</span>
+                            <strong>{translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard")}</strong>
+                          </article>
+                        </div>
+                        <div className="room-settings-panel__footer">
+                          <p className="panel-note room-settings-panel__note">
+                            Название, описание, дедлайн, пароль и параметры перекрестной разметки редактируются на отдельной странице, чтобы основной экран комнаты не перегружался.
+                          </p>
+                          <div className="role-assignment-box__actions">
+                            {dashboard.actor.can_edit_room ? (
+                              <a className="btn btn--muted" href={`/rooms/${dashboard.room.id}/edit/`}>
+                                Редактировать комнату
+                              </a>
+                            ) : null}
+                            {dashboard.actor.can_delete_room ? (
+                              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom}>
+                                Удалить комнату
+                              </button>
+                            ) : null}
                           </div>
-                        ))}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="empty-card">По invite-ссылке пока никто не запросил доступ.</div>
-                    )}
+                    ) : null}
+
+                    {dashboard.actor.can_export ? (
+                      <div className="panel-card">
+                        <div className="panel-card__head">
+                          <h2>Экспорт и лейблы</h2>
+                        </div>
+                        <div className="label-chip-list label-chip-list--static">
+                          {dashboard.labels.length ? (
+                            dashboard.labels.map((label) => (
+                              <span key={label.id} className="label-chip label-chip--static" style={{ ["--label-color" as any]: label.color }}>
+                                <i></i>
+                                <span>{label.name}</span>
+                              </span>
+                            ))
+                          ) : (
+                            <div className="empty-card">Лейблы для этой комнаты пока не заданы.</div>
+                          )}
+                        </div>
+                        <button className="btn btn--secondary" type="button" onClick={handleExport}>
+                          Выгрузить датасет
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {dashboard.actor.can_invite ? (
+                      <div className="panel-card">
+                        <div className="panel-card__head">
+                          <h2>Invite-ссылка</h2>
+                        </div>
+                        <div className="stack-form stack-form--compact">
+                          <label className="field">
+                            <span>Ссылка для входа</span>
+                            <input value={dashboard.invite.url} type="text" readOnly />
+                          </label>
+                          <button className="btn btn--primary" type="button" onClick={handleCopyInviteLink}>
+                            Скопировать ссылку
+                          </button>
+                          <button className="btn btn--secondary" type="button" disabled={inviteBusy} onClick={handleRegenerateInvite}>
+                            {inviteBusy ? "Обновляем..." : "Перегенерировать invite"}
+                          </button>
+                        </div>
+                        <div className="panel-note">
+                          По этой ссылке пользователь сможет авторизоваться и отправить заявку на вступление в комнату. Старый invite перестает работать после регенерации.
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {dashboard.actor.can_invite ? (
+                      <div className="panel-card">
+                        <div className="panel-card__head">
+                          <h2>Заявки на вступление</h2>
+                        </div>
+                        {dashboard.join_requests?.length ? (
+                          <div className="annotators-list">
+                            {dashboard.join_requests.map((joinRequest) => (
+                              <div key={joinRequest.id} className="annotator-row">
+                                <div className="annotator-row__meta">
+                                  <strong>{joinRequest.display_name}</strong>
+                                  <span>
+                                    {joinRequest.email} · {translateMembership(joinRequest.status)}
+                                  </span>
+                                </div>
+                                <div className="role-assignment-box__actions">
+                                  {joinRequest.status === "pending" ? (
+                                    <>
+                                      <button
+                                        className="btn btn--secondary btn--compact"
+                                        type="button"
+                                        disabled={joinRequestBusyId === joinRequest.id}
+                                        onClick={() => handleJoinRequestAction(joinRequest.id, "approve")}
+                                      >
+                                        Принять
+                                      </button>
+                                      <button
+                                        className="btn btn--muted btn--compact"
+                                        type="button"
+                                        disabled={joinRequestBusyId === joinRequest.id}
+                                        onClick={() => handleJoinRequestAction(joinRequest.id, "reject")}
+                                      >
+                                        Отклонить
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="panel-note">
+                                      {joinRequest.status === "approved"
+                                        ? `Принял: ${joinRequest.reviewed_by_display_name || "модератор"}`
+                                        : `Отклонил: ${joinRequest.reviewed_by_display_name || "модератор"}`}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="empty-card">По invite-ссылке пока никто не запросил доступ.</div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            )}
+                </div>
+              </details>
+            ) : null}
 
             <div className="workspace-grid__side workspace-grid__side--room-work">
               <div className="panel-card">
@@ -2935,252 +3139,268 @@ function RoomDetailPage() {
       ) : null}
 
       {dashboard?.actor.can_review ? (
-        <>
-          <section className="room-review-grid">
-            <div className="panel-card room-review-grid__card room-review-grid__card--scroll">
-              <div className="panel-card__head">
-                <h2>Участники комнаты</h2>
+        <details
+          className="panel-card section-disclosure"
+          open={reviewSectionOpen}
+          onToggle={(event) => setReviewSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+        >
+          <summary className="section-disclosure__summary">
+            <div className="section-disclosure__copy">
+              <span className="eyebrow section-disclosure__eyebrow">Контроль качества</span>
+              <strong>Проверка разметки</strong>
+              <p className="section-disclosure__note">{getReviewSectionSummary(dashboard)}</p>
+            </div>
+            <span className="section-disclosure__icon" aria-hidden="true"></span>
+          </summary>
+          <div className="section-disclosure__content">
+            <section className="room-review-grid">
+              <div className="panel-card room-review-grid__card room-review-grid__card--scroll">
+                <div className="panel-card__head">
+                  <h2>Участники комнаты</h2>
+                </div>
+                <label className="field panel-search">
+                  <span>Поиск</span>
+                  <input value={annotatorSearch} type="text" placeholder="Имя, ID или статус" onChange={(event) => setAnnotatorSearch(event.currentTarget.value)} />
+                </label>
+                {(dashboard.annotators || []).length ? (
+                  filteredAnnotators.length ? (
+                    <div className="annotators-list annotators-list--scroll">
+                      {filteredAnnotators.map((annotator) => (
+                        <button
+                          key={annotator.user_id}
+                          className={`annotator-row ${annotator.user_id === selectedAnnotatorUserId ? "is-active" : ""}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedAnnotatorUserId((current) => (current === annotator.user_id ? null : annotator.user_id))
+                          }
+                        >
+                          <div className="annotator-row__meta">
+                            <strong>{annotator.display_name}</strong>
+                            <span>
+                              {translateMembership(annotator.status)} · {translateRole(annotator.role)}
+                            </span>
+                          </div>
+                          <div className="annotator-row__brief">
+                            <div>{formatPercent(annotator.progress_percent)}</div>
+                            <div>
+                              {annotator.completed_tasks} из {dashboard.overview.total_tasks}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-card">По этому запросу исполнители не найдены.</div>
+                  )
+                ) : (
+                  <div className="empty-card">В этой комнате пока нет исполнителей.</div>
+                )}
               </div>
-              <label className="field panel-search">
-                <span>Поиск</span>
-                <input value={annotatorSearch} type="text" placeholder="Имя, ID или статус" onChange={(event) => setAnnotatorSearch(event.currentTarget.value)} />
-              </label>
-              {(dashboard.annotators || []).length ? (
-                filteredAnnotators.length ? (
+
+              <div className="panel-card room-review-grid__card">
+                <div className="panel-card__head">
+                  <h2>Полная статистика участника</h2>
+                </div>
+                {activeAnnotator ? (
+                  <>
+                    <div className="summary-stack">
+                      <div className="summary-row">
+                        <span>Исполнитель</span>
+                        <strong>
+                          #{activeAnnotator.user_id} {activeAnnotator.display_name}
+                        </strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Статус</span>
+                        <strong>{translateMembership(activeAnnotator.status)}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Роль</span>
+                        <strong>{translateRole(activeAnnotator.role)}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Выполнено</span>
+                        <strong>{activeAnnotator.completed_tasks}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>В работе</span>
+                        <strong>{activeAnnotator.in_progress_tasks}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Осталось</span>
+                        <strong>{activeAnnotator.remaining_tasks}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Прогресс</span>
+                        <strong>{formatPercent(activeAnnotator.progress_percent)}</strong>
+                      </div>
+                    </div>
+                    <div className="role-assignment-box">
+                      {dashboard.actor.can_assign_roles ? (
+                        <label className="field field--compact">
+                          <span>Роль участника</span>
+                          <select value={selectedRole} onChange={(event) => setSelectedRole(event.currentTarget.value)}>
+                            {dashboard.membership_role_options.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ) : null}
+                      <div className="role-assignment-box__actions">
+                        <a className="btn btn--muted btn--compact" href={`/users/${activeAnnotator.user_id}/profile/`}>
+                          Открыть профиль
+                        </a>
+                        {dashboard.actor.can_assign_roles ? (
+                          <button className="btn btn--secondary btn--compact" type="button" onClick={handleRoleSubmit}>
+                            Сохранить роль
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="activity-board">
+                      <ActivityBoard series={activeAnnotator.activity} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-card">Выбери исполнителя в списке слева.</div>
+                )}
+              </div>
+
+              <div className="panel-card room-review-grid__card room-review-grid__card--scroll">
+                <div className="panel-card__head">
+                  <h2>Размеченные объекты</h2>
+                </div>
+                <label className="field panel-search">
+                  <span>Поиск</span>
+                  <input value={reviewSearch} type="text" placeholder="Задача, файл или тип" onChange={(event) => setReviewSearch(event.currentTarget.value)} />
+                </label>
+                {reviewTasksLoading ? (
+                  <div className="empty-card">Загружаем объекты для проверки.</div>
+                ) : !reviewTasks.length ? (
+                  <div className="empty-card">В итоговой выборке пока нет объектов для проверки.</div>
+                ) : !filteredReviewTasks.length ? (
+                  <div className="empty-card">По этому запросу объекты не найдены.</div>
+                ) : (
                   <div className="annotators-list annotators-list--scroll">
-                    {filteredAnnotators.map((annotator) => (
+                    {filteredReviewTasks.map((task) => (
                       <button
-                        key={annotator.user_id}
-                        className={`annotator-row ${annotator.user_id === selectedAnnotatorUserId ? "is-active" : ""}`}
+                        key={task.id}
+                        className={`annotator-row review-task-row ${task.id === selectedReviewTaskId ? "is-active" : ""}`}
                         type="button"
-                        onClick={() =>
-                          setSelectedAnnotatorUserId((current) => (current === annotator.user_id ? null : annotator.user_id))
-                        }
+                        onClick={() => setSelectedReviewTaskId(task.id)}
                       >
                         <div className="annotator-row__meta">
-                          <strong>{annotator.display_name}</strong>
-                          <span>
-                            {translateMembership(annotator.status)} · {translateRole(annotator.role)}
-                          </span>
+                          <strong>Задача #{task.id}</strong>
+                          <span>{task.source_name || translateSourceType(task.source_type)}</span>
                         </div>
                         <div className="annotator-row__brief">
-                          <div>{formatPercent(annotator.progress_percent)}</div>
-                          <div>
-                            {annotator.completed_tasks} из {dashboard.overview.total_tasks}
-                          </div>
+                          <div>{task.validation_score == null ? "Без score" : `${task.validation_score}%`}</div>
+                          <div>{task.annotations_count} аннотац.</div>
                         </div>
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <div className="empty-card">По этому запросу исполнители не найдены.</div>
-                )
-              ) : (
-                <div className="empty-card">В этой комнате пока нет исполнителей.</div>
-              )}
-            </div>
-
-            <div className="panel-card room-review-grid__card">
-              <div className="panel-card__head">
-                <h2>Полная статистика участника</h2>
+                )}
               </div>
-              {activeAnnotator ? (
-                <>
-                  <div className="summary-stack">
+
+              <div className="panel-card room-review-grid__card">
+                <div className="panel-card__head">
+                  <h2>Проверка разметки</h2>
+                </div>
+                {reviewDetail ? (
+                  <div className="summary-stack review-task-detail">
                     <div className="summary-row">
-                      <span>Исполнитель</span>
-                      <strong>
-                        #{activeAnnotator.user_id} {activeAnnotator.display_name}
-                      </strong>
+                      <span>Задача</span>
+                      <strong>#{reviewDetail.task.id}</strong>
                     </div>
                     <div className="summary-row">
                       <span>Статус</span>
-                      <strong>{translateMembership(activeAnnotator.status)}</strong>
+                      <strong>{translateTaskStatus(reviewDetail.task.status)}</strong>
                     </div>
                     <div className="summary-row">
-                      <span>Роль</span>
-                      <strong>{translateRole(activeAnnotator.role)}</strong>
+                      <span>Тип</span>
+                      <strong>{translateSourceType(reviewDetail.task.source_type)}</strong>
                     </div>
                     <div className="summary-row">
-                      <span>Выполнено</span>
-                      <strong>{activeAnnotator.completed_tasks}</strong>
+                      <span>Раунд</span>
+                      <strong>{reviewDetail.task.current_round}</strong>
                     </div>
                     <div className="summary-row">
-                      <span>В работе</span>
-                      <strong>{activeAnnotator.in_progress_tasks}</strong>
+                      <span>Сходство</span>
+                      <strong>{reviewDetail.task.validation_score == null ? "Не рассчитано" : `${reviewDetail.task.validation_score}%`}</strong>
                     </div>
-                    <div className="summary-row">
-                      <span>Осталось</span>
-                      <strong>{activeAnnotator.remaining_tasks}</strong>
-                    </div>
-                    <div className="summary-row">
-                      <span>Прогресс</span>
-                      <strong>{formatPercent(activeAnnotator.progress_percent)}</strong>
-                    </div>
-                  </div>
-                  <div className="role-assignment-box">
-                    {dashboard.actor.can_assign_roles ? (
-                      <label className="field field--compact">
-                        <span>Роль участника</span>
-                        <select value={selectedRole} onChange={(event) => setSelectedRole(event.currentTarget.value)}>
-                          {dashboard.membership_role_options.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                    {reviewDetail.task.source_file_url ? (
+                      reviewDetail.task.source_type === "image" ? (
+                        <img className="review-task-preview" src={reviewDetail.task.source_file_url} alt={reviewDetail.task.source_name || `task-${reviewDetail.task.id}`} />
+                      ) : (
+                        <video className="review-task-preview" src={reviewDetail.task.source_file_url} controls preload="metadata"></video>
+                      )
                     ) : null}
-                    <div className="role-assignment-box__actions">
-                      <a className="btn btn--muted btn--compact" href={`/users/${activeAnnotator.user_id}/profile/`}>
-                        Открыть профиль
-                      </a>
-                      {dashboard.actor.can_assign_roles ? (
-                        <button className="btn btn--secondary btn--compact" type="button" onClick={handleRoleSubmit}>
-                          Сохранить роль
-                        </button>
-                      ) : null}
-                    </div>
                   </div>
-                  <div className="activity-board">
-                    <ActivityBoard series={activeAnnotator.activity} />
-                  </div>
-                </>
-              ) : (
-                <div className="empty-card">Выбери исполнителя в списке слева.</div>
-              )}
-            </div>
-
-            <div className="panel-card room-review-grid__card room-review-grid__card--scroll">
-              <div className="panel-card__head">
-                <h2>Размеченные объекты</h2>
+                ) : (
+                  <div className="empty-card">Выбери размеченный объект в списке слева.</div>
+                )}
               </div>
-              <label className="field panel-search">
-                <span>Поиск</span>
-                <input value={reviewSearch} type="text" placeholder="Задача, файл или тип" onChange={(event) => setReviewSearch(event.currentTarget.value)} />
-              </label>
-              {!reviewTasks.length ? (
-                <div className="empty-card">В итоговой выборке пока нет объектов для проверки.</div>
-              ) : !filteredReviewTasks.length ? (
-                <div className="empty-card">По этому запросу объекты не найдены.</div>
-              ) : (
-                <div className="annotators-list annotators-list--scroll">
-                  {filteredReviewTasks.map((task) => (
-                    <button
-                      key={task.id}
-                      className={`annotator-row review-task-row ${task.id === selectedReviewTaskId ? "is-active" : ""}`}
-                      type="button"
-                      onClick={() => setSelectedReviewTaskId(task.id)}
-                    >
-                      <div className="annotator-row__meta">
-                        <strong>Задача #{task.id}</strong>
-                        <span>{task.source_name || translateSourceType(task.source_type)}</span>
-                      </div>
-                      <div className="annotator-row__brief">
-                        <div>{task.validation_score == null ? "Без score" : `${task.validation_score}%`}</div>
-                        <div>{task.annotations_count} аннотац.</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            </section>
 
-            <div className="panel-card room-review-grid__card">
-              <div className="panel-card__head">
-                <h2>Проверка разметки</h2>
+            <section className={`panel-card review-comparison-section ${reviewDetail ? "" : "hidden"}`}>
+              <div className="review-comparison-grid">
+                <div className="review-comparison-column">
+                  <div className="panel-card__head">
+                    <h2>Итоговая разметка</h2>
+                  </div>
+                  {reviewDetail ? (
+                    <div className="review-comparison-stack">
+                      <ReviewGraphicPreview task={reviewDetail.task} payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
+                      <ReviewTextSummary payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
+                      {bootstrap.app_debug_mode && reviewDetail.consensus_payload ? (
+                        <pre className="payload-preview">{JSON.stringify(reviewDetail.consensus_payload, null, 2)}</pre>
+                      ) : null}
+                      {!reviewDetail.consensus_payload ? <div className="panel-note">Финальный payload для этой задачи пока отсутствует.</div> : null}
+                    </div>
+                  ) : (
+                    <div className="empty-card">Выбери размеченный объект в списке выше.</div>
+                  )}
+                </div>
+                <div className="review-comparison-column">
+                  {reviewDetail ? (
+                    <div className="review-comparison-stack">
+                      {reviewDetail.annotations.length ? (
+                        reviewDetail.annotations.map((annotation) => (
+                          <section key={annotation.id} className="review-annotation-entry">
+                            <header className="review-annotation-entry__head">
+                              <strong>Аннотация пользователя</strong>
+                              <span>{annotation.annotator_display_name || `#${annotation.annotator_id}`}</span>
+                              <span>
+                                Раунд {annotation.round_number} · {formatDate(annotation.submitted_at)}
+                              </span>
+                            </header>
+                            <ReviewGraphicPreview task={reviewDetail.task} payload={annotation.result_payload} labels={dashboard.labels} />
+                            <ReviewTextSummary payload={annotation.result_payload} labels={dashboard.labels} />
+                            {bootstrap.app_debug_mode ? <pre className="payload-preview">{JSON.stringify(annotation.result_payload, null, 2)}</pre> : null}
+                          </section>
+                        ))
+                      ) : (
+                        <div className="panel-note">Аннотации для этой задачи пока отсутствуют.</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="empty-card">Выбери размеченный объект в списке выше.</div>
+                  )}
+                </div>
               </div>
               {reviewDetail ? (
-                <div className="summary-stack review-task-detail">
-                  <div className="summary-row">
-                    <span>Задача</span>
-                    <strong>#{reviewDetail.task.id}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Статус</span>
-                    <strong>{translateTaskStatus(reviewDetail.task.status)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Тип</span>
-                    <strong>{translateSourceType(reviewDetail.task.source_type)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Раунд</span>
-                    <strong>{reviewDetail.task.current_round}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Сходство</span>
-                    <strong>{reviewDetail.task.validation_score == null ? "Не рассчитано" : `${reviewDetail.task.validation_score}%`}</strong>
-                  </div>
-                  {reviewDetail.task.source_file_url ? (
-                    reviewDetail.task.source_type === "image" ? (
-                      <img className="review-task-preview" src={reviewDetail.task.source_file_url} alt={reviewDetail.task.source_name || `task-${reviewDetail.task.id}`} />
-                    ) : (
-                      <video className="review-task-preview" src={reviewDetail.task.source_file_url} controls preload="metadata"></video>
-                    )
-                  ) : null}
+                <div className="review-comparison-actions">
+                  <button className="btn btn--danger" type="button" onClick={handleRejectTask}>
+                    Отклонить разметку
+                  </button>
                 </div>
-              ) : (
-                <div className="empty-card">Выбери размеченный объект в списке слева.</div>
-              )}
-            </div>
-          </section>
-
-          <section className={`panel-card review-comparison-section ${reviewDetail ? "" : "hidden"}`}>
-            <div className="review-comparison-grid">
-              <div className="review-comparison-column">
-                <div className="panel-card__head">
-                  <h2>Итоговая разметка</h2>
-                </div>
-                {reviewDetail ? (
-                  <div className="review-comparison-stack">
-                    <ReviewGraphicPreview task={reviewDetail.task} payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
-                    <ReviewTextSummary payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
-                    {bootstrap.app_debug_mode && reviewDetail.consensus_payload ? (
-                      <pre className="payload-preview">{JSON.stringify(reviewDetail.consensus_payload, null, 2)}</pre>
-                    ) : null}
-                    {!reviewDetail.consensus_payload ? <div className="panel-note">Финальный payload для этой задачи пока отсутствует.</div> : null}
-                  </div>
-                ) : (
-                  <div className="empty-card">Выбери размеченный объект в списке выше.</div>
-                )}
-              </div>
-              <div className="review-comparison-column">
-                {reviewDetail ? (
-                  <div className="review-comparison-stack">
-                    {reviewDetail.annotations.length ? (
-                      reviewDetail.annotations.map((annotation) => (
-                        <section key={annotation.id} className="review-annotation-entry">
-                          <header className="review-annotation-entry__head">
-                            <strong>Аннотация пользователя</strong>
-                            <span>{annotation.annotator_display_name || `#${annotation.annotator_id}`}</span>
-                            <span>
-                              Раунд {annotation.round_number} · {formatDate(annotation.submitted_at)}
-                            </span>
-                          </header>
-                          <ReviewGraphicPreview task={reviewDetail.task} payload={annotation.result_payload} labels={dashboard.labels} />
-                          <ReviewTextSummary payload={annotation.result_payload} labels={dashboard.labels} />
-                          {bootstrap.app_debug_mode ? <pre className="payload-preview">{JSON.stringify(annotation.result_payload, null, 2)}</pre> : null}
-                        </section>
-                      ))
-                    ) : (
-                      <div className="panel-note">Аннотации для этой задачи пока отсутствуют.</div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="empty-card">Выбери размеченный объект в списке выше.</div>
-                )}
-              </div>
-            </div>
-            {reviewDetail ? (
-              <div className="review-comparison-actions">
-                <button className="btn btn--danger" type="button" onClick={handleRejectTask}>
-                  Отклонить разметку
-                </button>
-              </div>
-            ) : null}
-          </section>
-        </>
+              ) : null}
+            </section>
+          </div>
+        </details>
       ) : null}
     </>
   );
@@ -3199,6 +3419,11 @@ function createMediaAnnotationEditor(options: {
   instructions: HTMLElement;
   labelPalette: HTMLElement;
   activeLabelNote: HTMLElement;
+  zoomToolbar: HTMLElement | null;
+  zoomRange: HTMLInputElement | null;
+  zoomOutBtn: HTMLButtonElement | null;
+  zoomInBtn: HTMLButtonElement | null;
+  zoomResetBtn: HTMLButtonElement | null;
   mediaStage: HTMLElement;
   annotationList: HTMLElement;
   clearBtn: HTMLButtonElement | null;
@@ -3210,29 +3435,30 @@ function createMediaAnnotationEditor(options: {
   showToast: (message: string, type?: ToastType) => void;
   onPayloadChange: (payload: Record<string, any>) => void;
 }): MediaEditorController {
-  /*
-   * Interactive bbox editor intentionally stays imperative.
-   *
-   * Dragging and resizing boxes generates many mousemove updates; handling the
-   * overlay directly keeps the editor responsive while React remains responsible
-   * for page-level state and API interactions.
-   */
   const editor = {
     annotations: [] as any[],
     activeLabelId: null as number | null,
     mediaElement: null as HTMLImageElement | HTMLVideoElement | null,
-    overlayElement: null as HTMLElement | null,
+    wrapperElement: null as HTMLDivElement | null,
+    overlayElement: null as HTMLDivElement | null,
     boxElements: new Map<string, HTMLButtonElement>(),
     draftElement: null as HTMLDivElement | null,
     draftStart: null as { x: number; y: number } | null,
     dragState: null as any,
     resizeState: null as any,
+    panState: null as any,
+    panPointerId: null as number | null,
     suppressLabelClickUntil: 0,
-    previewRafId: null as number | null,
-    previewAnnotation: null as any,
-    moveHandler: null as ((event: MouseEvent) => void) | null,
-    upHandler: null as ((event: MouseEvent) => void) | null,
-    resizeHandler: null as (() => void) | null,
+    eventsAttached: false,
+    activePointerId: null as number | null,
+    interactionMetrics: null as any,
+    zoomLevel: 1,
+    minZoom: 1,
+    maxZoom: 4,
+    zoomStep: 0.25,
+    baseCanvasWidth: 0,
+    baseCanvasHeight: 0,
+    isPanKeyActive: false,
   };
 
   function getLabels() {
@@ -3245,6 +3471,22 @@ function createMediaAnnotationEditor(options: {
 
   function getLabelById(labelId: number | null) {
     return getLabels().find((label) => label.id === labelId) || null;
+  }
+
+  function clampValue(value: number, min: number, max: number) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function getLatestPointerSample(event: PointerEvent) {
+    const coalescedEvents = typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
+    return coalescedEvents.length ? coalescedEvents[coalescedEvents.length - 1] : event;
+  }
+
+  function isEditableTarget(target: EventTarget | null) {
+    return (
+      target instanceof HTMLElement &&
+      (target.isContentEditable || Boolean(target.closest("input, textarea, select, button, [contenteditable='true']")))
+    );
   }
 
   function getFrameRate() {
@@ -3296,15 +3538,133 @@ function createMediaAnnotationEditor(options: {
     };
   }
 
+  function measureInteractionMetrics() {
+    if (!editor.overlayElement) {
+      return null;
+    }
+
+    const bounds = editor.overlayElement.getBoundingClientRect();
+    const naturalSize = getNaturalSize();
+    return {
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height,
+      naturalWidth: naturalSize.width,
+      naturalHeight: naturalSize.height,
+      scaleToNaturalX: bounds.width > 0 ? naturalSize.width / bounds.width : 1,
+      scaleToNaturalY: bounds.height > 0 ? naturalSize.height / bounds.height : 1,
+    };
+  }
+
+  function beginPointerInteraction(pointerId: number) {
+    editor.activePointerId = pointerId;
+    editor.interactionMetrics = measureInteractionMetrics();
+    if (editor.overlayElement) {
+      editor.overlayElement.setPointerCapture(pointerId);
+    }
+    return editor.interactionMetrics;
+  }
+
+  function endPointerInteraction(pointerId = editor.activePointerId) {
+    if (pointerId !== null && editor.overlayElement?.hasPointerCapture(pointerId)) {
+      editor.overlayElement.releasePointerCapture(pointerId);
+    }
+    editor.activePointerId = null;
+    editor.interactionMetrics = null;
+  }
+
+  function shouldStartPanning(event: PointerEvent) {
+    if (!editor.mediaElement || editor.zoomLevel <= 1) {
+      return false;
+    }
+
+    return event.button === 1 || (event.button === 0 && editor.isPanKeyActive);
+  }
+
+  function updateStageInteractionState() {
+    const canPan = Boolean(editor.mediaElement && editor.zoomLevel > 1);
+    options.mediaStage.classList.toggle("media-stage--zoomed", canPan);
+    options.mediaStage.classList.toggle("media-stage--pan-ready", canPan && editor.isPanKeyActive && !editor.panState);
+    options.mediaStage.classList.toggle("media-stage--panning", Boolean(editor.panState));
+  }
+
+  function startPanning(event: PointerEvent) {
+    if (editor.panState || !shouldStartPanning(event) || editor.activePointerId !== null) {
+      return false;
+    }
+
+    const sample = getLatestPointerSample(event);
+    event.preventDefault();
+    event.stopPropagation();
+    editor.panPointerId = event.pointerId;
+    editor.panState = {
+      startClientX: sample.clientX,
+      startClientY: sample.clientY,
+      startScrollLeft: options.mediaStage.scrollLeft,
+      startScrollTop: options.mediaStage.scrollTop,
+      moved: false,
+    };
+    options.mediaStage.setPointerCapture(event.pointerId);
+    updateStageInteractionState();
+    return true;
+  }
+
+  function updatePan(event: PointerEvent) {
+    if (!editor.panState || editor.panPointerId !== event.pointerId) {
+      return;
+    }
+
+    const sample = getLatestPointerSample(event);
+    const deltaX = sample.clientX - editor.panState.startClientX;
+    const deltaY = sample.clientY - editor.panState.startClientY;
+    editor.panState.moved = editor.panState.moved || Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2;
+    options.mediaStage.scrollLeft = Math.max(editor.panState.startScrollLeft - deltaX, 0);
+    options.mediaStage.scrollTop = Math.max(editor.panState.startScrollTop - deltaY, 0);
+    event.preventDefault();
+  }
+
+  function finishPanning(event: PointerEvent | null = null) {
+    if (event && editor.panPointerId !== event.pointerId) {
+      return;
+    }
+    if (!editor.panState) {
+      return;
+    }
+
+    if (editor.panState.moved) {
+      editor.suppressLabelClickUntil = Date.now() + 150;
+    }
+    if (editor.panPointerId !== null && options.mediaStage.hasPointerCapture(editor.panPointerId)) {
+      options.mediaStage.releasePointerCapture(editor.panPointerId);
+    }
+    editor.panState = null;
+    editor.panPointerId = null;
+    updateStageInteractionState();
+  }
+
+  function normalizePoints(points: number[], naturalWidth: number, naturalHeight: number) {
+    const xMin = clampValue(Math.min(points[0], points[2]), 0, naturalWidth);
+    const yMin = clampValue(Math.min(points[1], points[3]), 0, naturalHeight);
+    const xMax = clampValue(Math.max(points[0], points[2]), 0, naturalWidth);
+    const yMax = clampValue(Math.max(points[1], points[3]), 0, naturalHeight);
+    return [Math.round(xMin), Math.round(yMin), Math.round(xMax), Math.round(yMax)];
+  }
+
+  function commitAnnotationPoints(annotation: any, metrics = editor.interactionMetrics) {
+    const naturalWidth = metrics?.naturalWidth || getNaturalSize().width || 0;
+    const naturalHeight = metrics?.naturalHeight || getNaturalSize().height || 0;
+    annotation.points = normalizePoints(annotation.points, naturalWidth, naturalHeight);
+  }
+
   function buildPayload() {
-    // Only labeled annotations are serialised into the payload expected by DRF.
     return {
       annotations: editor.annotations
         .filter((annotation) => annotation.label_id)
         .map((annotation) => ({
           type: annotation.type,
           label_id: annotation.label_id,
-          points: annotation.points,
+          points: normalizePoints(annotation.points, getNaturalSize().width || 0, getNaturalSize().height || 0),
           frame: annotation.frame,
           attributes: annotation.attributes,
           occluded: annotation.occluded,
@@ -3312,20 +3672,171 @@ function createMediaAnnotationEditor(options: {
     };
   }
 
+  function updateZoomControls() {
+    if (!options.zoomToolbar) {
+      return;
+    }
+
+    const hasMedia = Boolean(editor.mediaElement && editor.wrapperElement);
+    options.zoomToolbar.classList.toggle("hidden", !hasMedia);
+
+    const zoomPercent = Math.round(editor.zoomLevel * 100);
+    if (options.zoomRange) {
+      options.zoomRange.value = String(zoomPercent);
+      options.zoomRange.disabled = !hasMedia;
+    }
+    if (options.zoomResetBtn) {
+      options.zoomResetBtn.textContent = `${zoomPercent}%`;
+      options.zoomResetBtn.disabled = !hasMedia || editor.zoomLevel === 1;
+    }
+    if (options.zoomOutBtn) {
+      options.zoomOutBtn.disabled = !hasMedia || editor.zoomLevel <= editor.minZoom;
+    }
+    if (options.zoomInBtn) {
+      options.zoomInBtn.disabled = !hasMedia || editor.zoomLevel >= editor.maxZoom;
+    }
+    updateStageInteractionState();
+  }
+
+  function captureBaseCanvasSize() {
+    if (!editor.mediaElement) {
+      return false;
+    }
+
+    if (editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
+      return true;
+    }
+
+    const width = editor.mediaElement.clientWidth || editor.mediaElement.getBoundingClientRect().width;
+    const height = editor.mediaElement.clientHeight || editor.mediaElement.getBoundingClientRect().height;
+    if (!width || !height) {
+      return false;
+    }
+
+    editor.baseCanvasWidth = width;
+    editor.baseCanvasHeight = height;
+    return true;
+  }
+
+  function applyZoom(
+    nextZoom: number,
+    zoomOptions: { preserveViewport?: boolean; anchorClientX?: number; anchorClientY?: number; force?: boolean } = {}
+  ) {
+    if (!editor.wrapperElement) {
+      editor.zoomLevel = editor.minZoom;
+      updateZoomControls();
+      return;
+    }
+
+    const previousZoom = editor.zoomLevel;
+    const clampedZoom = clampValue(nextZoom, editor.minZoom, editor.maxZoom);
+    const shouldPreserveViewport = zoomOptions.preserveViewport !== false;
+    const force = Boolean(zoomOptions.force);
+
+    if (!force && Math.abs(previousZoom - clampedZoom) < 0.001) {
+      updateZoomControls();
+      return;
+    }
+
+    const stageRect = options.mediaStage.getBoundingClientRect();
+    const anchorX =
+      typeof zoomOptions.anchorClientX === "number" ? zoomOptions.anchorClientX - stageRect.left : options.mediaStage.clientWidth / 2;
+    const anchorY =
+      typeof zoomOptions.anchorClientY === "number" ? zoomOptions.anchorClientY - stageRect.top : options.mediaStage.clientHeight / 2;
+    const contentX = options.mediaStage.scrollLeft + anchorX;
+    const contentY = options.mediaStage.scrollTop + anchorY;
+
+    if (clampedZoom <= 1) {
+      finishPanning();
+      editor.zoomLevel = 1;
+      editor.wrapperElement.classList.remove("media-canvas--zoom-ready");
+      editor.wrapperElement.style.width = "";
+      editor.wrapperElement.style.height = "";
+      updateZoomControls();
+      window.requestAnimationFrame(() => {
+        renderBoxes();
+        if (shouldPreserveViewport && previousZoom > 1) {
+          const zoomRatio = 1 / previousZoom;
+          options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
+          options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+        }
+      });
+      return;
+    }
+
+    if (!captureBaseCanvasSize()) {
+      return;
+    }
+
+    editor.zoomLevel = clampedZoom;
+    editor.wrapperElement.classList.add("media-canvas--zoom-ready");
+    editor.wrapperElement.style.width = `${Math.round(editor.baseCanvasWidth * clampedZoom)}px`;
+    editor.wrapperElement.style.height = `${Math.round(editor.baseCanvasHeight * clampedZoom)}px`;
+    updateZoomControls();
+    window.requestAnimationFrame(() => {
+      renderBoxes();
+      if (shouldPreserveViewport) {
+        const zoomRatio = clampedZoom / previousZoom;
+        options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
+        options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+      }
+    });
+  }
+
+  function handleStageResize() {
+    if (editor.zoomLevel <= 1) {
+      captureBaseCanvasSize();
+    }
+    renderBoxes();
+  }
+
+  function handleStageWheel(event: WheelEvent) {
+    if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement) {
+      return;
+    }
+
+    event.preventDefault();
+    const direction = event.deltaY < 0 ? editor.zoomStep : -editor.zoomStep;
+    applyZoom(editor.zoomLevel + direction, {
+      anchorClientX: event.clientX,
+      anchorClientY: event.clientY,
+    });
+  }
+
+  function syncCanvasViewport() {
+    if (!editor.mediaElement || !editor.wrapperElement) {
+      return;
+    }
+
+    if (editor.zoomLevel > 1) {
+      applyZoom(editor.zoomLevel, { preserveViewport: false, force: true });
+      return;
+    }
+
+    captureBaseCanvasSize();
+    updateZoomControls();
+    renderBoxes();
+  }
+
+  function updateSubmitState() {
+    if (!options.submitBtn) {
+      return;
+    }
+    options.submitBtn.disabled = !getTask() || editor.annotations.some((annotation) => !annotation.label_id);
+  }
+
   function updateResultPreview() {
     const payload = buildPayload();
     options.resultJson.value = JSON.stringify(payload, null, 2);
     options.onPayloadChange(payload);
-    if (options.submitBtn) {
-      options.submitBtn.disabled = editor.annotations.some((annotation) => !annotation.label_id);
-    }
+    updateSubmitState();
   }
 
   function setActiveLabel(labelId: number | null) {
     editor.activeLabelId = labelId;
     const label = getLabelById(labelId);
     options.activeLabelNote.textContent = label
-      ? `Активный label: ${label.name}. Новые выделения получат его сразу, зажатие перемещает область, а нижний правый угол меняет размер.`
+      ? `Активный label: ${label.name}. Новые выделения получат его сразу, зажатие перемещает область, нижний правый угол меняет размер, а одиночный клик меняет ее label на активный.`
       : "Активный label пока не выбран.";
 
     options.labelPalette.querySelectorAll<HTMLButtonElement>("[data-label-id]").forEach((button) => {
@@ -3333,8 +3844,22 @@ function createMediaAnnotationEditor(options: {
     });
   }
 
+  function removeAnnotation(localId: string | undefined) {
+    if (!localId) {
+      return;
+    }
+
+    editor.annotations = editor.annotations.filter((annotation) => annotation.local_id !== localId);
+    render();
+  }
+
+  function updateClearButtonVisibility() {
+    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length);
+  }
+
   function renderPalette() {
     const labels = getLabels();
+    options.activeLabelNote.classList.toggle("hidden", !labels.length);
     if (!labels.length) {
       options.labelPalette.innerHTML = '<div class="empty-card">Лейблы для этой комнаты не заданы.</div>';
       setActiveLabel(null);
@@ -3395,8 +3920,7 @@ function createMediaAnnotationEditor(options: {
 
     options.annotationList.querySelectorAll<HTMLButtonElement>("[data-remove-id]").forEach((button) => {
       button.addEventListener("click", () => {
-        editor.annotations = editor.annotations.filter((annotation) => annotation.local_id !== button.dataset.removeId);
-        render();
+        removeAnnotation(button.dataset.removeId);
       });
     });
   }
@@ -3418,10 +3942,30 @@ function createMediaAnnotationEditor(options: {
     element.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
     element.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
     element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
-    const labelNode = element.querySelector<HTMLSpanElement>("span");
+    const labelNode = element.firstElementChild instanceof HTMLSpanElement ? element.firstElementChild : null;
     if (labelNode) {
       labelNode.textContent = label ? label.name : "Без лейбла";
     }
+  }
+
+  function renderActiveBox(annotation: any, metrics = editor.interactionMetrics, overlayScale: { scaleX: number; scaleY: number } | null = null) {
+    if (!editor.overlayElement) {
+      return;
+    }
+
+    if (!isVisibleOnCurrentFrame(annotation)) {
+      removeBoxElement(annotation.local_id);
+      return;
+    }
+
+    const scale = overlayScale || getOverlayScale();
+    const scaleX = metrics ? (metrics.naturalWidth > 0 ? metrics.width / metrics.naturalWidth : 1) : scale.scaleX;
+    const scaleY = metrics ? (metrics.naturalHeight > 0 ? metrics.height / metrics.naturalHeight : 1) : scale.scaleY;
+    const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
+    if (element.parentNode !== editor.overlayElement) {
+      editor.overlayElement.appendChild(element);
+    }
+    updateBoxElement(element, annotation, scaleX, scaleY);
   }
 
   function createBoxElement(annotation: any) {
@@ -3429,13 +3973,13 @@ function createMediaAnnotationEditor(options: {
     element.type = "button";
     element.className = "media-bbox";
     element.innerHTML = `
-      <span></span>
+      <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
-    element.addEventListener("mousedown", (event) => {
+    element.addEventListener("pointerdown", (event) => {
       startDragging(event, annotation);
     });
-    element.querySelector<HTMLElement>(".media-bbox__resize-handle")?.addEventListener("mousedown", (event) => {
+    element.querySelector<HTMLElement>(".media-bbox__resize-handle")?.addEventListener("pointerdown", (event) => {
       startResizing(event, annotation);
     });
     element.addEventListener("click", (event) => {
@@ -3460,7 +4004,7 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
-    const { scaleX, scaleY } = getOverlayScale();
+    const overlayScale = getOverlayScale();
     const visibleIds = new Set<string>();
 
     editor.annotations.forEach((annotation) => {
@@ -3470,11 +4014,7 @@ function createMediaAnnotationEditor(options: {
       }
 
       visibleIds.add(annotation.local_id);
-      const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
-      if (element.parentNode !== editor.overlayElement) {
-        editor.overlayElement.appendChild(element);
-      }
-      updateBoxElement(element, annotation, scaleX, scaleY);
+      renderActiveBox(annotation, null, overlayScale);
     });
 
     Array.from(editor.boxElements.keys()).forEach((localId) => {
@@ -3485,7 +4025,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function render() {
-    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length);
+    updateClearButtonVisibility();
     renderPalette();
     renderBoxes();
     renderAnnotationList();
@@ -3498,40 +4038,8 @@ function createMediaAnnotationEditor(options: {
     editor.draftStart = null;
   }
 
-  function flushPreviewUpdate() {
-    editor.previewRafId = null;
-
-    if (!editor.previewAnnotation || !editor.overlayElement) {
-      return;
-    }
-
-    if (!isVisibleOnCurrentFrame(editor.previewAnnotation)) {
-      removeBoxElement(editor.previewAnnotation.local_id);
-      editor.previewAnnotation = null;
-      return;
-    }
-
-    // During drag/resize we update the active box through requestAnimationFrame
-    // to avoid flooding the DOM on every mousemove callback.
-    const { scaleX, scaleY } = getOverlayScale();
-    const element = editor.boxElements.get(editor.previewAnnotation.local_id) || createBoxElement(editor.previewAnnotation);
-    if (element.parentNode !== editor.overlayElement) {
-      editor.overlayElement.appendChild(element);
-    }
-    updateBoxElement(element, editor.previewAnnotation, scaleX, scaleY);
-    editor.previewAnnotation = null;
-  }
-
-  function schedulePreviewUpdate(annotation: any) {
-    editor.previewAnnotation = annotation;
-    if (editor.previewRafId !== null) {
-      return;
-    }
-    editor.previewRafId = window.requestAnimationFrame(flushPreviewUpdate);
-  }
-
-  function startDragging(event: MouseEvent, annotation: any) {
-    if (event.button !== 0 || !editor.overlayElement) {
+  function startDragging(event: PointerEvent, annotation: any) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -3542,6 +4050,7 @@ function createMediaAnnotationEditor(options: {
 
     event.preventDefault();
     event.stopPropagation();
+    beginPointerInteraction(event.pointerId);
     editor.dragState = {
       annotation,
       startClientX: event.clientX,
@@ -3551,8 +4060,8 @@ function createMediaAnnotationEditor(options: {
     };
   }
 
-  function startResizing(event: MouseEvent, annotation: any) {
-    if (event.button !== 0 || !editor.overlayElement) {
+  function startResizing(event: PointerEvent, annotation: any) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -3563,6 +4072,7 @@ function createMediaAnnotationEditor(options: {
 
     event.preventDefault();
     event.stopPropagation();
+    beginPointerInteraction(event.pointerId);
     editor.resizeState = {
       annotation,
       startClientX: event.clientX,
@@ -3572,8 +4082,8 @@ function createMediaAnnotationEditor(options: {
     };
   }
 
-  function startDrawing(event: MouseEvent) {
-    if (event.button !== 0 || !editor.overlayElement) {
+  function startDrawing(event: PointerEvent) {
+    if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
 
@@ -3582,62 +4092,81 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
+    const sample = getLatestPointerSample(event);
+    event.preventDefault();
+    const metrics = beginPointerInteraction(event.pointerId);
+    if (!metrics) {
+      return;
+    }
     editor.draftStart = {
-      x: Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width),
-      y: Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height),
+      x: Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width),
+      y: Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height),
     };
     editor.draftElement = document.createElement("div");
     editor.draftElement.className = "media-bbox media-bbox--draft";
     editor.overlayElement.appendChild(editor.draftElement);
   }
 
-  function updateDraft(event: MouseEvent) {
+  function updateDraft(event: PointerEvent) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+
+    const metrics = editor.interactionMetrics;
+    if (!metrics) {
+      return;
+    }
+    const sample = getLatestPointerSample(event);
+    const clientX = sample.clientX;
+    const clientY = sample.clientY;
+
     if (editor.resizeState && editor.overlayElement) {
-      const bounds = editor.overlayElement.getBoundingClientRect();
-      const naturalSize = getNaturalSize();
-      const scaleX = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const scaleY = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-      const deltaX = Math.round((event.clientX - editor.resizeState.startClientX) * scaleX);
-      const deltaY = Math.round((event.clientY - editor.resizeState.startClientY) * scaleY);
+      const deltaX = (clientX - editor.resizeState.startClientX) * metrics.scaleToNaturalX;
+      const deltaY = (clientY - editor.resizeState.startClientY) * metrics.scaleToNaturalY;
       const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.originalPoints;
       const minWidth = 8;
       const minHeight = 8;
-      const maxWidth = Math.max((naturalSize.width || 0) - startXMin, minWidth);
-      const maxHeight = Math.max((naturalSize.height || 0) - startYMin, minHeight);
-      const nextWidth = clamp((startXMax - startXMin) + deltaX, minWidth, maxWidth);
-      const nextHeight = clamp((startYMax - startYMin) + deltaY, minHeight, maxHeight);
+      const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
+      const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
+      const nextWidth = clampValue((startXMax - startXMin) + deltaX, minWidth, maxWidth);
+      const nextHeight = clampValue((startYMax - startYMin) + deltaY, minHeight, maxHeight);
 
       editor.resizeState.moved =
         editor.resizeState.moved ||
-        Math.abs(event.clientX - editor.resizeState.startClientX) > 3 ||
-        Math.abs(event.clientY - editor.resizeState.startClientY) > 3;
-      editor.resizeState.annotation.points = [startXMin, startYMin, startXMin + nextWidth, startYMin + nextHeight];
-      schedulePreviewUpdate(editor.resizeState.annotation);
+        Math.abs(clientX - editor.resizeState.startClientX) > 3 ||
+        Math.abs(clientY - editor.resizeState.startClientY) > 3;
+      editor.resizeState.annotation.points = [
+        startXMin,
+        startYMin,
+        startXMin + nextWidth,
+        startYMin + nextHeight,
+      ];
+      renderActiveBox(editor.resizeState.annotation, metrics);
       return;
     }
 
     if (editor.dragState && editor.overlayElement) {
-      const bounds = editor.overlayElement.getBoundingClientRect();
-      const naturalSize = getNaturalSize();
-      const scaleX = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const scaleY = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-      const deltaX = Math.round((event.clientX - editor.dragState.startClientX) * scaleX);
-      const deltaY = Math.round((event.clientY - editor.dragState.startClientY) * scaleY);
+      const deltaX = (clientX - editor.dragState.startClientX) * metrics.scaleToNaturalX;
+      const deltaY = (clientY - editor.dragState.startClientY) * metrics.scaleToNaturalY;
       const [startXMin, startYMin, startXMax, startYMax] = editor.dragState.originalPoints;
       const boxWidth = startXMax - startXMin;
       const boxHeight = startYMax - startYMin;
-      const maxX = Math.max((naturalSize.width || 0) - boxWidth, 0);
-      const maxY = Math.max((naturalSize.height || 0) - boxHeight, 0);
-      const nextXMin = clamp(startXMin + deltaX, 0, maxX);
-      const nextYMin = clamp(startYMin + deltaY, 0, maxY);
+      const maxX = Math.max((metrics.naturalWidth || 0) - boxWidth, 0);
+      const maxY = Math.max((metrics.naturalHeight || 0) - boxHeight, 0);
+      const nextXMin = clampValue(startXMin + deltaX, 0, maxX);
+      const nextYMin = clampValue(startYMin + deltaY, 0, maxY);
 
       editor.dragState.moved =
         editor.dragState.moved ||
-        Math.abs(event.clientX - editor.dragState.startClientX) > 3 ||
-        Math.abs(event.clientY - editor.dragState.startClientY) > 3;
-      editor.dragState.annotation.points = [nextXMin, nextYMin, nextXMin + boxWidth, nextYMin + boxHeight];
-      schedulePreviewUpdate(editor.dragState.annotation);
+        Math.abs(clientX - editor.dragState.startClientX) > 3 ||
+        Math.abs(clientY - editor.dragState.startClientY) > 3;
+      editor.dragState.annotation.points = [
+        nextXMin,
+        nextYMin,
+        nextXMin + boxWidth,
+        nextYMin + boxHeight,
+      ];
+      renderActiveBox(editor.dragState.annotation, metrics);
       return;
     }
 
@@ -3645,9 +4174,8 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
-    const currentX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
-    const currentY = Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height);
+    const currentX = Math.min(Math.max(clientX - metrics.left, 0), metrics.width);
+    const currentY = Math.min(Math.max(clientY - metrics.top, 0), metrics.height);
     const left = Math.min(editor.draftStart.x, currentX);
     const top = Math.min(editor.draftStart.y, currentY);
     const width = Math.abs(currentX - editor.draftStart.x);
@@ -3659,16 +4187,19 @@ function createMediaAnnotationEditor(options: {
     editor.draftElement.style.height = `${height}px`;
   }
 
-  function finishDrawing(event: MouseEvent) {
+  function finishDrawing(event: PointerEvent) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+    const sample = getLatestPointerSample(event);
+
     if (editor.resizeState) {
       if (editor.resizeState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
-      if (editor.previewRafId !== null) {
-        window.cancelAnimationFrame(editor.previewRafId);
-        flushPreviewUpdate();
-      }
+      commitAnnotationPoints(editor.resizeState.annotation);
       editor.resizeState = null;
+      endPointerInteraction(event.pointerId);
       renderAnnotationList();
       updateResultPreview();
       return;
@@ -3678,38 +4209,39 @@ function createMediaAnnotationEditor(options: {
       if (editor.dragState.moved) {
         editor.suppressLabelClickUntil = Date.now() + 150;
       }
-      if (editor.previewRafId !== null) {
-        window.cancelAnimationFrame(editor.previewRafId);
-        flushPreviewUpdate();
-      }
+      commitAnnotationPoints(editor.dragState.annotation);
       editor.dragState = null;
+      endPointerInteraction(event.pointerId);
       renderAnnotationList();
       updateResultPreview();
       return;
     }
 
-    if (!editor.draftStart || !editor.overlayElement) {
+    const metrics = editor.interactionMetrics;
+    if (!editor.draftStart || !editor.overlayElement || !metrics) {
+      clearDraft();
+      endPointerInteraction(event.pointerId);
       return;
     }
 
-    const bounds = editor.overlayElement.getBoundingClientRect();
-    const currentX = Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width);
-    const currentY = Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height);
+    const currentX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
+    const currentY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
     const left = Math.min(editor.draftStart.x, currentX);
     const top = Math.min(editor.draftStart.y, currentY);
     const width = Math.abs(currentX - editor.draftStart.x);
     const height = Math.abs(currentY - editor.draftStart.y);
 
     if (width >= 8 && height >= 8) {
-      const naturalSize = getNaturalSize();
-      const xScale = bounds.width > 0 ? naturalSize.width / bounds.width : 1;
-      const yScale = bounds.height > 0 ? naturalSize.height / bounds.height : 1;
-
       editor.annotations.push({
         local_id: `${Date.now()}-${Math.random()}`,
         type: "bbox",
         label_id: editor.activeLabelId,
-        points: [Math.round(left * xScale), Math.round(top * yScale), Math.round((left + width) * xScale), Math.round((top + height) * yScale)],
+        points: [
+          Math.round(left * metrics.scaleToNaturalX),
+          Math.round(top * metrics.scaleToNaturalY),
+          Math.round((left + width) * metrics.scaleToNaturalX),
+          Math.round((top + height) * metrics.scaleToNaturalY),
+        ],
         frame: getCurrentFrame(),
         attributes: [],
         occluded: false,
@@ -3717,60 +4249,189 @@ function createMediaAnnotationEditor(options: {
     }
 
     clearDraft();
+    endPointerInteraction(event.pointerId);
     render();
   }
 
-  function attachEvents() {
+  function cancelPointerInteraction(event: PointerEvent) {
+    if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
+      return;
+    }
+
+    editor.dragState = null;
+    editor.resizeState = null;
+    clearDraft();
+    endPointerInteraction(event.pointerId);
+    renderAnnotationList();
+    updateResultPreview();
+  }
+
+  function handleOverlayPointerDown(event: PointerEvent) {
+    if (event.target !== editor.overlayElement) {
+      return;
+    }
+    startDrawing(event);
+  }
+
+  function attachOverlayEvents() {
     if (!editor.overlayElement) {
       return;
     }
 
-    editor.overlayElement.addEventListener("mousedown", (event) => {
-      if (event.target !== editor.overlayElement) {
-        return;
-      }
-      startDrawing(event);
-    });
-
-    editor.moveHandler = updateDraft;
-    editor.upHandler = finishDrawing;
-    editor.resizeHandler = renderBoxes;
-
-    window.addEventListener("mousemove", editor.moveHandler);
-    window.addEventListener("mouseup", editor.upHandler);
-    window.addEventListener("resize", editor.resizeHandler);
+    editor.overlayElement.addEventListener("pointerdown", handleOverlayPointerDown);
+    editor.overlayElement.addEventListener("pointermove", updateDraft);
+    editor.overlayElement.addEventListener("pointerrawupdate", updateDraft as EventListener);
+    editor.overlayElement.addEventListener("pointerup", finishDrawing);
+    editor.overlayElement.addEventListener("pointercancel", cancelPointerInteraction);
   }
 
-  options.clearBtn?.addEventListener("click", () => {
+  function detachOverlayEvents(overlay: HTMLDivElement | null) {
+    if (!overlay) {
+      return;
+    }
+
+    overlay.removeEventListener("pointerdown", handleOverlayPointerDown);
+    overlay.removeEventListener("pointermove", updateDraft);
+    overlay.removeEventListener("pointerrawupdate", updateDraft as EventListener);
+    overlay.removeEventListener("pointerup", finishDrawing);
+    overlay.removeEventListener("pointercancel", cancelPointerInteraction);
+  }
+
+  function handleClearAnnotations() {
     editor.annotations = [];
     render();
-  });
+  }
+
+  function handleZoomOut() {
+    applyZoom(editor.zoomLevel - editor.zoomStep);
+  }
+
+  function handleZoomIn() {
+    applyZoom(editor.zoomLevel + editor.zoomStep);
+  }
+
+  function handleZoomReset() {
+    applyZoom(1);
+  }
+
+  function handleZoomRangeInput() {
+    if (!options.zoomRange) {
+      return;
+    }
+
+    applyZoom(Number(options.zoomRange.value) / 100);
+  }
+
+  function handleStagePointerDown(event: PointerEvent) {
+    startPanning(event);
+  }
+
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.code !== "Space" || isEditableTarget(event.target)) {
+      return;
+    }
+    if (!editor.mediaElement || editor.zoomLevel <= 1) {
+      return;
+    }
+    event.preventDefault();
+    if (!editor.isPanKeyActive) {
+      editor.isPanKeyActive = true;
+      updateStageInteractionState();
+    }
+  }
+
+  function handleKeyUp(event: KeyboardEvent) {
+    if (event.code !== "Space") {
+      return;
+    }
+
+    editor.isPanKeyActive = false;
+    updateStageInteractionState();
+  }
+
+  function handleWindowBlur() {
+    editor.isPanKeyActive = false;
+    finishPanning();
+    updateStageInteractionState();
+  }
+
+  function attachPersistentEvents() {
+    if (editor.eventsAttached) {
+      return;
+    }
+
+    options.clearBtn?.addEventListener("click", handleClearAnnotations);
+    options.zoomOutBtn?.addEventListener("click", handleZoomOut);
+    options.zoomInBtn?.addEventListener("click", handleZoomIn);
+    options.zoomResetBtn?.addEventListener("click", handleZoomReset);
+    options.zoomRange?.addEventListener("input", handleZoomRangeInput);
+    options.mediaStage.addEventListener("pointerdown", handleStagePointerDown, true);
+    options.mediaStage.addEventListener("pointermove", updatePan);
+    options.mediaStage.addEventListener("pointerup", finishPanning);
+    options.mediaStage.addEventListener("pointercancel", finishPanning);
+    options.mediaStage.addEventListener("wheel", handleStageWheel, { passive: false });
+    window.addEventListener("resize", handleStageResize);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+    editor.eventsAttached = true;
+  }
+
+  function detachPersistentEvents() {
+    if (!editor.eventsAttached) {
+      return;
+    }
+
+    options.clearBtn?.removeEventListener("click", handleClearAnnotations);
+    options.zoomOutBtn?.removeEventListener("click", handleZoomOut);
+    options.zoomInBtn?.removeEventListener("click", handleZoomIn);
+    options.zoomResetBtn?.removeEventListener("click", handleZoomReset);
+    options.zoomRange?.removeEventListener("input", handleZoomRangeInput);
+    options.mediaStage.removeEventListener("pointerdown", handleStagePointerDown, true);
+    options.mediaStage.removeEventListener("pointermove", updatePan);
+    options.mediaStage.removeEventListener("pointerup", finishPanning);
+    options.mediaStage.removeEventListener("pointercancel", finishPanning);
+    options.mediaStage.removeEventListener("wheel", handleStageWheel);
+    window.removeEventListener("resize", handleStageResize);
+    window.removeEventListener("keydown", handleKeyDown);
+    window.removeEventListener("keyup", handleKeyUp);
+    window.removeEventListener("blur", handleWindowBlur);
+    editor.eventsAttached = false;
+  }
 
   function reset() {
-    if (editor.previewRafId !== null) {
-      window.cancelAnimationFrame(editor.previewRafId);
-      editor.previewRafId = null;
-    }
-    editor.previewAnnotation = null;
+    finishPanning();
+    detachOverlayEvents(editor.overlayElement);
     editor.boxElements.forEach((element) => element.remove());
     editor.boxElements.clear();
     editor.annotations = [];
     editor.activeLabelId = null;
     editor.mediaElement = null;
+    editor.wrapperElement = null;
     editor.overlayElement = null;
     clearDraft();
     editor.dragState = null;
     editor.resizeState = null;
+    editor.zoomLevel = 1;
+    editor.baseCanvasWidth = 0;
+    editor.baseCanvasHeight = 0;
+    editor.isPanKeyActive = false;
+    endPointerInteraction();
     options.mediaTool.classList.add("hidden");
+    options.zoomToolbar?.classList.add("hidden");
     options.mediaStage.className = "media-stage empty-card";
     options.mediaStage.textContent = "Файл задачи загрузится после выбора задания.";
-    options.resultLabel.textContent = "Результат разметки";
-    options.resultJson.readOnly = false;
-    updateResultPreview();
-    options.annotationList.className = "annotation-list empty-card";
-    options.annotationList.textContent = "Разметка пока отсутствует.";
+    options.instructions.classList.add("hidden");
+    options.instructions.textContent = "";
+    options.activeLabelNote.classList.add("hidden");
     options.activeLabelNote.textContent = "";
     options.labelPalette.innerHTML = "";
+    options.resultLabel.textContent = "Результат разметки";
+    options.resultJson.readOnly = false;
+    options.annotationList.className = "annotation-list empty-card";
+    options.annotationList.textContent = "Разметка пока отсутствует.";
+    updateZoomControls();
+    render();
   }
 
   function loadTask(task: TaskItem | null) {
@@ -3779,59 +4440,77 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
+    finishPanning();
+    detachOverlayEvents(editor.overlayElement);
+    clearDraft();
+    endPointerInteraction();
     options.mediaTool.classList.remove("hidden");
+    options.instructions.classList.remove("hidden");
+    options.activeLabelNote.classList.remove("hidden");
     options.instructions.textContent =
       task.source_type === "video"
-        ? "Поставь видео на паузу на нужном кадре, зажми левую кнопку мыши и выдели область. Существующие области можно перемещать и менять по размеру."
-        : "Зажми левую кнопку мыши и выдели область. Существующие области можно перемещать и менять по размеру.";
+        ? "Поставь видео на паузу на нужном кадре, зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label."
+        : "Зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label.";
     options.resultLabel.textContent = "Результат bbox-разметки";
     options.resultJson.readOnly = true;
     editor.annotations = [];
+    editor.zoomLevel = 1;
+    editor.baseCanvasWidth = 0;
+    editor.baseCanvasHeight = 0;
+    options.zoomToolbar?.classList.remove("hidden");
+    updateZoomControls();
 
     const wrapper = document.createElement("div");
     wrapper.className = "media-canvas";
     const overlay = document.createElement("div");
     overlay.className = "media-overlay";
+    const handleMediaReady = () => {
+      syncCanvasViewport();
+    };
 
     let mediaElement: HTMLImageElement | HTMLVideoElement;
     if (task.source_type === "video") {
       mediaElement = document.createElement("video");
       mediaElement.controls = true;
       mediaElement.preload = "metadata";
-      mediaElement.addEventListener("loadedmetadata", renderBoxes);
+      mediaElement.addEventListener("loadedmetadata", handleMediaReady);
       mediaElement.addEventListener("seeked", renderBoxes);
       mediaElement.addEventListener("pause", renderBoxes);
     } else {
       mediaElement = document.createElement("img");
       mediaElement.alt = task.source_name || `Task ${task.id}`;
-      mediaElement.addEventListener("load", renderBoxes);
+      mediaElement.addEventListener("load", handleMediaReady);
     }
     mediaElement.className = "media-stage__asset";
+    mediaElement.draggable = false;
     mediaElement.src = task.source_file_url;
 
     wrapper.appendChild(mediaElement);
     wrapper.appendChild(overlay);
-    options.mediaStage.className = "media-stage";
+    options.mediaStage.className = "media-stage media-stage--interactive";
     options.mediaStage.innerHTML = "";
     options.mediaStage.appendChild(wrapper);
 
     editor.mediaElement = mediaElement;
+    editor.wrapperElement = wrapper;
     editor.overlayElement = overlay;
-    attachEvents();
+    attachOverlayEvents();
+    updateZoomControls();
+    if (task.source_type === "image" && mediaElement instanceof HTMLImageElement && mediaElement.complete) {
+      window.requestAnimationFrame(handleMediaReady);
+    }
     render();
   }
 
   function destroy() {
-    if (editor.moveHandler) {
-      window.removeEventListener("mousemove", editor.moveHandler);
-    }
-    if (editor.upHandler) {
-      window.removeEventListener("mouseup", editor.upHandler);
-    }
-    if (editor.resizeHandler) {
-      window.removeEventListener("resize", editor.resizeHandler);
-    }
+    finishPanning();
+    detachOverlayEvents(editor.overlayElement);
+    detachPersistentEvents();
+    endPointerInteraction();
+    clearDraft();
   }
+
+  attachPersistentEvents();
 
   return {
     reset,
@@ -3855,6 +4534,11 @@ function RoomWorkPage() {
   const instructionsRef = useRef<HTMLDivElement | null>(null);
   const labelPaletteRef = useRef<HTMLDivElement | null>(null);
   const activeLabelNoteRef = useRef<HTMLDivElement | null>(null);
+  const zoomToolbarRef = useRef<HTMLDivElement | null>(null);
+  const zoomRangeRef = useRef<HTMLInputElement | null>(null);
+  const zoomOutBtnRef = useRef<HTMLButtonElement | null>(null);
+  const zoomInBtnRef = useRef<HTMLButtonElement | null>(null);
+  const zoomResetBtnRef = useRef<HTMLButtonElement | null>(null);
   const mediaStageRef = useRef<HTMLDivElement | null>(null);
   const annotationListRef = useRef<HTMLDivElement | null>(null);
   const clearAnnotationsBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -3903,6 +4587,11 @@ function RoomWorkPage() {
       instructions: instructionsRef.current,
       labelPalette: labelPaletteRef.current,
       activeLabelNote: activeLabelNoteRef.current,
+      zoomToolbar: zoomToolbarRef.current,
+      zoomRange: zoomRangeRef.current,
+      zoomOutBtn: zoomOutBtnRef.current,
+      zoomInBtn: zoomInBtnRef.current,
+      zoomResetBtn: zoomResetBtnRef.current,
       mediaStage: mediaStageRef.current,
       annotationList: annotationListRef.current,
       clearBtn: clearAnnotationsBtnRef.current,
@@ -4098,6 +4787,21 @@ function RoomWorkPage() {
               <div ref={instructionsRef} className="panel-note hidden"></div>
               <div ref={labelPaletteRef} className="label-chip-list"></div>
               <div ref={activeLabelNoteRef} className="panel-note hidden"></div>
+              <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
+                <div className="media-zoom">
+                  <button ref={zoomOutBtnRef} className="btn btn--muted btn--compact" type="button">
+                    -
+                  </button>
+                  <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
+                  <button ref={zoomResetBtnRef} className="btn btn--muted btn--compact" type="button">
+                    100%
+                  </button>
+                  <button ref={zoomInBtnRef} className="btn btn--muted btn--compact" type="button">
+                    +
+                  </button>
+                </div>
+                <div className="media-tool__hint">Ctrl + колесо меняет масштаб, а Space + перетаскивание или средняя кнопка перемещают увеличенное изображение.</div>
+              </div>
               <div className="media-tool__layout">
                 <div ref={mediaStageRef} className="media-stage empty-card">
                   Файл задачи загрузится автоматически.
