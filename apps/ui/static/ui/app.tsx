@@ -3054,9 +3054,9 @@ function RoomDetailPage() {
                   <span className="section-disclosure__icon" aria-hidden="true"></span>
                 </summary>
                 <div className="section-disclosure__content">
-                  <div className="workspace-grid__side--stack">
+                  <div className="workspace-grid__side--stack manage-stack">
                     {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room) ? (
-                      <div className="panel-card room-settings-panel">
+                      <div className="panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings">
                         <div className="panel-card__head">
                           <h2>Параметры комнаты</h2>
                           {dashboard.actor.can_edit_room ? <span className="eyebrow room-settings-panel__eyebrow">Только владелец</span> : null}
@@ -3092,7 +3092,7 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_export ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--export">
                         <div className="panel-card__head">
                           <h2>Экспорт и лейблы</h2>
                         </div>
@@ -3115,7 +3115,7 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_invite ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--invite">
                         <div className="panel-card__head">
                           <h2>Invite-ссылка</h2>
                         </div>
@@ -3138,14 +3138,14 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_invite ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--requests">
                         <div className="panel-card__head">
                           <h2>Заявки на вступление</h2>
                         </div>
                         {dashboard.join_requests?.length ? (
-                          <div className="annotators-list">
+                          <div className="annotators-list manage-request-list-legacy">
                             {dashboard.join_requests.map((joinRequest) => (
-                              <div key={joinRequest.id} className="annotator-row">
+                              <div key={joinRequest.id} className="annotator-row manage-request-row-legacy">
                                 <div className="annotator-row__meta">
                                   <strong>{joinRequest.display_name}</strong>
                                   <span>

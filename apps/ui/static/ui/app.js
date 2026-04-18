@@ -24026,8 +24026,8 @@
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack", children: [
-                  dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack", children: [
+                  dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
                       dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "\u0422\u043E\u043B\u044C\u043A\u043E \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446" }) : null
@@ -24050,7 +24050,7 @@
                       ] })
                     ] })
                   ] }) : null,
-                  dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 \u0438 \u043B\u0435\u0439\u0431\u043B\u044B" }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-chip-list label-chip-list--static", children: dashboard.labels.length ? dashboard.labels.map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "label-chip label-chip--static", style: { ["--label-color"]: label.color }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
@@ -24058,7 +24058,7 @@
                     ] }, label.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B." }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
                   ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--invite", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430" }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "stack-form stack-form--compact", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
@@ -24070,9 +24070,9 @@
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E \u044D\u0442\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0441\u043C\u043E\u0436\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443. \u0421\u0442\u0430\u0440\u044B\u0439 invite \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u043F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438." })
                   ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--requests", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0438 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435" }) }),
-                    dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row", children: [
+                    dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list manage-request-list-legacy", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row manage-request-row-legacy", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [

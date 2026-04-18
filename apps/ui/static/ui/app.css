@@ -1770,6 +1770,142 @@ input[type="file"]::-webkit-file-upload-button:hover {
     border-top: 1px solid var(--line);
 }
 
+.manage-stack {
+    gap: 20px;
+    align-items: start;
+    padding-top: 6px;
+}
+
+.manage-card-legacy {
+    min-width: 0;
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 26px;
+    background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.08), transparent 42%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 249, 240, 0.88));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.62),
+        0 12px 26px rgba(26, 26, 26, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.manage-card-legacy .panel-card__head {
+    margin-bottom: 0;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.manage-card-legacy .panel-card__head h2 {
+    margin: 0;
+    font-size: clamp(1.25rem, 1.65vw, 1.7rem);
+    line-height: 1.08;
+    letter-spacing: -0.04em;
+}
+
+.manage-card-legacy .panel-note,
+.manage-card-legacy .empty-card {
+    margin-top: 0;
+}
+
+.manage-card-legacy .btn {
+    align-self: flex-start;
+}
+
+.manage-card-legacy--settings .room-settings-panel__eyebrow {
+    background: rgba(26, 26, 26, 0.96);
+    color: #ffffff;
+}
+
+.manage-card-legacy--settings .room-settings-panel__locks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.manage-card-legacy--settings .room-settings-panel__lock {
+    min-width: 0;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.74);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.manage-card-legacy--settings .room-settings-panel__lock span {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.manage-card-legacy--settings .room-settings-panel__lock strong {
+    line-height: 1.32;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.manage-card-legacy--settings .room-settings-panel__footer {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.manage-card-legacy--settings .role-assignment-box__actions .btn {
+    flex: 1 1 210px;
+}
+
+.manage-card-legacy--export .label-chip-list--static {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 0;
+    gap: 10px;
+}
+
+.manage-card-legacy--export .btn {
+    width: 100%;
+}
+
+.manage-card-legacy--invite .stack-form {
+    margin-top: 0;
+}
+
+.manage-card-legacy--invite .field input[readonly] {
+    font-weight: 600;
+}
+
+.manage-card-legacy--invite .stack-form .btn {
+    width: 100%;
+}
+
+.manage-request-list-legacy {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.manage-request-row-legacy {
+    min-width: 0;
+    padding: 16px;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.78);
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.manage-request-row-legacy .role-assignment-box__actions {
+    width: 100%;
+}
+
+.manage-request-row-legacy .panel-note {
+    margin-top: 0;
+}
+
 .workspace-grid--owner-manage {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -2473,6 +2609,29 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
     .section-disclosure__content {
         padding: 0 18px 18px;
+    }
+
+    .manage-stack {
+        grid-template-columns: 1fr;
+    }
+
+    .manage-card-legacy {
+        padding: 18px;
+    }
+
+    .manage-card-legacy .panel-card__head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .manage-card-legacy--settings .room-settings-panel__locks {
+        grid-template-columns: 1fr;
+    }
+
+    .manage-card-legacy .btn,
+    .manage-request-row-legacy .role-assignment-box__actions .btn {
+        width: 100%;
+        flex: 1 1 100%;
     }
 
     .room-grid-section {
