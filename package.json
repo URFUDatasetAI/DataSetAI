@@ -2,10 +2,15 @@
   "name": "datasetai-ui",
   "private": true,
   "scripts": {
-    "build:ui": "tsc -p tsconfig.json",
+    "build:ui": "esbuild apps/ui/static/ui/app.tsx --bundle --outfile=apps/ui/static/ui/app.js --format=iife --target=es2021",
     "check:types": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "^0.28.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "typescript": "^5.9.3"
   }
 }

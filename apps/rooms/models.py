@@ -1,3 +1,5 @@
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django.contrib.auth.hashers import check_password, make_password
@@ -15,7 +17,29 @@ The room is the aggregate root for labeling sessions:
 """
 
 
+ROOM_INVITE_TOKEN_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"
+ROOM_INVITE_TOKEN_LENGTH = 10
+
+
+def generate_room_invite_token() -> str:
+    return "".join(
+        secrets.choice(ROOM_INVITE_TOKEN_ALPHABET)
+        for _ in range(ROOM_INVITE_TOKEN_LENGTH)
+    )
+
+
 class Room(TimeStampedModel):
+    """
+    The aggregate root defining a labeling dataset container.
+    
+    A Room combines Dataset Configuration, Tasks to label, User memberships/roles,
+    and cross-validation requirements.
+    
+    Attributes:
+        cross_validation_enabled: If False, one review closes the task. If True, 
+            multiple views from different annotators are required before taking consensus.
+        annotation_workflow: Standard (classify/bbox) or specific pipelines like Object detect + text transcription.
+    """
     class DatasetType(models.TextChoices):
         DEMO = "demo", "Demo"
         JSON = "json", "JSON"
@@ -28,6 +52,12 @@ class Room(TimeStampedModel):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    invite_token = models.CharField(
+        max_length=ROOM_INVITE_TOKEN_LENGTH,
+        default=generate_room_invite_token,
+        unique=True,
+        editable=False,
+    )
     access_password_hash = models.CharField(max_length=255, blank=True)
     deadline = models.DateTimeField(null=True, blank=True)
     dataset_label = models.CharField(max_length=255, blank=True)
@@ -78,6 +108,11 @@ class Room(TimeStampedModel):
 
 
 class RoomLabel(TimeStampedModel):
+    """
+    Represents a specific tag/class/label available for annotators within a Room.
+    
+    Usually associated with a color and sorted by `sort_order` for UI consistency.
+    """
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="labels")
     name = models.CharField(max_length=64)
     color = models.CharField(
@@ -97,6 +132,14 @@ class RoomLabel(TimeStampedModel):
 
 
 class RoomMembership(TimeStampedModel):
+    """
+    Defines Access Control and the Role of a user inside a specific Room.
+    
+    Possible roles:
+    - ANNOTATOR: Fills out tasks.
+    - ADMIN: Manages room settings and invites.
+    - TESTER: Special role for verifying functionalities.
+    """
     class Status(models.TextChoices):
         INVITED = "invited", "Invited"
         JOINED = "joined", "Joined"
@@ -147,3 +190,35 @@ class RoomPin(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.room_id}:{self.user_id}"
+
+
+class RoomJoinRequest(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="join_requests")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="room_join_requests",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_room_join_requests",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.UniqueConstraint(fields=("room", "user"), name="unique_room_join_request"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.room_id}:{self.user_id}:{self.status}"

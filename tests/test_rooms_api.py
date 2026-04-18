@@ -24,11 +24,11 @@ class RoomsApiTests(APITestCase):
         self.override.enable()
         self.addCleanup(self.override.disable)
         self.addCleanup(self.media_dir.cleanup)
-        self.customer = make_user(username="customer", role=User.Role.CUSTOMER)
-        self.annotator = make_user(username="annotator", role=User.Role.ANNOTATOR)
-        self.other_annotator = make_user(username="annotator2", role=User.Role.ANNOTATOR)
-        self.admin_user = make_user(username="roomadmin", role=User.Role.ANNOTATOR)
-        self.tester_user = make_user(username="roomtester", role=User.Role.ANNOTATOR)
+        self.customer = make_user(username="customer", full_name="Customer")
+        self.annotator = make_user(username="annotator", full_name="Annotator")
+        self.other_annotator = make_user(username="annotator2", full_name="Annotator 2")
+        self.admin_user = make_user(username="roomadmin", full_name="Room Admin")
+        self.tester_user = make_user(username="roomtester", full_name="Room Tester")
 
     def auth(self, user):
         return {"HTTP_X_USER_ID": str(user.id)}
@@ -76,6 +76,46 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.INVITED)
+
+    def test_owner_can_update_room_metadata(self):
+        room = make_room(customer=self.customer, title="Initial room", description="Before update")
+
+        response = self.client.patch(
+            reverse("room-detail", kwargs={"room_id": room.id}),
+            {
+                "title": "Updated room",
+                "description": "After update",
+                "dataset_label": "Updated dataset",
+                "password_changed": True,
+                "password": "new-secret",
+            },
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Updated room")
+        self.assertEqual(room.description, "After update")
+        self.assertEqual(room.dataset_label, "Updated dataset")
+        self.assertTrue(room.check_access_password("new-secret"))
+
+    def test_non_owner_cannot_update_room_metadata(self):
+        room = make_room(customer=self.customer, title="Locked room")
+        invite_annotator(room=room, annotator=self.admin_user, invited_by=self.customer, joined=True, role=RoomMembership.Role.ADMIN)
+
+        response = self.client.patch(
+            reverse("room-detail", kwargs={"room_id": room.id}),
+            {
+                "title": "Should fail",
+            },
+            format="json",
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        room.refresh_from_db()
+        self.assertEqual(room.title, "Locked room")
 
     def test_owner_can_assign_admin_and_tester_roles(self):
         room = make_room(customer=self.customer, title="Role room")
@@ -211,8 +251,9 @@ class RoomsApiTests(APITestCase):
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.JOINED)
 
-    def test_user_can_enter_room_by_id_and_password(self):
+    def test_invited_user_can_enter_room_by_id_and_password(self):
         room = make_room(customer=self.customer, title="Password room")
+        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer)
         room.set_access_password("demo123")
         room.save(update_fields=["access_password_hash", "updated_at"])
 
@@ -227,6 +268,60 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.data["redirect_url"], f"/rooms/{room.id}/")
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.JOINED)
+
+    def test_non_member_cannot_enter_room_by_id_even_with_password(self):
+        room = make_room(customer=self.customer, title="Protected room")
+        room.set_access_password("demo123")
+        room.save(update_fields=["access_password_hash", "updated_at"])
+
+        response = self.client.post(
+            reverse("room-access"),
+            {"room_id": room.id, "password": "demo123"},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(RoomMembership.objects.filter(room=room, user=self.annotator).exists())
+
+    def test_user_can_request_access_by_invite_link_and_owner_can_approve(self):
+        room = make_room(customer=self.customer, title="Invite room")
+
+        preview_response = self.client.get(reverse("room-invite-preview", kwargs={"invite_token": room.invite_token}))
+        request_response = self.client.post(
+            reverse("room-invite-request", kwargs={"invite_token": room.invite_token}),
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        join_request_id = request_response.data["id"]
+        approve_response = self.client.post(
+            reverse("room-join-request-approve", kwargs={"room_id": room.id, "join_request_id": join_request_id}),
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(preview_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(preview_response.data["room"]["id"], room.id)
+        self.assertEqual(request_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(request_response.data["status"], "pending")
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+        membership = RoomMembership.objects.get(room=room, user=self.annotator)
+        self.assertEqual(membership.status, RoomMembership.Status.JOINED)
+
+    def test_owner_can_regenerate_room_invite(self):
+        room = make_room(customer=self.customer, title="Regenerate invite room")
+        old_token = str(room.invite_token)
+
+        response = self.client.post(
+            reverse("room-invite-regenerate", kwargs={"room_id": room.id}),
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        room.refresh_from_db()
+        self.assertNotEqual(str(room.invite_token), old_token)
 
     def test_customer_can_create_image_room_with_labels_and_uploads(self):
         response = self.client.post(

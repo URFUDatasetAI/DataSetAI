@@ -4,22 +4,23 @@
 
 ## Общая схема
 
-DataSetAI построен как монолитное Django-приложение с серверным UI и REST API.
+DataSetAI построен как монолитное Django-приложение с React UI и REST API.
 
 Основной поток выглядит так:
 
 1. Пользователь открывает UI в браузере
-2. Django templates рендерят страницы
-3. UI обращается к API `/api/v1/...`
-4. Django и DRF работают с PostgreSQL
-5. Для image/video задач исходные файлы сохраняются в `MEDIA_ROOT`
-6. В production `nginx` отдаёт `static` и `media`, а `gunicorn` обслуживает Django
+2. Django view возвращает единый HTML-shell и bootstrap-данные страницы
+3. React-приложение в `apps/ui/static/ui/app.tsx` монтируется в `#app-root`
+4. UI обращается к API `/api/v1/...`
+5. Django и DRF работают с PostgreSQL
+6. Для image/video задач исходные файлы сохраняются в `MEDIA_ROOT`
+7. В production `nginx` отдаёт `static` и `media`, а `gunicorn` обслуживает Django
 
 ## Основные приложения
 
 ### `apps.ui`
 
-Отвечает за серверные HTML-страницы и публичные/пользовательские view:
+Отвечает за UI-shell, bootstrap-контекст страницы и публичные/пользовательские view:
 
 - landing page
 - login / register
@@ -28,7 +29,19 @@ DataSetAI построен как монолитное Django-приложени
 - рабочее пространство комнаты
 - health и service endpoints
 
-Ключевой файл: [apps/ui/views.py](../apps/ui/views.py)
+Ключевые файлы:
+
+- [apps/ui/views.py](../apps/ui/views.py)
+- [apps/ui/templates/ui/base.html](../apps/ui/templates/ui/base.html)
+- [apps/ui/static/ui/app.tsx](../apps/ui/static/ui/app.tsx)
+
+`UiContextMixin` в `apps.ui.views` собирает общий bootstrap для React:
+
+- идентификатор текущей страницы
+- auth user
+- CSRF token
+- flash messages
+- page-specific payload, например состояние форм login/register
 
 ### `apps.users`
 
@@ -159,6 +172,28 @@ DataSetAI построен как монолитное Django-приложени
 - назначением
 - аннотатором
 
+## Бизнес-логика (Service Layer)
+
+Вся сложная инвариантная бизнес-логика вынесена в `services.py` соответствующих доменов. При редактировании проекта алгоритмическая сложность должна оставаться в этих файлах, а не во View или API.
+
+### `apps.labeling.services`
+Управляет выдачей задач и приемом ответов. Использует строгие атомарные транзакции.
+- `get_next_task_for_annotator`: Ответственна за "ленивую" выдачу задач. Использует блокировку строк (`select_for_update(skip_locked=True)`) для конкурентного взятия задач аннотаторами, чтобы избежать двойного назначения.
+- `submit_annotation`: Проводит оценку консенсуса, когда количество ответов для раунда достигло `required_reviews_per_item`. В сценариях текстовой детекции ("detection_transcription") также порождает "детей" (дочерние задачи) для дальнейшей транскрипции.
+
+### `apps.rooms.services`
+Работа с импортом/экспортом датасетов и управлением доступами комнат.
+- Создание видео-задач (`_create_video_frame_tasks`): Требует наличия системного пакета `ffmpeg`. Видео разбивается на кадры-изображения, которые становятся отдельными `Task` для разметки.
+- Экспорт (`export_room_annotations`): Поддерживает YOLO, COCO и нативный JSON. Динамически собирает архив по разметкам, которые перешли в статус `SUBMITTED`.
+
+## Правила для автономных AI-агентов (Agent Workflows)
+
+При внесении изменений в проект AI-агент должен придерживаться следующих правил навигации и разработки:
+1. **Толстые сервисы, тонкие контроллеры:** При добавлении нового API endpoint или формы UI, обязательно создайте функцию в `services.py` для обработки данных. Контроллер (views/api) должен только валидировать входящие данные и передавать их в сервис.
+2. **Безопасность параллелизма:** При работе со статусами задач или заданиями всегда используйте `transaction.atomic()` и `select_for_update()`, убедившись, что данные не перепишут друг друга при одновременной работе десятков аннотаторов.
+3. **Комментарии:** Читайте docstrings на уровне моделей и сервисов перед внесением изменений. При создании новой функции всегда описывайте ее параметры и ожидаемые исключения (`exceptions`).
+4. **Контекст ошибки:** Если ломается кросс-валидация - ищите в `apps/labeling/consensus.py` или `submit_annotation`.
+
 ## URL-слои
 
 ### UI
@@ -173,6 +208,8 @@ DataSetAI построен как монолитное Django-приложени
 - `/health/`
 - `/service/`
 
+Несмотря на React UI, роутинг экранов по-прежнему инициируется Django URL-ами. React не захватывает весь URL-space как отдельный frontend server, а монтируется внутри Django-страницы.
+
 ### API
 
 API v1 подключается по префиксу:
@@ -184,6 +221,39 @@ API v1 подключается по префиксу:
 - `apps.rooms.api.v1.urls`
 - `apps.labeling.api.v1.urls`
 - `apps.users.api.v1.urls`
+
+В текущем UI запросы идут с заголовком `X-User-Id`, который обрабатывается кастомной authentication-схемой backend. Это позволяет UI оставаться тонким клиентом поверх существующей серверной auth-модели.
+
+## Frontend-архитектура
+
+### Bootstrap страницы
+
+Каждая UI-страница проходит через один и тот же цикл:
+
+1. Django view выставляет `page_key`
+2. `UiContextMixin` формирует `ui_bootstrap`
+3. `base.html` сериализует bootstrap через `json_script`
+4. React считывает его и выбирает компонент страницы через `PageRouter`
+
+Это убирает дублирование между Django templates и React-компонентами: Django отвечает за доступ, bootstrap и server concerns, React отвечает за интерфейс и клиентские действия.
+
+### Структура `app.tsx`
+
+Файл `apps/ui/static/ui/app.tsx` организован слоями:
+
+- типы API payload-ов и bootstrap-контракта
+- shared helpers: форматирование, toast, API wrapper
+- shared UI blocks: header, activity board, progress charts
+- page components: landing, auth, rooms, profile, room detail, room work
+- imperative media editor для bbox-разметки image/video задач
+
+### Почему media editor сделан не через чистый React state
+
+Редактор bbox-разметки работает через imperative DOM-слой внутри React-компонента. Это сделано намеренно:
+
+- drag/resize операции требуют частых обновлений по `mousemove`
+- прямое управление overlay-элементами проще и стабильнее для этой задачи
+- React остаётся владельцем page-level state, а editor отвечает только за интерактивный canvas
 
 ## Конфигурация окружения
 
