@@ -836,6 +836,18 @@ input[type="file"]::-webkit-file-upload-button:hover {
     max-width: min(100%, 460px);
 }
 
+.room-header-cta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.room-header-cta__button {
+    min-width: min(100%, 320px);
+}
+
 .room-progress-panel {
     width: 100%;
     padding: 18px;
@@ -1662,7 +1674,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .workspace-grid__side--room-work {
-    display: flex;
+    display: none;
     flex-direction: column;
     width: 100%;
     min-height: 0;
@@ -2592,6 +2604,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
     .room-header-side {
         width: 100%;
         max-width: none;
+    }
+
+    .room-header-cta__button {
+        width: 100%;
+        min-width: 0;
     }
 
     .room-header-side {

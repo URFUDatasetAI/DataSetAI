@@ -23967,7 +23967,8 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }),
+          dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-header-cta", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary room-header-cta__button", type: "button", onClick: () => window.location.href = `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "room-header-side", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-panel", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "room-progress-panel__eyebrow", children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),

@@ -1328,6 +1328,13 @@ function Header() {
               </a>
             </>
           )}
+          {dashboard?.actor.can_annotate ? (
+            <div className="room-header-cta">
+              <button className="btn btn--primary room-header-cta__button" type="button" onClick={() => (window.location.href = `/rooms/${dashboard.room.id}/work/`)}>
+                РџСЂРёСЃС‚СѓРїРёС‚СЊ Рє СЂР°Р±РѕС‚Рµ
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </header>
