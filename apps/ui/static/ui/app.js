@@ -24302,7 +24302,7 @@
       overlayElement: null,
       boxElements: /* @__PURE__ */ new Map(),
       draftElement: null,
-      draftStart: null,
+      draftState: null,
       dragState: null,
       resizeState: null,
       panState: null,
@@ -24423,9 +24423,30 @@
       }
       return event.button === 1 || event.button === 0 && editor.isPanKeyActive;
     }
+    function getScaledCanvasSize() {
+      if (!editor.wrapperElement) {
+        return { width: 0, height: 0 };
+      }
+      if (editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
+        return {
+          width: editor.baseCanvasWidth * editor.zoomLevel,
+          height: editor.baseCanvasHeight * editor.zoomLevel
+        };
+      }
+      const bounds = editor.wrapperElement.getBoundingClientRect();
+      return {
+        width: bounds.width,
+        height: bounds.height
+      };
+    }
     function updateStageInteractionState() {
-      const canPan = Boolean(editor.mediaElement && editor.zoomLevel > 1);
+      const scaledCanvas = getScaledCanvasSize();
+      const overflowX = Boolean(editor.mediaElement && scaledCanvas.width > options.mediaStage.clientWidth + 0.5);
+      const overflowY = Boolean(editor.mediaElement && scaledCanvas.height > options.mediaStage.clientHeight + 0.5);
+      const canPan = overflowX || overflowY;
       options.mediaStage.classList.toggle("media-stage--zoomed", canPan);
+      options.mediaStage.classList.toggle("media-stage--overflow-x", overflowX);
+      options.mediaStage.classList.toggle("media-stage--overflow-y", overflowY);
       options.mediaStage.classList.toggle("media-stage--pan-ready", canPan && editor.isPanKeyActive && !editor.panState);
       options.mediaStage.classList.toggle("media-stage--panning", Boolean(editor.panState));
     }
@@ -24517,12 +24538,6 @@
         options.zoomResetBtn.textContent = `${zoomPercent}%`;
         options.zoomResetBtn.disabled = !hasMedia || editor.zoomLevel === 1;
       }
-      if (options.zoomOutBtn) {
-        options.zoomOutBtn.disabled = !hasMedia || editor.zoomLevel <= editor.minZoom;
-      }
-      if (options.zoomInBtn) {
-        options.zoomInBtn.disabled = !hasMedia || editor.zoomLevel >= editor.maxZoom;
-      }
       updateStageInteractionState();
     }
     function captureBaseCanvasSize() {
@@ -24556,10 +24571,32 @@
         return;
       }
       const stageRect = options.mediaStage.getBoundingClientRect();
-      const anchorX = typeof zoomOptions.anchorClientX === "number" ? zoomOptions.anchorClientX - stageRect.left : options.mediaStage.clientWidth / 2;
-      const anchorY = typeof zoomOptions.anchorClientY === "number" ? zoomOptions.anchorClientY - stageRect.top : options.mediaStage.clientHeight / 2;
-      const contentX = options.mediaStage.scrollLeft + anchorX;
-      const contentY = options.mediaStage.scrollTop + anchorY;
+      const wrapperRect = editor.wrapperElement.getBoundingClientRect();
+      const anchorClientX = typeof zoomOptions.anchorClientX === "number" ? zoomOptions.anchorClientX : stageRect.left + options.mediaStage.clientWidth / 2;
+      const anchorClientY = typeof zoomOptions.anchorClientY === "number" ? zoomOptions.anchorClientY : stageRect.top + options.mediaStage.clientHeight / 2;
+      const anchorX = anchorClientX - stageRect.left;
+      const anchorY = anchorClientY - stageRect.top;
+      if (clampedZoom > 1 && (editor.baseCanvasWidth <= 0 || editor.baseCanvasHeight <= 0)) {
+        captureBaseCanvasSize();
+      }
+      const baseWidth = editor.baseCanvasWidth || editor.mediaElement.clientWidth || wrapperRect.width;
+      const baseHeight = editor.baseCanvasHeight || editor.mediaElement.clientHeight || wrapperRect.height;
+      if (!baseWidth || !baseHeight) {
+        return;
+      }
+      const currentWidth = previousZoom <= 1 ? baseWidth : baseWidth * previousZoom;
+      const currentHeight = previousZoom <= 1 ? baseHeight : baseHeight * previousZoom;
+      const currentOffsetX = currentWidth < options.mediaStage.clientWidth ? (options.mediaStage.clientWidth - currentWidth) / 2 : 0;
+      const currentOffsetY = currentHeight < options.mediaStage.clientHeight ? (options.mediaStage.clientHeight - currentHeight) / 2 : 0;
+      const nextWidth = clampedZoom <= 1 ? baseWidth : baseWidth * clampedZoom;
+      const nextHeight = clampedZoom <= 1 ? baseHeight : baseHeight * clampedZoom;
+      const nextOffsetX = nextWidth < options.mediaStage.clientWidth ? (options.mediaStage.clientWidth - nextWidth) / 2 : 0;
+      const nextOffsetY = nextHeight < options.mediaStage.clientHeight ? (options.mediaStage.clientHeight - nextHeight) / 2 : 0;
+      const contentAnchorX = clampValue(options.mediaStage.scrollLeft + anchorX - currentOffsetX, 0, currentWidth);
+      const contentAnchorY = clampValue(options.mediaStage.scrollTop + anchorY - currentOffsetY, 0, currentHeight);
+      const zoomRatio = previousZoom > 0 ? clampedZoom / previousZoom : 1;
+      const nextScrollLeft = Math.max(contentAnchorX * zoomRatio + nextOffsetX - anchorX, 0);
+      const nextScrollTop = Math.max(contentAnchorY * zoomRatio + nextOffsetY - anchorY, 0);
       if (clampedZoom <= 1) {
         finishPanning();
         editor.zoomLevel = 1;
@@ -24569,28 +24606,21 @@
         updateZoomControls();
         window.requestAnimationFrame(() => {
           renderBoxes();
-          if (shouldPreserveViewport && previousZoom > 1) {
-            const zoomRatio = 1 / previousZoom;
-            options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
-            options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
-          }
+          options.mediaStage.scrollLeft = shouldPreserveViewport && previousZoom > 1 ? nextScrollLeft : 0;
+          options.mediaStage.scrollTop = shouldPreserveViewport && previousZoom > 1 ? nextScrollTop : 0;
         });
-        return;
-      }
-      if (!captureBaseCanvasSize()) {
         return;
       }
       editor.zoomLevel = clampedZoom;
       editor.wrapperElement.classList.add("media-canvas--zoom-ready");
-      editor.wrapperElement.style.width = `${Math.round(editor.baseCanvasWidth * clampedZoom)}px`;
-      editor.wrapperElement.style.height = `${Math.round(editor.baseCanvasHeight * clampedZoom)}px`;
+      editor.wrapperElement.style.width = `${Math.round(nextWidth)}px`;
+      editor.wrapperElement.style.height = `${Math.round(nextHeight)}px`;
       updateZoomControls();
       window.requestAnimationFrame(() => {
         renderBoxes();
         if (shouldPreserveViewport) {
-          const zoomRatio = clampedZoom / previousZoom;
-          options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
-          options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+          options.mediaStage.scrollLeft = nextScrollLeft;
+          options.mediaStage.scrollTop = nextScrollTop;
         }
       });
     }
@@ -24642,8 +24672,6 @@
     }
     function setActiveLabel(labelId) {
       editor.activeLabelId = labelId;
-      options.activeLabelNote.textContent = "";
-      options.activeLabelNote.classList.add("hidden");
       options.labelPalette.querySelectorAll("[data-label-id]").forEach((button) => {
         button.classList.toggle("is-active", Number(button.dataset.labelId) === labelId);
       });
@@ -24660,8 +24688,6 @@
     }
     function renderPalette() {
       const labels = getLabels();
-      options.activeLabelNote.classList.add("hidden");
-      options.activeLabelNote.textContent = "";
       if (!labels.length) {
         options.labelPalette.innerHTML = '<div class="empty-card">\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B.</div>';
         setActiveLabel(null);
@@ -24861,7 +24887,20 @@
     function clearDraft() {
       editor.draftElement?.remove();
       editor.draftElement = null;
-      editor.draftStart = null;
+      editor.draftState = null;
+    }
+    function updateDraftElement(left, top, width, height) {
+      if (!editor.draftElement || !editor.draftState) {
+        return;
+      }
+      editor.draftState.left = left;
+      editor.draftState.top = top;
+      editor.draftState.width = width;
+      editor.draftState.height = height;
+      editor.draftElement.style.left = `${left}px`;
+      editor.draftElement.style.top = `${top}px`;
+      editor.draftElement.style.width = `${width}px`;
+      editor.draftElement.style.height = `${height}px`;
     }
     function startDragging(event, annotation) {
       if (isTextTranscriptionTask()) {
@@ -24924,13 +24963,22 @@
       if (!metrics) {
         return;
       }
-      editor.draftStart = {
-        x: Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width),
-        y: Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height)
-      };
+      const startX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
+      const startY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
       editor.draftElement = document.createElement("div");
       editor.draftElement.className = "media-bbox media-bbox--draft";
       editor.overlayElement.appendChild(editor.draftElement);
+      editor.draftState = {
+        originX: startX,
+        originY: startY,
+        left: startX,
+        top: startY,
+        width: 0,
+        height: 0,
+        lastX: startX,
+        lastY: startY,
+        moved: false
+      };
     }
     function updateDraft(event) {
       if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
@@ -24983,25 +25031,48 @@
         renderActiveBox(editor.dragState.annotation, metrics);
         return;
       }
-      if (!editor.draftStart || !editor.draftElement || !editor.overlayElement) {
+      if (!editor.draftState || !editor.draftElement || !editor.overlayElement) {
         return;
       }
       const currentX = Math.min(Math.max(clientX - metrics.left, 0), metrics.width);
       const currentY = Math.min(Math.max(clientY - metrics.top, 0), metrics.height);
-      const left = Math.min(editor.draftStart.x, currentX);
-      const top = Math.min(editor.draftStart.y, currentY);
-      const width = Math.abs(currentX - editor.draftStart.x);
-      const height = Math.abs(currentY - editor.draftStart.y);
-      editor.draftElement.style.left = `${left}px`;
-      editor.draftElement.style.top = `${top}px`;
-      editor.draftElement.style.width = `${width}px`;
-      editor.draftElement.style.height = `${height}px`;
+      const draft = editor.draftState;
+      if (event.ctrlKey && (draft.width > 0 || draft.height > 0)) {
+        const deltaX = currentX - draft.lastX;
+        const deltaY = currentY - draft.lastY;
+        const nextLeft = clampValue(draft.left + deltaX, 0, Math.max(metrics.width - draft.width, 0));
+        const nextTop = clampValue(draft.top + deltaY, 0, Math.max(metrics.height - draft.height, 0));
+        draft.originX += nextLeft - draft.left;
+        draft.originY += nextTop - draft.top;
+        updateDraftElement(nextLeft, nextTop, draft.width, draft.height);
+      } else {
+        const deltaX = currentX - draft.originX;
+        const deltaY = currentY - draft.originY;
+        let left = Math.min(draft.originX, currentX);
+        let top = Math.min(draft.originY, currentY);
+        let width = Math.abs(deltaX);
+        let height = Math.abs(deltaY);
+        if (event.shiftKey) {
+          const maxHorizontal = deltaX >= 0 ? metrics.width - draft.originX : draft.originX;
+          const maxVertical = deltaY >= 0 ? metrics.height - draft.originY : draft.originY;
+          const size = Math.min(Math.max(Math.abs(deltaX), Math.abs(deltaY)), maxHorizontal, maxVertical);
+          const nextX = draft.originX + (deltaX >= 0 ? size : -size);
+          const nextY = draft.originY + (deltaY >= 0 ? size : -size);
+          left = Math.min(draft.originX, nextX);
+          top = Math.min(draft.originY, nextY);
+          width = size;
+          height = size;
+        }
+        updateDraftElement(left, top, width, height);
+      }
+      draft.lastX = currentX;
+      draft.lastY = currentY;
+      draft.moved = draft.moved || Math.abs(currentX - draft.originX) > 3 || Math.abs(currentY - draft.originY) > 3;
     }
     function finishDrawing(event) {
       if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
         return;
       }
-      const sample = getLatestPointerSample(event);
       if (editor.resizeState) {
         if (editor.resizeState.moved) {
           editor.suppressLabelClickUntil = Date.now() + 150;
@@ -25025,17 +25096,12 @@
         return;
       }
       const metrics = editor.interactionMetrics;
-      if (!editor.draftStart || !editor.overlayElement || !metrics) {
+      if (!editor.draftState || !editor.overlayElement || !metrics) {
         clearDraft();
         endPointerInteraction(event.pointerId);
         return;
       }
-      const currentX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
-      const currentY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
-      const left = Math.min(editor.draftStart.x, currentX);
-      const top = Math.min(editor.draftStart.y, currentY);
-      const width = Math.abs(currentX - editor.draftStart.x);
-      const height = Math.abs(currentY - editor.draftStart.y);
+      const { left, top, width, height } = editor.draftState;
       if (width >= 8 && height >= 8) {
         editor.annotations.push({
           local_id: `${Date.now()}-${Math.random()}`,
@@ -25100,12 +25166,6 @@
       editor.annotations = [];
       render();
     }
-    function handleZoomOut() {
-      applyZoom(editor.zoomLevel - editor.zoomStep);
-    }
-    function handleZoomIn() {
-      applyZoom(editor.zoomLevel + editor.zoomStep);
-    }
     function handleZoomReset() {
       applyZoom(1);
     }
@@ -25148,8 +25208,6 @@
         return;
       }
       options.clearBtn?.addEventListener("click", handleClearAnnotations);
-      options.zoomOutBtn?.addEventListener("click", handleZoomOut);
-      options.zoomInBtn?.addEventListener("click", handleZoomIn);
       options.zoomResetBtn?.addEventListener("click", handleZoomReset);
       options.zoomRange?.addEventListener("input", handleZoomRangeInput);
       options.mediaStage.addEventListener("pointerdown", handleStagePointerDown, true);
@@ -25168,8 +25226,6 @@
         return;
       }
       options.clearBtn?.removeEventListener("click", handleClearAnnotations);
-      options.zoomOutBtn?.removeEventListener("click", handleZoomOut);
-      options.zoomInBtn?.removeEventListener("click", handleZoomIn);
       options.zoomResetBtn?.removeEventListener("click", handleZoomReset);
       options.zoomRange?.removeEventListener("input", handleZoomRangeInput);
       options.mediaStage.removeEventListener("pointerdown", handleStagePointerDown, true);
@@ -25205,10 +25261,6 @@
       options.zoomToolbar?.classList.add("hidden");
       options.mediaStage.className = "media-stage empty-card";
       options.mediaStage.textContent = placeholderText || "\u0424\u0430\u0439\u043B \u0437\u0430\u0434\u0430\u0447\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u043F\u043E\u0441\u043B\u0435 \u0432\u044B\u0431\u043E\u0440\u0430 \u0437\u0430\u0434\u0430\u043D\u0438\u044F.";
-      options.instructions.classList.add("hidden");
-      options.instructions.textContent = "";
-      options.activeLabelNote.classList.add("hidden");
-      options.activeLabelNote.textContent = "";
       options.labelPalette.innerHTML = "";
       options.resultLabel.textContent = "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438";
       options.resultJson.readOnly = false;
@@ -25227,10 +25279,6 @@
       clearDraft();
       endPointerInteraction();
       options.mediaTool.classList.remove("hidden");
-      options.instructions.classList.add("hidden");
-      options.instructions.textContent = "";
-      options.activeLabelNote.classList.add("hidden");
-      options.activeLabelNote.textContent = "";
       options.resultLabel.textContent = isTextTranscriptionTask() ? "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 OCR-\u0442\u0440\u0430\u043D\u0441\u043A\u0440\u0438\u0431\u0430\u0446\u0438\u0438" : "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438";
       options.resultJson.readOnly = true;
       editor.annotations = isTextTranscriptionTask() ? (task.input_payload?.detected_annotations || []).map((annotation, index) => ({
@@ -25315,13 +25363,9 @@
     const roomId = bootstrap2.room_id;
     const formRef = (0, import_react.useRef)(null);
     const mediaToolRef = (0, import_react.useRef)(null);
-    const instructionsRef = (0, import_react.useRef)(null);
     const labelPaletteRef = (0, import_react.useRef)(null);
-    const activeLabelNoteRef = (0, import_react.useRef)(null);
     const zoomToolbarRef = (0, import_react.useRef)(null);
     const zoomRangeRef = (0, import_react.useRef)(null);
-    const zoomOutBtnRef = (0, import_react.useRef)(null);
-    const zoomInBtnRef = (0, import_react.useRef)(null);
     const zoomResetBtnRef = (0, import_react.useRef)(null);
     const mediaStageRef = (0, import_react.useRef)(null);
     const annotationListRef = (0, import_react.useRef)(null);
@@ -25356,18 +25400,14 @@
       setActiveInspector((current) => current === nextInspector ? null : nextInspector);
     }
     (0, import_react.useEffect)(() => {
-      if (!mediaToolRef.current || !instructionsRef.current || !labelPaletteRef.current || !activeLabelNoteRef.current || !mediaStageRef.current || !annotationListRef.current || !resultJsonRef.current || !resultLabelRef.current) {
+      if (!mediaToolRef.current || !labelPaletteRef.current || !mediaStageRef.current || !annotationListRef.current || !resultJsonRef.current || !resultLabelRef.current) {
         return;
       }
       const controller = createMediaAnnotationEditor({
         mediaTool: mediaToolRef.current,
-        instructions: instructionsRef.current,
         labelPalette: labelPaletteRef.current,
-        activeLabelNote: activeLabelNoteRef.current,
         zoomToolbar: zoomToolbarRef.current,
         zoomRange: zoomRangeRef.current,
-        zoomOutBtn: zoomOutBtnRef.current,
-        zoomInBtn: zoomInBtnRef.current,
         zoomResetBtn: zoomResetBtnRef.current,
         mediaStage: mediaStageRef.current,
         annotationList: annotationListRef.current,
@@ -25516,17 +25556,13 @@
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__body", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "room-editor__stage", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__canvas-shell", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: zoomToolbarRef, className: "media-tool__toolbar media-tool__toolbar--floating hidden", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomOutBtnRef, className: "editor-zoom-btn editor-zoom-btn--step", type: "button", "aria-label": "\u0423\u043C\u0435\u043D\u044C\u0448\u0438\u0442\u044C \u043C\u0430\u0441\u0448\u0442\u0430\u0431", children: "-25" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "editor-zoom-btn editor-zoom-btn--value", type: "button", children: "100%" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomInBtnRef, className: "editor-zoom-btn editor-zoom-btn--step", type: "button", "aria-label": "\u0423\u0432\u0435\u043B\u0438\u0447\u0438\u0442\u044C \u043C\u0430\u0441\u0448\u0442\u0430\u0431", children: "+25" })
-          ] }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: stagePlaceholderText }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: "editor-toolbar hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: instructionsRef, className: "hidden" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list editor-label-palette" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: activeLabelNoteRef, className: "hidden" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__stage-surface", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: stagePlaceholderText }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: isMediaTask ? "editor-toolbar" : "editor-toolbar hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-toolbar__frame", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list editor-label-palette" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: zoomToolbarRef, className: isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "editor-zoom-btn editor-zoom-btn--value", type: "button", children: "100%" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" })
+            ] }) })
           ] })
         ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: `room-editor__inspector ${activeInspector ? "is-open" : ""}`, children: [
@@ -25536,7 +25572,15 @@
                 scenario.annotationsTitle,
                 editorState.annotationCount ? ` (${editorState.annotationCount})` : ""
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-panel__actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: clearAnnotationsBtnRef, className: "btn btn--muted btn--compact hidden", type: "button", children: "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C" }) })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-panel__actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  ref: clearAnnotationsBtnRef,
+                  className: `btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`,
+                  type: "button",
+                  children: "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C"
+                }
+              ) })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: annotationListRef, className: "annotation-list empty-card", children: "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442." })
           ] }),

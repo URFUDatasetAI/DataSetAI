@@ -19,6 +19,7 @@
 - Сохранять надёжность пайплайна разметки: выдача задач, submit, cross-validation, review/reject и экспорт готовых данных.
 - Поддерживать image/video и detect+text сценарии как основные, а не второстепенные кейсы.
 - Развивать `room-work` как отдельный fullscreen editor shell, где сцена, инструменты и отправка результата доступны без прокрутки всей страницы.
+- Удерживать editor workspace независимым от размера текущего media-файла: маленькие изображения не должны визуально схлопывать сцену, а границы media должны читаться как часть самого media, а не как отдельная декоративная рамка.
 - Не ломать текущую Django + React bootstrap-архитектуру при развитии UI.
 
 ## Durable Priorities
@@ -28,6 +29,10 @@
 - Room/access workflow должен оставаться предсказуемым: invite links, join requests, password access, роли и visibility не должны деградировать.
 - Media и OCR-сценарии считаются first-class: import, review, progress и export для image/video и detect+text нельзя рассматривать как edge cases.
 - Производительность editor UX важна сама по себе: pointer-driven взаимодействия в `room-work` должны оставаться максимально прямыми, без ощутимого отставания курсора и лишних React re-render на hot path.
+- Workspace редактора должен задаваться layout-ом, а не размером изображения/видео: media может быть меньше или больше viewport-а, но stage и tool chrome должны оставаться стабильными.
+- Вторичный tool chrome в `room-work` не должен перекрывать сцену: overflow для label-rail и похожих элементов должен уходить во внутренний scroll внутри собственного frame, а не в наложение поверх media.
+- Zoom в `room-work` должен сохранять визуальную геометрию сцены: переход от `100%` к увеличению не должен срывать media в левый верх, а zoom > `100%` обязан позволять media выходить за viewport редактора с корректным pan/scroll.
+- BBox-редактор должен сохранять power-user ergonomics: модификаторы вроде `Shift` для квадратного выделения и `Ctrl` для reposition текущего draft-box считаются частью ожидаемого UX, а не необязательным украшением.
 - Архитектурный split Django/React нужно сохранять: Django отвечает за routing, auth, bootstrap и API, React - за экран и клиентскую интерактивность.
 
 ## Hotspots
@@ -62,6 +67,7 @@
 - Image/video функциональность зависит от корректного `MEDIA_ROOT` и nginx media serving в production. Локально media обслуживается Django только при `DEBUG=true`.
 - UI не является отдельным SPA-сервером: Django задаёт `page_key` и bootstrap, React выбирает нужный экран по этому bootstrap-контракту.
 - `room-work` должен оставаться отдельной рабочей поверхностью: fullscreen layout, без page-level scroll на desktop, с internal scroll только у вспомогательных панелей и с приоритетом на быстрый pointer/keyboard feedback.
+- Явные границы media в `room-work` должны быть привязаны к самому media/overlay и клиппиться вместе с ним; нельзя подменять их отдельной внешней рамкой, живущей вне реальных границ изображения или видео.
 - Header auth через `X-User-Id` всё ещё часть текущего MVP и уже встроен в API/UI сценарии; не ломать его случайными изменениями auth-слоя.
 
 ## Maintenance Protocol
