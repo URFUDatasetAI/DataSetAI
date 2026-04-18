@@ -2761,6 +2761,41 @@ input[type="file"]::-webkit-file-upload-button:hover {
     gap: 16px;
 }
 
+.media-tool__toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--field-background);
+}
+
+.media-tool__hint {
+    grid-column: 1 / -1;
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.media-zoom {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: fit-content;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.media-zoom__range {
+    width: clamp(140px, 24vw, 220px);
+    accent-color: #ffc919;
+}
+
 .media-tool__layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 280px;
@@ -2775,16 +2810,39 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .media-stage {
+    width: 100%;
     min-height: 320px;
-    padding: 20px 22px 24px 20px;
+    height: min(72vh, 760px);
+    padding: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: auto;
+    overscroll-behavior: contain;
     scrollbar-gutter: stable both-edges;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 201, 25, 0.72) transparent;
     background: rgba(23, 23, 23, 0.04);
+}
+
+.media-stage--interactive {
+    scroll-behavior: auto;
+}
+
+.media-stage--zoomed {
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.media-stage--pan-ready,
+.media-stage--pan-ready .media-overlay {
+    cursor: grab;
+}
+
+.media-stage--panning,
+.media-stage--panning .media-overlay,
+.media-stage--panning .media-bbox {
+    cursor: grabbing !important;
 }
 
 .media-stage::-webkit-scrollbar {
@@ -2813,16 +2871,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
     position: relative;
     display: inline-flex;
     max-width: 100%;
-    margin: 4px 6px 8px 4px;
+    margin: 0;
+}
+
+.media-canvas--zoom-ready {
+    max-width: none;
+    flex: 0 0 auto;
 }
 
 .media-stage__asset {
     display: block;
     max-width: 100%;
     max-height: 65vh;
-    border-radius: 18px;
+    border-radius: 0;
     -webkit-user-drag: none;
     user-select: none;
+}
+
+.media-canvas--zoom-ready .media-stage__asset {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
 }
 
 .media-overlay {
@@ -2843,11 +2913,14 @@ input[type="file"]::-webkit-file-upload-button:hover {
     -webkit-appearance: none;
     border: 2px solid var(--bbox-color, #b8b8b8);
     background: rgba(255, 255, 255, 0.04);
-    border-radius: 10px;
+    border-radius: 0;
     cursor: grab;
     padding: 0;
     overflow: visible;
     touch-action: none;
+    will-change: left, top, width, height;
+    transition: none;
+    animation: none;
 }
 
 .media-bbox:active {
@@ -2861,15 +2934,23 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .media-bbox__label {
     position: absolute;
-    top: -2px;
     left: -2px;
+    bottom: calc(100% + 8px);
     padding: 4px 8px;
-    border-radius: 10px 0 10px 0;
+    border-radius: 0;
     background: var(--bbox-color, #b8b8b8);
     color: #ffffff;
     font-size: 0.78rem;
     white-space: nowrap;
+    opacity: 0;
     pointer-events: none;
+    transition: none;
+    animation: none;
+}
+
+.media-bbox:hover .media-bbox__label,
+.media-bbox:focus-visible .media-bbox__label {
+    opacity: 1;
 }
 
 .media-bbox__resize-handle {
@@ -2883,8 +2964,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background: var(--bbox-color, #b8b8b8);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
     opacity: 0;
-    transform: scale(0.9);
-    transition: opacity 140ms ease, transform 140ms ease;
+    transform: none;
+    transition: none;
+    animation: none;
     cursor: nwse-resize;
     z-index: 2;
 }
@@ -2893,14 +2975,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .media-bbox:focus-visible .media-bbox__resize-handle,
 .media-bbox__resize-handle:hover {
     opacity: 1;
-    transform: scale(1);
 }
 
 .media-bbox--draft {
     border-style: dashed;
+    will-change: left, top, width, height;
+    transition: none;
+    animation: none;
 }
 
 @media (max-width: 900px) {
+    .media-tool__toolbar {
+        grid-template-columns: 1fr;
+    }
+
+    .media-zoom {
+        width: 100%;
+    }
+
+    .media-zoom__range {
+        flex: 1 1 140px;
+    }
+
     .media-stage {
         height: min(64vh, 620px);
     }

@@ -24289,7 +24289,7 @@
       interactionMetrics: null,
       zoomLevel: 1,
       minZoom: 1,
-      maxZoom: 1,
+      maxZoom: 4,
       zoomStep: 0.25,
       baseCanvasWidth: 0,
       baseCanvasHeight: 0,
@@ -24573,7 +24573,7 @@
       renderBoxes();
     }
     function handleStageWheel(event) {
-      if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement || editor.maxZoom <= 1) {
+      if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement) {
         return;
       }
       event.preventDefault();
@@ -25430,6 +25430,15 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: instructionsRef, className: "panel-note hidden" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: activeLabelNoteRef, className: "panel-note hidden" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: zoomToolbarRef, className: "media-tool__toolbar hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomOutBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "-" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "100%" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomInBtnRef, className: "btn btn--muted btn--compact", type: "button", children: "+" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "media-tool__hint", children: "Ctrl + \u043A\u043E\u043B\u0435\u0441\u043E \u043C\u0435\u043D\u044F\u0435\u0442 \u043C\u0430\u0441\u0448\u0442\u0430\u0431, \u0430 Space + \u043F\u0435\u0440\u0435\u0442\u0430\u0441\u043A\u0438\u0432\u0430\u043D\u0438\u0435 \u0438\u043B\u0438 \u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043A\u043D\u043E\u043F\u043A\u0430 \u043F\u0435\u0440\u0435\u043C\u0435\u0449\u0430\u044E\u0442 \u0443\u0432\u0435\u043B\u0438\u0447\u0435\u043D\u043D\u043E\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435." })
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-tool__layout", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: "\u0424\u0430\u0439\u043B \u0437\u0430\u0434\u0430\u0447\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438." }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-tool__sidebar", children: [

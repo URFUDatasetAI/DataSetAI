@@ -3474,7 +3474,7 @@ function createMediaAnnotationEditor(options: {
     interactionMetrics: null as any,
     zoomLevel: 1,
     minZoom: 1,
-    maxZoom: 1,
+    maxZoom: 4,
     zoomStep: 0.25,
     baseCanvasWidth: 0,
     baseCanvasHeight: 0,
@@ -3811,7 +3811,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function handleStageWheel(event: WheelEvent) {
-    if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement || editor.maxZoom <= 1) {
+    if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement) {
       return;
     }
 
@@ -4807,6 +4807,21 @@ function RoomWorkPage() {
               <div ref={instructionsRef} className="panel-note hidden"></div>
               <div ref={labelPaletteRef} className="label-chip-list"></div>
               <div ref={activeLabelNoteRef} className="panel-note hidden"></div>
+              <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
+                <div className="media-zoom">
+                  <button ref={zoomOutBtnRef} className="btn btn--muted btn--compact" type="button">
+                    -
+                  </button>
+                  <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
+                  <button ref={zoomResetBtnRef} className="btn btn--muted btn--compact" type="button">
+                    100%
+                  </button>
+                  <button ref={zoomInBtnRef} className="btn btn--muted btn--compact" type="button">
+                    +
+                  </button>
+                </div>
+                <div className="media-tool__hint">Ctrl + колесо меняет масштаб, а Space + перетаскивание или средняя кнопка перемещают увеличенное изображение.</div>
+              </div>
               <div className="media-tool__layout">
                 <div ref={mediaStageRef} className="media-stage empty-card">
                   Файл задачи загрузится автоматически.
