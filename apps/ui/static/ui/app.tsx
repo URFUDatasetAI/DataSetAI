@@ -368,7 +368,7 @@ const annotationWorkflowLabels: Record<string, string> = {
   text_detect_text: "Object detect + text",
 };
 
-const ROOM_TITLE_MAX_LENGTH = 255;
+const ROOM_TITLE_MAX_LENGTH = 128;
 const ROOM_DATASET_LABEL_MAX_LENGTH = 255;
 const ROOM_DESCRIPTION_MAX_LENGTH = 2000;
 const ROOM_PASSWORD_MAX_LENGTH = 64;

@@ -8,6 +8,7 @@ from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_prim
 from common.exceptions import ConflictError
 
 ROOM_TEXT_MAX_LENGTH = 255
+ROOM_TITLE_MAX_LENGTH = 128
 ROOM_DESCRIPTION_MAX_LENGTH = 2000
 
 
@@ -44,7 +45,7 @@ class MediaManifestItemSerializer(serializers.Serializer):
 
 
 class RoomCreateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
+    title = serializers.CharField(max_length=ROOM_TITLE_MAX_LENGTH)
     description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
@@ -130,7 +131,7 @@ class RoomCreateSerializer(serializers.Serializer):
 
 
 class RoomUpdateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH, required=False)
+    title = serializers.CharField(max_length=ROOM_TITLE_MAX_LENGTH, required=False)
     description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
     dataset_label = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
