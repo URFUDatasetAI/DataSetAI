@@ -23942,19 +23942,8 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: dashboard?.room.title || "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B..." }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: dashboard?.room.description || "\u041F\u043E\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0443 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043A\u043E\u043D\u0442\u0443\u0440." })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-side", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-header-metrics", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            RoomProgressChart,
-            {
-              totalTasks: dashboard.overview.total_tasks,
-              completedTasks: dashboard.overview.completed_tasks,
-              remainingTasks: dashboard.overview.remaining_tasks,
-              progressPercent: dashboard.overview.progress_percent
-            }
-          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-header-meta", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-header-meta__stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: dashboard?.room.description || "\u041F\u043E\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0443 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043A\u043E\u043D\u0442\u0443\u0440." }),
+          dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-header-inline-meta", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
@@ -23978,8 +23967,20 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
-        ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "room-header-side", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-panel", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "room-progress-panel__eyebrow", children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            RoomProgressChart,
+            {
+              totalTasks: dashboard.overview.total_tasks,
+              completedTasks: dashboard.overview.completed_tasks,
+              remainingTasks: dashboard.overview.remaining_tasks,
+              progressPercent: dashboard.overview.progress_percent
+            }
+          )
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
       ] }),
       loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
       dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""}`, children: [

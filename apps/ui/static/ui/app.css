@@ -806,52 +806,70 @@ input[type="file"]::-webkit-file-upload-button:hover {
     word-break: break-word;
 }
 
-.room-header-meta__stack {
-    width: min(100%, 320px);
-}
-
-.room-header-meta__actions {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 8px;
-}
-
-.room-header-meta__actions .btn {
-    width: 100%;
-}
-
 .page-topbar--room {
     align-items: stretch;
+    gap: clamp(18px, 2vw, 28px);
 }
 
 .page-topbar--room .page-topbar__copy {
-    flex: 1 1 560px;
-    max-width: 760px;
+    flex: 1 1 640px;
+    max-width: none;
 }
 
 .room-header-side {
-    flex: 0 1 720px;
-    width: min(100%, 720px);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 14px;
-    align-items: stretch;
-}
-
-.room-header-meta,
-.room-header-metrics {
-    min-width: 0;
-}
-
-.room-header-meta__stack {
-    width: 100%;
-}
-
-.room-header-metrics {
+    flex: 0 1 440px;
+    width: min(100%, 440px);
     display: flex;
     align-items: stretch;
-    justify-content: stretch;
+}
+
+.room-header-inline-meta {
+    width: min(100%, 820px);
+    margin-top: 6px;
+}
+
+.room-header-inline-meta__empty {
+    margin-top: 6px;
+}
+
+.room-header-inline-meta .summary-row strong {
+    max-width: min(100%, 460px);
+}
+
+.room-progress-panel {
+    width: 100%;
+    padding: 18px;
+    border: 1px solid rgba(255, 201, 25, 0.28);
+    border-radius: var(--radius-lg);
+    background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.22), transparent 44%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 250, 236, 0.82));
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.room-progress-panel__eyebrow {
+    display: inline-flex;
+    width: max-content;
+    max-width: 100%;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(26, 26, 26, 0.06);
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.room-progress-panel .room-progress-chart {
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
 }
 
 .room-progress-chart {
@@ -2343,11 +2361,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     }
 
     .room-header-side {
-        grid-template-columns: 1fr;
-    }
-
-    .room-header-metrics {
-        width: 100%;
+        flex-basis: 100%;
     }
 
     .room-progress-chart {

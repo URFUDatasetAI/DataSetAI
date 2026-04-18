@@ -2957,49 +2957,48 @@ function RoomDetailPage() {
           <span className="eyebrow">Комната</span>
           <h1>{dashboard?.room.title || "Загрузка комнаты..."}</h1>
           <p>{dashboard?.room.description || "Подгружаем статистику и рабочий контур."}</p>
+          {dashboard ? (
+            <div className="summary-stack room-header-inline-meta">
+              <div className="summary-row">
+                <span>ID комнаты</span>
+                <strong>#{dashboard.room.id}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Датасет</span>
+                <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Тип</span>
+                <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Дедлайн</span>
+                <strong>{formatDate(dashboard.room.deadline)}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Доступ</span>
+                <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-card room-header-inline-meta__empty">Загрузка.</div>
+          )}
         </div>
-        <div className="room-header-side">
-          <div className="room-header-metrics">
-            {dashboard ? (
+        <aside className="room-header-side">
+          {dashboard ? (
+            <div className="room-progress-panel">
+              <span className="room-progress-panel__eyebrow">Прогресс комнаты</span>
               <RoomProgressChart
                 totalTasks={dashboard.overview.total_tasks}
                 completedTasks={dashboard.overview.completed_tasks}
                 remainingTasks={dashboard.overview.remaining_tasks}
                 progressPercent={dashboard.overview.progress_percent}
               />
-            ) : (
-              <div className="empty-card">Загрузка.</div>
-            )}
-          </div>
-          <div className="room-header-meta">
-            {dashboard ? (
-              <div className="summary-stack room-header-meta__stack">
-                <div className="summary-row">
-                  <span>ID комнаты</span>
-                  <strong>#{dashboard.room.id}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Датасет</span>
-                  <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Тип</span>
-                  <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Дедлайн</span>
-                  <strong>{formatDate(dashboard.room.deadline)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Доступ</span>
-                  <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-card">Загрузка.</div>
-            )}
-          </div>
-        </div>
+            </div>
+          ) : (
+            <div className="empty-card">Загрузка.</div>
+          )}
+        </aside>
       </section>
 
       {loading ? <div className="empty-card">Загрузка комнаты.</div> : null}
