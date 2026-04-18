@@ -24889,6 +24889,40 @@
       editor.draftElement = null;
       editor.draftState = null;
     }
+    function restoreAnnotationFromPoints(annotation, points, metrics = editor.interactionMetrics) {
+      if (!annotation || !Array.isArray(points)) {
+        return;
+      }
+      annotation.points = [...points];
+      renderActiveBox(annotation, metrics);
+    }
+    function cancelActiveInteraction() {
+      let didCancel = false;
+      if (editor.dragState) {
+        restoreAnnotationFromPoints(editor.dragState.annotation, editor.dragState.originalPoints);
+        editor.dragState = null;
+        didCancel = true;
+      }
+      if (editor.resizeState) {
+        restoreAnnotationFromPoints(editor.resizeState.annotation, editor.resizeState.originalPoints);
+        editor.resizeState = null;
+        didCancel = true;
+      }
+      if (editor.draftState) {
+        clearDraft();
+        didCancel = true;
+      }
+      if (didCancel) {
+        endPointerInteraction();
+        renderAnnotationList();
+        updateResultPreview();
+      }
+      if (editor.panState) {
+        finishPanning();
+        didCancel = true;
+      }
+      return didCancel;
+    }
     function updateDraftElement(left, top, width, height) {
       if (!editor.draftElement || !editor.draftState) {
         return;
@@ -24943,6 +24977,10 @@
         startClientX: event.clientX,
         startClientY: event.clientY,
         originalPoints: [...annotation.points],
+        referencePoints: [...annotation.points],
+        referenceClientX: event.clientX,
+        referenceClientY: event.clientY,
+        mode: "resize",
         moved: false
       };
     }
@@ -24992,21 +25030,48 @@
       const clientX = sample.clientX;
       const clientY = sample.clientY;
       if (editor.resizeState && editor.overlayElement) {
-        const deltaX = (clientX - editor.resizeState.startClientX) * metrics.scaleToNaturalX;
-        const deltaY = (clientY - editor.resizeState.startClientY) * metrics.scaleToNaturalY;
-        const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.originalPoints;
-        const minWidth = 8;
-        const minHeight = 8;
+        const nextMode = event.ctrlKey ? "move" : event.shiftKey ? "square" : "resize";
+        if (editor.resizeState.mode !== nextMode) {
+          editor.resizeState.mode = nextMode;
+          editor.resizeState.referencePoints = [...editor.resizeState.annotation.points];
+          editor.resizeState.referenceClientX = clientX;
+          editor.resizeState.referenceClientY = clientY;
+        }
+        const deltaX = (clientX - editor.resizeState.referenceClientX) * metrics.scaleToNaturalX;
+        const deltaY = (clientY - editor.resizeState.referenceClientY) * metrics.scaleToNaturalY;
+        const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.referencePoints;
+        const startWidth = startXMax - startXMin;
+        const startHeight = startYMax - startYMin;
+        const minWidth = 1;
+        const minHeight = 1;
         const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
         const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
-        const nextWidth = clampValue(startXMax - startXMin + deltaX, minWidth, maxWidth);
-        const nextHeight = clampValue(startYMax - startYMin + deltaY, minHeight, maxHeight);
+        let nextXMin = startXMin;
+        let nextYMin = startYMin;
+        let nextWidth = clampValue(startWidth + deltaX, minWidth, maxWidth);
+        let nextHeight = clampValue(startHeight + deltaY, minHeight, maxHeight);
+        if (nextMode === "move") {
+          const maxX = Math.max((metrics.naturalWidth || 0) - startWidth, 0);
+          const maxY = Math.max((metrics.naturalHeight || 0) - startHeight, 0);
+          nextXMin = clampValue(startXMin + deltaX, 0, maxX);
+          nextYMin = clampValue(startYMin + deltaY, 0, maxY);
+          nextWidth = startWidth;
+          nextHeight = startHeight;
+        } else if (nextMode === "square") {
+          const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
+          const useX = Math.abs(deltaX) >= Math.abs(deltaY);
+          const sizeFromX = clampValue(startWidth + deltaX, minWidth, maxSquare);
+          const sizeFromY = clampValue(startHeight + deltaY, minHeight, maxSquare);
+          const nextSize = clampValue(useX ? sizeFromX : sizeFromY, minWidth, maxSquare);
+          nextWidth = nextSize;
+          nextHeight = nextSize;
+        }
         editor.resizeState.moved = editor.resizeState.moved || Math.abs(clientX - editor.resizeState.startClientX) > 3 || Math.abs(clientY - editor.resizeState.startClientY) > 3;
         editor.resizeState.annotation.points = [
-          startXMin,
-          startYMin,
-          startXMin + nextWidth,
-          startYMin + nextHeight
+          nextXMin,
+          nextYMin,
+          nextXMin + nextWidth,
+          nextYMin + nextHeight
         ];
         renderActiveBox(editor.resizeState.annotation, metrics);
         return;
@@ -25126,12 +25191,7 @@
       if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
         return;
       }
-      editor.dragState = null;
-      editor.resizeState = null;
-      clearDraft();
-      endPointerInteraction(event.pointerId);
-      renderAnnotationList();
-      updateResultPreview();
+      cancelActiveInteraction();
     }
     function handleOverlayPointerDown(event) {
       if (event.target !== editor.overlayElement) {
@@ -25179,6 +25239,12 @@
       startPanning(event);
     }
     function handleKeyDown(event) {
+      if (event.code === "Escape" && !isEditableTarget(event.target)) {
+        if (cancelActiveInteraction()) {
+          event.preventDefault();
+        }
+        return;
+      }
       if (event.code !== "Space" || isEditableTarget(event.target)) {
         return;
       }

@@ -3469,6 +3469,12 @@ input[type="file"]::-webkit-file-upload-button:hover {
     z-index: 2;
 }
 
+.room-editor .editor-label-palette {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+}
+
 .room-editor .media-canvas::after {
     content: "";
     position: absolute;
