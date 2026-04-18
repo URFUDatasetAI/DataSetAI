@@ -21775,7 +21775,7 @@
   var ROOM_TITLE_MAX_LENGTH = 255;
   var ROOM_DATASET_LABEL_MAX_LENGTH = 255;
   var ROOM_DESCRIPTION_MAX_LENGTH = 2e3;
-  var ROOM_PASSWORD_MAX_LENGTH = 255;
+  var ROOM_PASSWORD_MAX_LENGTH = 64;
   var ROOM_LABEL_NAME_MAX_LENGTH = 64;
   var ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
   var labelColorPool = [
@@ -22068,6 +22068,24 @@
   }
   function clampTextLength(value, maxLength) {
     return value.length > maxLength ? value.slice(0, maxLength) : value;
+  }
+  function isTextLimitExceeded(value, maxLength) {
+    return value.length > maxLength;
+  }
+  function CharacterLimitLabel({
+    label,
+    value,
+    maxLength
+  }) {
+    const isInvalid = isTextLimitExceeded(value, maxLength);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field__label-row", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `field__limit ${isInvalid ? "is-invalid" : ""}`, children: [
+        value.length,
+        "/",
+        maxLength
+      ] })
+    ] });
   }
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -23139,6 +23157,13 @@
     }, [datasetMode]);
     const modeConfig = datasetModeConfig[datasetMode];
     const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
+    const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+    const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+    const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+    const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
+    const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+    const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+    const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
     function updateLabel(index, key, value) {
       setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
     }
@@ -23157,6 +23182,9 @@
         }
         if (crossValidationEnabled && Number(crossValidationCount) < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (hasCreateTextLimitError) {
+          throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
         }
         const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
         const payload = new FormData();
@@ -23204,7 +23232,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "create-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "form-card", onSubmit: handleSubmit, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-grid", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23213,8 +23241,9 @@
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
                 required: true,
-                maxLength: ROOM_TITLE_MAX_LENGTH,
-                onChange: (event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))
+                className: titleTooLong ? "field__control--invalid" : "",
+                "aria-invalid": titleTooLong,
+                onChange: (event) => setTitle(event.currentTarget.value)
               }
             )
           ] }),
@@ -23227,13 +23256,14 @@
                 name: "password",
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, demo123",
-                maxLength: ROOM_PASSWORD_MAX_LENGTH,
-                onChange: (event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))
+                className: passwordTooLong ? "field__control--invalid" : "",
+                "aria-invalid": passwordTooLong,
+                onChange: (event) => setPassword(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "textarea",
               {
@@ -23241,8 +23271,9 @@
                 name: "description",
                 rows: 4,
                 placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                maxLength: ROOM_DESCRIPTION_MAX_LENGTH,
-                onChange: (event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))
+                className: descriptionTooLong ? "field__control--invalid" : "",
+                "aria-invalid": descriptionTooLong,
+                onChange: (event) => setDescription(event.currentTarget.value)
               }
             )
           ] }),
@@ -23251,7 +23282,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, name: "deadline", type: "datetime-local", onChange: (event) => setDeadline(event.currentTarget.value) })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432", value: annotatorIds, maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23259,8 +23290,9 @@
                 name: "annotator_ids",
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 2,3,7",
-                maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH,
-                onChange: (event) => setAnnotatorIds(clampTextLength(event.currentTarget.value, ROOM_ANNOTATOR_IDS_MAX_LENGTH))
+                className: annotatorIdsTooLong ? "field__control--invalid" : "",
+                "aria-invalid": annotatorIdsTooLong,
+                onChange: (event) => setAnnotatorIds(event.currentTarget.value)
               }
             )
           ] }),
@@ -23318,15 +23350,16 @@
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
                 value: datasetLabel,
                 name: "dataset_label",
                 type: "text",
-                maxLength: ROOM_DATASET_LABEL_MAX_LENGTH,
-                onChange: (event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))
+                className: datasetLabelTooLong ? "field__control--invalid" : "",
+                "aria-invalid": datasetLabelTooLong,
+                onChange: (event) => setDatasetLabel(event.currentTarget.value)
               }
             )
           ] }),
@@ -23360,16 +23393,16 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note", children: "\u0426\u0432\u0435\u0442 \u043A\u0430\u0436\u0434\u043E\u043C\u0443 label-\u0443 \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0435\u0442\u0441\u044F \u0441\u043B\u0443\u0447\u0430\u0439\u043D\u043E, \u043D\u043E \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0441\u0440\u0430\u0437\u0443 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C." }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-editor-list", children: labels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "label-editor-row", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0435\u0439\u0431\u043B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041B\u0435\u0439\u0431\u043B", value: label.name, maxLength: ROOM_LABEL_NAME_MAX_LENGTH }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "input",
                 {
-                  className: "label-editor-row__name",
+                  className: `label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`,
                   type: "text",
                   placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, car",
                   value: label.name,
-                  maxLength: ROOM_LABEL_NAME_MAX_LENGTH,
-                  onChange: (event) => updateLabel(index, "name", clampTextLength(event.currentTarget.value, ROOM_LABEL_NAME_MAX_LENGTH))
+                  "aria-invalid": isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH),
+                  onChange: (event) => updateLabel(index, "name", event.currentTarget.value)
                 }
               )
             ] }),
@@ -23428,6 +23461,11 @@
       }
       loadRoom();
     }, []);
+    const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+    const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+    const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+    const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+    const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
     async function handleSubmit(event) {
       event.preventDefault();
       if (!roomId) {
@@ -23445,6 +23483,9 @@
         }
         if (crossValidationEnabled && nextCrossValidationCount < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (hasEditTextLimitError) {
+          throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
         }
         await api(`/api/v1/rooms/${roomId}/`, {
           method: "PATCH",
@@ -23500,7 +23541,7 @@
         ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "summary-stack room-edit-summary empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-grid", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23508,21 +23549,23 @@
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
                 required: true,
-                maxLength: ROOM_TITLE_MAX_LENGTH,
-                onChange: (event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))
+                className: titleTooLong ? "field__control--invalid" : "",
+                "aria-invalid": titleTooLong,
+                onChange: (event) => setTitle(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
                 value: datasetLabel,
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u041E\u0442\u0437\u044B\u0432\u044B Q2",
-                maxLength: ROOM_DATASET_LABEL_MAX_LENGTH,
-                onChange: (event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))
+                className: datasetLabelTooLong ? "field__control--invalid" : "",
+                "aria-invalid": datasetLabelTooLong,
+                onChange: (event) => setDatasetLabel(event.currentTarget.value)
               }
             )
           ] }),
@@ -23580,15 +23623,16 @@
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "textarea",
               {
                 value: description,
                 rows: 4,
                 placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                maxLength: ROOM_DESCRIPTION_MAX_LENGTH,
-                onChange: (event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))
+                className: descriptionTooLong ? "field__control--invalid" : "",
+                "aria-invalid": descriptionTooLong,
+                onChange: (event) => setDescription(event.currentTarget.value)
               }
             )
           ] }),
@@ -23600,9 +23644,10 @@
                 value: password,
                 type: "text",
                 disabled: !passwordEnabled,
-                maxLength: ROOM_PASSWORD_MAX_LENGTH,
+                className: passwordTooLong ? "field__control--invalid" : "",
+                "aria-invalid": passwordTooLong,
                 placeholder: initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u0443\u0441\u0442\u044B\u043C, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C" : "\u0417\u0430\u0434\u0430\u0439 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C",
-                onChange: (event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))
+                onChange: (event) => setPassword(event.currentTarget.value)
               }
             )
           ] }),

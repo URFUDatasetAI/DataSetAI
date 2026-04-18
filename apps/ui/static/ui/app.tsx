@@ -371,7 +371,7 @@ const annotationWorkflowLabels: Record<string, string> = {
 const ROOM_TITLE_MAX_LENGTH = 255;
 const ROOM_DATASET_LABEL_MAX_LENGTH = 255;
 const ROOM_DESCRIPTION_MAX_LENGTH = 2000;
-const ROOM_PASSWORD_MAX_LENGTH = 255;
+const ROOM_PASSWORD_MAX_LENGTH = 64;
 const ROOM_LABEL_NAME_MAX_LENGTH = 64;
 const ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
 
@@ -722,6 +722,31 @@ function pickRandomLabelColor() {
 
 function clampTextLength(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function isTextLimitExceeded(value: string, maxLength: number) {
+  return value.length > maxLength;
+}
+
+function CharacterLimitLabel({
+  label,
+  value,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  maxLength: number;
+}) {
+  const isInvalid = isTextLimitExceeded(value, maxLength);
+
+  return (
+    <span className="field__label-row">
+      <span>{label}</span>
+      <span className={`field__limit ${isInvalid ? "is-invalid" : ""}`}>
+        {value.length}/{maxLength}
+      </span>
+    </span>
+  );
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -2055,6 +2080,13 @@ function RoomCreatePage() {
 
   const modeConfig = datasetModeConfig[datasetMode];
   const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
+  const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+  const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+  const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+  const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
+  const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+  const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+  const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
 
   function updateLabel(index: number, key: "name" | "color", value: string) {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
@@ -2082,6 +2114,10 @@ function RoomCreatePage() {
 
       if (crossValidationEnabled && Number(crossValidationCount) < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (hasCreateTextLimitError) {
+        throw new Error("Сократи текст в полях, которые выделены красным.");
       }
 
       const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
@@ -2139,15 +2175,16 @@ function RoomCreatePage() {
         <form className="form-card" onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="field">
-              <span>Название комнаты</span>
+              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
               <input
                 value={title}
                 name="title"
                 type="text"
                 placeholder="Например, Разметка отзывов Q2"
                 required
-                maxLength={ROOM_TITLE_MAX_LENGTH}
-                onChange={(event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))}
+                className={titleTooLong ? "field__control--invalid" : ""}
+                aria-invalid={titleTooLong}
+                onChange={(event) => setTitle(event.currentTarget.value)}
               />
             </label>
             <label className="field">
@@ -2157,19 +2194,21 @@ function RoomCreatePage() {
                 name="password"
                 type="text"
                 placeholder="Например, demo123"
-                maxLength={ROOM_PASSWORD_MAX_LENGTH}
-                onChange={(event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))}
+                className={passwordTooLong ? "field__control--invalid" : ""}
+                aria-invalid={passwordTooLong}
+                onChange={(event) => setPassword(event.currentTarget.value)}
               />
             </label>
             <label className="field field--full">
-              <span>Описание</span>
+              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
               <textarea
                 value={description}
                 name="description"
                 rows={4}
                 placeholder="Кратко опиши задачу и правила разметки"
-                maxLength={ROOM_DESCRIPTION_MAX_LENGTH}
-                onChange={(event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))}
+                className={descriptionTooLong ? "field__control--invalid" : ""}
+                aria-invalid={descriptionTooLong}
+                onChange={(event) => setDescription(event.currentTarget.value)}
               ></textarea>
             </label>
             <label className="field">
@@ -2177,14 +2216,15 @@ function RoomCreatePage() {
               <input value={deadline} name="deadline" type="datetime-local" onChange={(event) => setDeadline(event.currentTarget.value)} />
             </label>
             <label className="field">
-              <span>ID приглашенных участников</span>
+              <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
               <input
                 value={annotatorIds}
                 name="annotator_ids"
                 type="text"
                 placeholder="Например, 2,3,7"
-                maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH}
-                onChange={(event) => setAnnotatorIds(clampTextLength(event.currentTarget.value, ROOM_ANNOTATOR_IDS_MAX_LENGTH))}
+                className={annotatorIdsTooLong ? "field__control--invalid" : ""}
+                aria-invalid={annotatorIdsTooLong}
+                onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
               />
             </label>
             <label className="field field--checkbox">
@@ -2237,13 +2277,14 @@ function RoomCreatePage() {
               </label>
             )}
             <label className="field">
-              <span>Название датасета</span>
+              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
               <input
                 value={datasetLabel}
                 name="dataset_label"
                 type="text"
-                maxLength={ROOM_DATASET_LABEL_MAX_LENGTH}
-                onChange={(event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))}
+                className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                aria-invalid={datasetLabelTooLong}
+                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
               />
             </label>
             {datasetMode === "demo" && (
@@ -2282,14 +2323,14 @@ function RoomCreatePage() {
                 {labels.map((label, index) => (
                   <div key={`label-${index}`} className="label-editor-row">
                     <label className="field">
-                      <span>Лейбл</span>
+                      <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
                       <input
-                        className="label-editor-row__name"
+                        className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
                         type="text"
                         placeholder="Например, car"
                         value={label.name}
-                        maxLength={ROOM_LABEL_NAME_MAX_LENGTH}
-                        onChange={(event) => updateLabel(index, "name", clampTextLength(event.currentTarget.value, ROOM_LABEL_NAME_MAX_LENGTH))}
+                        aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
+                        onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
                       />
                     </label>
                     <label className="field field--color">
@@ -2368,6 +2409,12 @@ function RoomEditPage() {
     loadRoom();
   }, []);
 
+  const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+  const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+  const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+  const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+  const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!roomId) {
@@ -2389,6 +2436,10 @@ function RoomEditPage() {
 
       if (crossValidationEnabled && nextCrossValidationCount < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (hasEditTextLimitError) {
+        throw new Error("Сократи текст в полях, которые выделены красным.");
       }
 
       await api(`/api/v1/rooms/${roomId}/`, {
@@ -2453,24 +2504,26 @@ function RoomEditPage() {
 
           <div className="form-grid">
             <label className="field">
-              <span>Название комнаты</span>
+              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
               <input
                 value={title}
                 type="text"
                 placeholder="Например, Разметка отзывов Q2"
                 required
-                maxLength={ROOM_TITLE_MAX_LENGTH}
-                onChange={(event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))}
+                className={titleTooLong ? "field__control--invalid" : ""}
+                aria-invalid={titleTooLong}
+                onChange={(event) => setTitle(event.currentTarget.value)}
               />
             </label>
             <label className="field">
-              <span>Название датасета</span>
+              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
               <input
                 value={datasetLabel}
                 type="text"
                 placeholder="Например, Отзывы Q2"
-                maxLength={ROOM_DATASET_LABEL_MAX_LENGTH}
-                onChange={(event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))}
+                className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                aria-invalid={datasetLabelTooLong}
+                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
               />
             </label>
             <label className="field">
@@ -2518,13 +2571,14 @@ function RoomEditPage() {
               />
             </label>
             <label className="field field--full">
-              <span>Описание</span>
+              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
               <textarea
                 value={description}
                 rows={4}
                 placeholder="Кратко опиши задачу и правила разметки"
-                maxLength={ROOM_DESCRIPTION_MAX_LENGTH}
-                onChange={(event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))}
+                className={descriptionTooLong ? "field__control--invalid" : ""}
+                aria-invalid={descriptionTooLong}
+                onChange={(event) => setDescription(event.currentTarget.value)}
               ></textarea>
             </label>
             <label className="field field--full">
@@ -2533,9 +2587,10 @@ function RoomEditPage() {
                 value={password}
                 type="text"
                 disabled={!passwordEnabled}
-                maxLength={ROOM_PASSWORD_MAX_LENGTH}
+                className={passwordTooLong ? "field__control--invalid" : ""}
+                aria-invalid={passwordTooLong}
                 placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
-                onChange={(event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))}
+                onChange={(event) => setPassword(event.currentTarget.value)}
               />
             </label>
             <div className="panel-note room-edit-password-note">
