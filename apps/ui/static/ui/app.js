@@ -21778,6 +21778,7 @@
   var ROOM_PASSWORD_MAX_LENGTH = 64;
   var ROOM_LABEL_NAME_MAX_LENGTH = 64;
   var ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
+  var ROOM_DEADLINE_MAX_DAYS_AHEAD = 365;
   var labelColorPool = [
     "#FF6B6B",
     "#4ECDC4",
@@ -21997,6 +21998,24 @@
     const hours = String(date.getHours()).padStart(2, "0");
     const minutes = String(date.getMinutes()).padStart(2, "0");
     return `${year}-${month}-${day}T${hours}:${minutes}`;
+  }
+  function validateRoomDeadline(value) {
+    if (!value) {
+      return "";
+    }
+    const date = /* @__PURE__ */ new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "\u0423\u043A\u0430\u0436\u0438 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0443\u044E \u0434\u0430\u0442\u0443 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0430.";
+    }
+    const now = /* @__PURE__ */ new Date();
+    if (date.getTime() <= now.getTime()) {
+      return "\u0423\u043A\u0430\u0436\u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D \u0432 \u0431\u0443\u0434\u0443\u0449\u0435\u043C.";
+    }
+    const latestAllowed = new Date(now.getTime() + ROOM_DEADLINE_MAX_DAYS_AHEAD * 24 * 60 * 60 * 1e3);
+    if (date.getTime() > latestAllowed.getTime()) {
+      return `\u0414\u0435\u0434\u043B\u0430\u0439\u043D \u043C\u043E\u0436\u043D\u043E \u043F\u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043D\u0435 \u0434\u0430\u043B\u044C\u0448\u0435 \u0447\u0435\u043C \u043D\u0430 ${ROOM_DEADLINE_MAX_DAYS_AHEAD} \u0434\u043D\u0435\u0439 \u0432\u043F\u0435\u0440\u0451\u0434.`;
+    }
+    return "";
   }
   function readStoredDisclosureState(storageKey, defaultOpen = false) {
     if (!storageKey) {
@@ -23163,6 +23182,7 @@
     const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
     const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
     const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+    const deadlineError = validateRoomDeadline(deadline);
     const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
     function updateLabel(index, key, value) {
       setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
@@ -23185,6 +23205,9 @@
         }
         if (hasCreateTextLimitError) {
           throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
+        }
+        if (deadlineError) {
+          throw new Error(deadlineError);
         }
         const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
         const payload = new FormData();
@@ -23279,7 +23302,8 @@
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, name: "deadline", type: "datetime-local", onChange: (event) => setDeadline(event.currentTarget.value) })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, name: "deadline", type: "datetime-local", className: deadlineError ? "field__control--invalid" : "", "aria-invalid": Boolean(deadlineError), onChange: (event) => setDeadline(event.currentTarget.value) }),
+            deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432", value: annotatorIds, maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH }),
@@ -23465,6 +23489,7 @@
     const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
     const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
     const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+    const deadlineError = validateRoomDeadline(deadline);
     const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
     async function handleSubmit(event) {
       event.preventDefault();
@@ -23486,6 +23511,9 @@
         }
         if (hasEditTextLimitError) {
           throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
+        }
+        if (deadlineError) {
+          throw new Error(deadlineError);
         }
         await api(`/api/v1/rooms/${roomId}/`, {
           method: "PATCH",
@@ -23571,7 +23599,8 @@
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, type: "datetime-local", onChange: (event) => setDeadline(event.currentTarget.value) })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, type: "datetime-local", className: deadlineError ? "field__control--invalid" : "", "aria-invalid": Boolean(deadlineError), onChange: (event) => setDeadline(event.currentTarget.value) }),
+            deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0449\u0438\u0442\u0430 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" }),

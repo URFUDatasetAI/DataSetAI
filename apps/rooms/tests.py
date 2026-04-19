@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -188,6 +189,34 @@ class RoomListCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("dataset_label", response.data)
+
+    def test_create_room_rejects_past_deadline(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Past deadline room",
+                "dataset_mode": Room.DatasetType.DEMO,
+                "deadline": (timezone.now() - timezone.timedelta(hours=1)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("deadline", response.data)
+
+    def test_update_room_rejects_too_distant_deadline(self):
+        room = Room.objects.create(title="Far future room", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "deadline": (timezone.now() + timezone.timedelta(days=366)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("deadline", response.data)
 
     @staticmethod
     def _uploaded_file(name: str):

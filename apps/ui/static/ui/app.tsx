@@ -374,6 +374,7 @@ const ROOM_DESCRIPTION_MAX_LENGTH = 2000;
 const ROOM_PASSWORD_MAX_LENGTH = 64;
 const ROOM_LABEL_NAME_MAX_LENGTH = 64;
 const ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
+const ROOM_DEADLINE_MAX_DAYS_AHEAD = 365;
 
 const labelColorPool = [
   "#FF6B6B",
@@ -636,6 +637,29 @@ function formatDateTimeLocal(value: string | null | undefined) {
   const minutes = String(date.getMinutes()).padStart(2, "0");
 
   return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function validateRoomDeadline(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Укажи корректную дату дедлайна.";
+  }
+
+  const now = new Date();
+  if (date.getTime() <= now.getTime()) {
+    return "Укажи дедлайн в будущем.";
+  }
+
+  const latestAllowed = new Date(now.getTime() + ROOM_DEADLINE_MAX_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+  if (date.getTime() > latestAllowed.getTime()) {
+    return `Дедлайн можно поставить не дальше чем на ${ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд.`;
+  }
+
+  return "";
 }
 
 function readStoredDisclosureState(storageKey: string | null, defaultOpen = false) {
@@ -2093,6 +2117,7 @@ function RoomCreatePage() {
   const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
   const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
   const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+  const deadlineError = validateRoomDeadline(deadline);
   const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
 
   function updateLabel(index: number, key: "name" | "color", value: string) {
@@ -2125,6 +2150,10 @@ function RoomCreatePage() {
 
       if (hasCreateTextLimitError) {
         throw new Error("Сократи текст в полях, которые выделены красным.");
+      }
+
+      if (deadlineError) {
+        throw new Error(deadlineError);
       }
 
       const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
@@ -2220,7 +2249,15 @@ function RoomCreatePage() {
             </label>
             <label className="field">
               <span>Дедлайн (необязательно)</span>
-              <input value={deadline} name="deadline" type="datetime-local" onChange={(event) => setDeadline(event.currentTarget.value)} />
+              <input
+                value={deadline}
+                name="deadline"
+                type="datetime-local"
+                className={deadlineError ? "field__control--invalid" : ""}
+                aria-invalid={Boolean(deadlineError)}
+                onChange={(event) => setDeadline(event.currentTarget.value)}
+              />
+              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
             </label>
             <label className="field">
               <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
@@ -2420,6 +2457,7 @@ function RoomEditPage() {
   const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
   const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
   const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+  const deadlineError = validateRoomDeadline(deadline);
   const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -2447,6 +2485,10 @@ function RoomEditPage() {
 
       if (hasEditTextLimitError) {
         throw new Error("Сократи текст в полях, которые выделены красным.");
+      }
+
+      if (deadlineError) {
+        throw new Error(deadlineError);
       }
 
       await api(`/api/v1/rooms/${roomId}/`, {
@@ -2535,7 +2577,14 @@ function RoomEditPage() {
             </label>
             <label className="field">
               <span>Дедлайн (необязательно)</span>
-              <input value={deadline} type="datetime-local" onChange={(event) => setDeadline(event.currentTarget.value)} />
+              <input
+                value={deadline}
+                type="datetime-local"
+                className={deadlineError ? "field__control--invalid" : ""}
+                aria-invalid={Boolean(deadlineError)}
+                onChange={(event) => setDeadline(event.currentTarget.value)}
+              />
+              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
             </label>
             <label className="field field--checkbox">
               <span>Защита паролем</span>

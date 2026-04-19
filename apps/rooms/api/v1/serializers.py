@@ -1,5 +1,8 @@
 import json
 
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
@@ -10,6 +13,7 @@ from common.exceptions import ConflictError
 ROOM_TEXT_MAX_LENGTH = 255
 ROOM_TITLE_MAX_LENGTH = 128
 ROOM_DESCRIPTION_MAX_LENGTH = 2000
+ROOM_DEADLINE_MAX_DAYS_AHEAD = 365
 
 
 class JsonStringField(serializers.Field):
@@ -73,6 +77,20 @@ class RoomCreateSerializer(serializers.Serializer):
     )
     labels = JsonStringField(required=False)
     media_manifest = JsonStringField(required=False)
+
+    def validate_deadline(self, value):
+        if value is None:
+            return value
+
+        now = timezone.now()
+        latest_allowed = now + timedelta(days=ROOM_DEADLINE_MAX_DAYS_AHEAD)
+        if value <= now:
+            raise serializers.ValidationError("Укажи дедлайн в будущем.")
+        if value > latest_allowed:
+            raise serializers.ValidationError(
+                f"Дедлайн можно поставить не дальше чем на {ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд."
+            )
+        return value
 
     def validate(self, attrs):
         if attrs.get("cross_validation_enabled"):
@@ -140,6 +158,20 @@ class RoomUpdateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+    def validate_deadline(self, value):
+        if value is None:
+            return value
+
+        now = timezone.now()
+        latest_allowed = now + timedelta(days=ROOM_DEADLINE_MAX_DAYS_AHEAD)
+        if value <= now:
+            raise serializers.ValidationError("Укажи дедлайн в будущем.")
+        if value > latest_allowed:
+            raise serializers.ValidationError(
+                f"Дедлайн можно поставить не дальше чем на {ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд."
+            )
+        return value
 
     def validate(self, attrs):
         room = self.instance
