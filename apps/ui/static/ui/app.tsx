@@ -1817,28 +1817,6 @@ function ProfilePage() {
           <h1>Статистика пользователя</h1>
           <p>Сводка по созданным комнатам, участию в разметке и личной активности.</p>
         </div>
-        <div className="card-grid profile-metrics-grid">
-          {overview ? (
-            <>
-              <article className="profile-chart-card">
-                <div className="profile-chart-card__head">
-                  <span>Комнаты</span>
-                  <strong>{roomSeries[0]?.value || 0}</strong>
-                </div>
-                <div className="profile-chart-card__rows">{renderChartRows(roomSeries)}</div>
-              </article>
-              <article className="profile-chart-card">
-                <div className="profile-chart-card__head">
-                  <span>Работа</span>
-                  <strong>{(workSeries[0]?.value || 0) + (workSeries[1]?.value || 0)}</strong>
-                </div>
-                <div className="profile-chart-card__rows">{renderChartRows(workSeries)}</div>
-              </article>
-            </>
-          ) : (
-            <div className="empty-card">Данные профиля загружаются.</div>
-          )}
-        </div>
       </section>
 
       <section className="wide-card wide-card--stack wide-card--profile">
@@ -1893,6 +1871,28 @@ function ProfilePage() {
         <div className="wide-card__column wide-card__column--activity">
           <h2>Активность</h2>
           <div className="activity-board">{profile ? <ActivityBoard series={profile.activity} /> : <div className="empty-card">Активность загружается.</div>}</div>
+          <div className="card-grid profile-metrics-grid profile-metrics-grid--embedded">
+            {overview ? (
+              <>
+                <article className="profile-chart-card">
+                  <div className="profile-chart-card__head">
+                    <span>Комнаты</span>
+                    <strong>{roomSeries[0]?.value || 0}</strong>
+                  </div>
+                  <div className="profile-chart-card__rows">{renderChartRows(roomSeries)}</div>
+                </article>
+                <article className="profile-chart-card">
+                  <div className="profile-chart-card__head">
+                    <span>Работа</span>
+                    <strong>{(workSeries[0]?.value || 0) + (workSeries[1]?.value || 0)}</strong>
+                  </div>
+                  <div className="profile-chart-card__rows">{renderChartRows(workSeries)}</div>
+                </article>
+              </>
+            ) : (
+              <div className="empty-card">Данные профиля загружаются.</div>
+            )}
+          </div>
         </div>
       </section>
     </>

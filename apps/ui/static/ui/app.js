@@ -22955,23 +22955,7 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0440\u043E\u0444\u0438\u043B\u044C" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043F\u043E \u0441\u043E\u0437\u0434\u0430\u043D\u043D\u044B\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u0430\u043C, \u0443\u0447\u0430\u0441\u0442\u0438\u044E \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435 \u0438 \u043B\u0438\u0447\u043D\u043E\u0439 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u0438." })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-grid profile-metrics-grid", children: overview ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: roomSeries[0]?.value || 0 })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(roomSeries) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0431\u043E\u0442\u0430" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: (workSeries[0]?.value || 0) + (workSeries[1]?.value || 0) })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(workSeries) })
-          ] })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F." }) })
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "wide-card wide-card--stack wide-card--profile", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column", children: [
@@ -23019,7 +23003,23 @@
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column wide-card__column--activity", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: profile.activity }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F." }) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: profile.activity }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F." }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-grid profile-metrics-grid profile-metrics-grid--embedded", children: overview ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: roomSeries[0]?.value || 0 })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(roomSeries) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0431\u043E\u0442\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: (workSeries[0]?.value || 0) + (workSeries[1]?.value || 0) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(workSeries) })
+            ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F." }) })
         ] })
       ] })
     ] });

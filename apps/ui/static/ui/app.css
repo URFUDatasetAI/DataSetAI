@@ -1148,18 +1148,25 @@ input[type="file"]::-webkit-file-upload-button:hover {
     width: 100%;
     align-self: stretch;
     align-items: stretch;
-    justify-content: space-between;
 }
 
 .page-topbar--profile .page-topbar__copy {
-    flex: 1 1 560px;
+    flex: 1 1 auto;
     max-width: 760px;
 }
 
 .profile-metrics-grid {
-    flex: 0 0 440px;
-    width: min(100%, 440px);
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-metrics-grid--embedded {
+    width: 100%;
+    margin-top: 18px;
+    align-items: stretch;
+}
+
+.profile-metrics-grid--embedded .profile-chart-card {
+    height: 100%;
 }
 
 .profile-chart-card {
@@ -1265,6 +1272,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
     align-self: stretch;
     min-width: 0;
     align-items: stretch;
+}
+
+.wide-card--profile .wide-card__column--activity .profile-metrics-grid {
+    width: 100%;
+    align-self: stretch;
 }
 
 .wide-card--profile .wide-card__column--activity .activity-board__legend {
