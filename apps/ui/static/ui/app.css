@@ -1541,6 +1541,52 @@ input[type="file"]::-webkit-file-upload-button:hover {
     gap: 10px;
 }
 
+.room-card__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.room-card__pin-order {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.room-card__drag-handle {
+    border: 0;
+    border-radius: 999px;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 201, 25, 0.12);
+    color: var(--text);
+    font: inherit;
+    line-height: 1;
+    cursor: grab;
+    transition: background 140ms ease, transform 140ms ease, opacity 140ms ease;
+    user-select: none;
+}
+
+.room-card__drag-handle:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 201, 25, 0.2);
+}
+
+.room-card__drag-handle:active {
+    cursor: grabbing;
+}
+
+.room-card__pin:disabled {
+    opacity: 0.45;
+    cursor: default;
+    transform: none;
+}
+
 .room-card__pin {
     border: 0;
     border-radius: 999px;

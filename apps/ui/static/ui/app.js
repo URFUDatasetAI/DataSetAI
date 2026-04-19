@@ -22711,8 +22711,35 @@
     const { authUser, api, addToast, clearToasts } = useApp();
     const [rooms, setRooms] = (0, import_react.useState)([]);
     const [loading, setLoading] = (0, import_react.useState)(true);
+    const [pinBusyRoomId, setPinBusyRoomId] = (0, import_react.useState)(null);
+    const [draggedPinnedRoomId, setDraggedPinnedRoomId] = (0, import_react.useState)(null);
     const [roomId, setRoomId] = (0, import_react.useState)("");
     const [password, setPassword] = (0, import_react.useState)("");
+    function sortRooms(list) {
+      return [...list].sort((left, right) => {
+        if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
+          return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
+        }
+        if (left.is_pinned && right.is_pinned) {
+          const leftOrder = left.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = right.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+          if (leftOrder !== rightOrder) {
+            return leftOrder - rightOrder;
+          }
+        }
+        const rightAccess = right.last_accessed_at ? new Date(right.last_accessed_at).getTime() : 0;
+        const leftAccess = left.last_accessed_at ? new Date(left.last_accessed_at).getTime() : 0;
+        if (rightAccess !== leftAccess) {
+          return rightAccess - leftAccess;
+        }
+        const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
+        const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
+        if (rightCreatedAt !== leftCreatedAt) {
+          return rightCreatedAt - leftCreatedAt;
+        }
+        return Number(right.id) - Number(left.id);
+      });
+    }
     async function loadRooms() {
       if (!authUser) {
         return;
@@ -22726,18 +22753,7 @@
             roomMap.set(room.id, room);
           }
         });
-        const sortedRooms = Array.from(roomMap.values()).sort((left, right) => {
-          if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
-            return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
-          }
-          const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
-          const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
-          if (rightCreatedAt !== leftCreatedAt) {
-            return rightCreatedAt - leftCreatedAt;
-          }
-          return Number(right.id) - Number(left.id);
-        });
-        setRooms(sortedRooms);
+        setRooms(sortRooms(Array.from(roomMap.values())));
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       } finally {
@@ -22766,6 +22782,7 @@
       event.preventDefault();
       event.stopPropagation();
       clearToasts();
+      setPinBusyRoomId(room.id);
       try {
         await api(`/api/v1/rooms/${room.id}/pin/`, {
           method: "POST",
@@ -22775,6 +22792,56 @@
         await loadRooms();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
+      } finally {
+        setPinBusyRoomId(null);
+      }
+    }
+    async function handleReorderPin(event, room, direction) {
+      event.preventDefault();
+      event.stopPropagation();
+      clearToasts();
+      setPinBusyRoomId(room.id);
+      try {
+        await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
+          method: "POST",
+          body: { direction }
+        });
+        await loadRooms();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setPinBusyRoomId(null);
+      }
+    }
+    const pinnedRooms = rooms.filter((room) => room.is_pinned);
+    async function handlePinnedDrop(event, targetRoom) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!draggedPinnedRoomId || draggedPinnedRoomId === targetRoom.id) {
+        setDraggedPinnedRoomId(null);
+        return;
+      }
+      const nextPinnedRooms = [...pinnedRooms];
+      const fromIndex = nextPinnedRooms.findIndex((room) => room.id === draggedPinnedRoomId);
+      const toIndex = nextPinnedRooms.findIndex((room) => room.id === targetRoom.id);
+      if (fromIndex < 0 || toIndex < 0) {
+        setDraggedPinnedRoomId(null);
+        return;
+      }
+      const [movedRoom] = nextPinnedRooms.splice(fromIndex, 1);
+      nextPinnedRooms.splice(toIndex, 0, movedRoom);
+      setPinBusyRoomId(targetRoom.id);
+      try {
+        await api(`/api/v1/rooms/${targetRoom.id}/pin/reorder/`, {
+          method: "POST",
+          body: { ordered_room_ids: nextPinnedRooms.map((room) => room.id) }
+        });
+        await loadRooms();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setDraggedPinnedRoomId(null);
+        setPinBusyRoomId(null);
       }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
@@ -22828,69 +22895,97 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B \u0441\u043E\u0437\u0434\u0430\u043B\u0438 \u0438\u043B\u0438 \u043A \u043A\u043E\u0442\u043E\u0440\u044B\u043C \u0443 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F." })
         ] }),
         loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
-        !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid", children: rooms.map((room) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "article",
-          {
-            className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
-            onClick: () => {
-              setRoomId(String(room.id));
-              window.location.href = `/rooms/${room.id}/`;
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
-                    "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
+        !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid", children: rooms.map((room) => {
+          const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+          const canMoveUp = room.is_pinned && pinnedIndex > 0;
+          const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "article",
+            {
+              className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
+              onDragOver: room.is_pinned ? (event) => event.preventDefault() : void 0,
+              onDrop: room.is_pinned ? (event) => handlePinnedDrop(event, room) : void 0,
+              onClick: () => {
+                setRoomId(String(room.id));
+                window.location.href = `/rooms/${room.id}/`;
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
+                      "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
+                      room.id
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__actions", children: [
+                      room.is_pinned ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__pin-order", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "span",
+                          {
+                            className: "room-card__drag-handle",
+                            draggable: pinBusyRoomId !== room.id,
+                            onDragStart: (event) => {
+                              event.stopPropagation();
+                              setDraggedPinnedRoomId(room.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", String(room.id));
+                            },
+                            onDragEnd: () => setDraggedPinnedRoomId(null),
+                            title: "\u041F\u0435\u0440\u0435\u0442\u0430\u0449\u0438 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0443, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u043C\u0435\u043D\u044F\u0442\u044C \u043F\u043E\u0440\u044F\u0434\u043E\u043A",
+                            children: "\u2261"
+                          }
+                        )
+                      ] }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          className: "room-card__pin",
+                          type: "button",
+                          disabled: pinBusyRoomId === room.id,
+                          "aria-pressed": room.is_pinned,
+                          "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                          title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                          onClick: (event) => handleTogglePin(event, room),
+                          children: room.is_pinned ? "\u2605" : "\u2606"
+                        }
+                      )
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E." })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "ID: ",
                     room.id
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "button",
-                    {
-                      className: "room-card__pin",
-                      type: "button",
-                      "aria-pressed": room.is_pinned,
-                      "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                      title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                      onClick: (event) => handleTogglePin(event, room),
-                      children: room.is_pinned ? "\u2605" : "\u2606"
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E." })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "ID: ",
-                  room.id
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0421\u0442\u0430\u0442\u0443\u0441: ",
-                  translateMembership(room.membership_status || "owner")
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435: ",
-                  translateRole(room.membership_role || "owner")
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441: ",
-                  formatPercent(room.progress_percent)
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0417\u0430\u0434\u0430\u0447\u0438: ",
-                  room.completed_tasks,
-                  "/",
-                  room.total_tasks
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u041F\u0430\u0440\u043E\u043B\u044C: ",
-                  room.has_password ? "\u0435\u0441\u0442\u044C" : "\u043D\u0435 \u0437\u0430\u0434\u0430\u043D"
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "\u0421\u0442\u0430\u0442\u0443\u0441: ",
+                    translateMembership(room.membership_status || "owner")
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435: ",
+                    translateRole(room.membership_role || "owner")
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441: ",
+                    formatPercent(room.progress_percent)
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "\u0417\u0430\u0434\u0430\u0447\u0438: ",
+                    room.completed_tasks,
+                    "/",
+                    room.total_tasks
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "\u041F\u0430\u0440\u043E\u043B\u044C: ",
+                    room.has_password ? "\u0435\u0441\u0442\u044C" : "\u043D\u0435 \u0437\u0430\u0434\u0430\u043D"
+                  ] })
                 ] })
-              ] })
-            ]
-          },
-          room.id
-        )) })
+              ]
+            },
+            room.id
+          );
+        }) })
       ] })
     ] });
   }

@@ -20,6 +20,7 @@ from apps.rooms.models import (
     RoomLabel,
     RoomMembership,
     RoomPin,
+    RoomVisit,
     generate_room_invite_token,
 )
 from apps.rooms.policies import can_edit_room, can_invite_members
@@ -66,6 +67,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 JSON_EXTENSIONS = {".json"}
 UNSET = object()
+MAX_PINNED_ROOMS = 5
 
 
 @dataclass
@@ -383,13 +385,69 @@ def join_room(*, room: Room, annotator: User, password: str | None = None) -> Ro
     return membership
 
 
+def record_room_visit(*, room: Room, user: User) -> None:
+    RoomVisit.objects.update_or_create(
+        room=room,
+        user=user,
+        defaults={"last_accessed_at": timezone.now()},
+    )
+
+
 def set_room_pinned(*, room: Room, user: User, is_pinned: bool) -> bool:
     if is_pinned:
-        RoomPin.objects.get_or_create(room=room, user=user)
+        pin = RoomPin.objects.filter(room=room, user=user).first()
+        if pin is not None:
+            return True
+
+        if RoomPin.objects.filter(user=user).count() >= MAX_PINNED_ROOMS:
+            raise ConflictError(f"Можно закрепить не больше {MAX_PINNED_ROOMS} комнат.")
+
+        max_sort_order = RoomPin.objects.filter(user=user).order_by("-sort_order").values_list("sort_order", flat=True).first()
+        RoomPin.objects.create(
+            room=room,
+            user=user,
+            sort_order=(max_sort_order + 1) if max_sort_order is not None else 1,
+        )
         return True
 
     RoomPin.objects.filter(room=room, user=user).delete()
     return False
+
+
+def reorder_room_pin(*, room: Room, user: User, direction: str) -> RoomPin:
+    pins = list(RoomPin.objects.filter(user=user).order_by("sort_order", "id"))
+    current_index = next((index for index, pin in enumerate(pins) if pin.room_id == room.id), None)
+    if current_index is None:
+        raise NotFoundError("Закреплённая комната не найдена.")
+
+    if direction == "up":
+        target_index = max(current_index - 1, 0)
+    else:
+        target_index = min(current_index + 1, len(pins) - 1)
+
+    if target_index != current_index:
+        pins[current_index], pins[target_index] = pins[target_index], pins[current_index]
+        for index, pin in enumerate(pins, start=1):
+            if pin.sort_order != index:
+                pin.sort_order = index
+                pin.save(update_fields=["sort_order", "updated_at"])
+
+    return RoomPin.objects.get(room=room, user=user)
+
+
+def reorder_room_pins(*, user: User, ordered_room_ids: list[int]) -> None:
+    pins = list(RoomPin.objects.filter(user=user).order_by("sort_order", "id"))
+    pin_by_room_id = {pin.room_id: pin for pin in pins}
+    current_room_ids = [pin.room_id for pin in pins]
+
+    if sorted(current_room_ids) != sorted(ordered_room_ids):
+        raise ConflictError("Невозможно сохранить новый порядок закреплённых комнат.")
+
+    for index, room_id in enumerate(ordered_room_ids, start=1):
+        pin = pin_by_room_id[room_id]
+        if pin.sort_order != index:
+            pin.sort_order = index
+            pin.save(update_fields=["sort_order", "updated_at"])
 
 
 def update_room(

@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import models
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.validators import RegexValidator
+from django.utils import timezone
 
 from common.models import TimeStampedModel
 
@@ -181,15 +182,35 @@ class RoomPin(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="room_pins",
     )
+    sort_order = models.PositiveIntegerField(default=0)
 
     class Meta:
-        ordering = ("-created_at", "-id")
+        ordering = ("sort_order", "id")
         constraints = [
             models.UniqueConstraint(fields=("room", "user"), name="unique_room_pin"),
         ]
 
     def __str__(self) -> str:
         return f"{self.room_id}:{self.user_id}"
+
+
+class RoomVisit(TimeStampedModel):
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="visits")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="room_visits",
+    )
+    last_accessed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("-last_accessed_at", "-id")
+        constraints = [
+            models.UniqueConstraint(fields=("room", "user"), name="unique_room_visit"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.room_id}:{self.user_id}:{self.last_accessed_at.isoformat()}"
 
 
 class RoomJoinRequest(TimeStampedModel):

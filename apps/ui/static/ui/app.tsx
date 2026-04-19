@@ -93,6 +93,8 @@ type RoomItem = {
   completed_tasks: number;
   progress_percent: number;
   is_pinned: boolean;
+  pin_sort_order: number | null;
+  last_accessed_at: string | null;
   labels: LabelItem[];
   export_formats: Array<{ value: string; label: string }>;
   created_at: string;
@@ -1562,8 +1564,39 @@ function RoomsPage() {
   const { authUser, api, addToast, clearToasts } = useApp();
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
   const [roomId, setRoomId] = useState("");
   const [password, setPassword] = useState("");
+
+  function sortRooms(list: RoomItem[]) {
+    return [...list].sort((left, right) => {
+      if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
+        return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
+      }
+
+      if (left.is_pinned && right.is_pinned) {
+        const leftOrder = left.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+      }
+
+      const rightAccess = right.last_accessed_at ? new Date(right.last_accessed_at).getTime() : 0;
+      const leftAccess = left.last_accessed_at ? new Date(left.last_accessed_at).getTime() : 0;
+      if (rightAccess !== leftAccess) {
+        return rightAccess - leftAccess;
+      }
+
+      const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
+      const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
+      if (rightCreatedAt !== leftCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+
+      return Number(right.id) - Number(left.id);
+    });
+  }
 
   async function loadRooms() {
     if (!authUser) {
@@ -1579,20 +1612,7 @@ function RoomsPage() {
           roomMap.set(room.id, room);
         }
       });
-      const sortedRooms = Array.from(roomMap.values()).sort((left, right) => {
-        if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
-          return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
-        }
-
-        const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
-        const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
-        if (rightCreatedAt !== leftCreatedAt) {
-          return rightCreatedAt - leftCreatedAt;
-        }
-
-        return Number(right.id) - Number(left.id);
-      });
-      setRooms(sortedRooms);
+      setRooms(sortRooms(Array.from(roomMap.values())));
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     } finally {
@@ -1617,6 +1637,8 @@ function RoomsPage() {
       window.location.href = response.redirect_url;
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
     }
   }
 
@@ -1624,6 +1646,7 @@ function RoomsPage() {
     event.preventDefault();
     event.stopPropagation();
     clearToasts();
+    setPinBusyRoomId(room.id);
 
     try {
       await api(`/api/v1/rooms/${room.id}/pin/`, {
@@ -1634,8 +1657,31 @@ function RoomsPage() {
       await loadRooms();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
     }
   }
+
+  async function handleReorderPin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem, direction: "up" | "down") {
+    event.preventDefault();
+    event.stopPropagation();
+    clearToasts();
+    setPinBusyRoomId(room.id);
+
+    try {
+      await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
+        method: "POST",
+        body: { direction },
+      });
+      await loadRooms();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
+    }
+  }
+
+  const pinnedRooms = rooms.filter((room) => room.is_pinned);
 
   return (
     <>
@@ -1696,44 +1742,77 @@ function RoomsPage() {
           <div className="empty-card">У выбранного пользователя пока нет доступных комнат.</div>
         ) : (
           <div className="room-grid">
-            {rooms.map((room) => (
-              <article
-                key={room.id}
-                className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
-                onClick={() => {
-                  setRoomId(String(room.id));
-                  window.location.href = `/rooms/${room.id}/`;
-                }}
-              >
-                <div>
-                  <div className="room-card__head">
-                    <div className="room-card__id">Комната #{room.id}</div>
-                    <button
-                      className="room-card__pin"
-                      type="button"
-                      aria-pressed={room.is_pinned}
-                      aria-label={room.is_pinned ? "Убрать комнату из закрепленных" : "Закрепить комнату"}
-                      title={room.is_pinned ? "Убрать из закрепленных" : "Закрепить комнату"}
-                      onClick={(event) => handleTogglePin(event, room)}
-                    >
-                      {room.is_pinned ? "★" : "☆"}
-                    </button>
-                  </div>
-                  <div className="room-card__title">{room.title}</div>
-                  <div className="room-card__meta">{room.description || "Описание пока не добавлено."}</div>
-                </div>
-                <div className="room-card__footer">
-                  <div>ID: {room.id}</div>
-                  <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
-                  <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
-                  <div>Прогресс: {formatPercent(room.progress_percent)}</div>
+            {rooms.map((room) => {
+              const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+              const canMoveUp = room.is_pinned && pinnedIndex > 0;
+              const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+
+              return (
+                <article
+                  key={room.id}
+                  className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
+                  onClick={() => {
+                    setRoomId(String(room.id));
+                    window.location.href = `/rooms/${room.id}/`;
+                  }}
+                >
                   <div>
-                    Задачи: {room.completed_tasks}/{room.total_tasks}
+                    <div className="room-card__head">
+                      <div className="room-card__id">Комната #{room.id}</div>
+                      <div className="room-card__actions">
+                        {room.is_pinned ? (
+                          <div className="room-card__pin-order">
+                            <button
+                              className="room-card__reorder"
+                              type="button"
+                              disabled={!canMoveUp || pinBusyRoomId === room.id}
+                              aria-label="Поднять закреплённую комнату выше"
+                              title="Поднять выше"
+                              onClick={(event) => handleReorderPin(event, room, "up")}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="room-card__reorder"
+                              type="button"
+                              disabled={!canMoveDown || pinBusyRoomId === room.id}
+                              aria-label="Опустить закреплённую комнату ниже"
+                              title="Опустить ниже"
+                              onClick={(event) => handleReorderPin(event, room, "down")}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        ) : null}
+                        <button
+                          className="room-card__pin"
+                          type="button"
+                          disabled={pinBusyRoomId === room.id}
+                          aria-pressed={room.is_pinned}
+                          aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
+                          title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
+                          onClick={(event) => handleTogglePin(event, room)}
+                        >
+                          {room.is_pinned ? "?" : "?"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="room-card__title">{room.title}</div>
+                    <div className="room-card__meta">{room.description || "???????? ???? ?? ?????????."}</div>
                   </div>
-                  <div>Пароль: {room.has_password ? "есть" : "не задан"}</div>
-                </div>
-              </article>
-            ))}
+                  <div className="room-card__footer">
+                    <div>ID: {room.id}</div>
+                    <div>??????: {translateMembership(room.membership_status || "owner")}</div>
+                    <div>???? ? ???????: {translateRole(room.membership_role || "owner")}</div>
+                    <div>????????: {formatPercent(room.progress_percent)}</div>
+                    <div>
+                      ??????: {room.completed_tasks}/{room.total_tasks}
+                    </div>
+                    <div>????????????: {room.has_password ? "????????" : "???? ??????????"}</div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -2954,6 +3033,25 @@ function RoomDetailPage() {
     }
   }
 
+  async function handleReorderPin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem, direction: "up" | "down") {
+    event.preventDefault();
+    event.stopPropagation();
+    clearToasts();
+    setPinBusyRoomId(room.id);
+
+    try {
+      await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
+        method: "POST",
+        body: { direction },
+      });
+      await loadRooms();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
+    }
+  }
+
   async function handleRemoveAnnotator() {
     if (!roomId || !activeAnnotator) {
       return;
@@ -2976,6 +3074,8 @@ function RoomDetailPage() {
       await refresh();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
     }
   }
 

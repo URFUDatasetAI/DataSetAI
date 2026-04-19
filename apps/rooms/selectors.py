@@ -1,13 +1,14 @@
 from collections import Counter
 from datetime import timedelta
 
-from django.db.models import Exists, OuterRef, QuerySet
+from django.db.models import DateTimeField, Exists, OuterRef, QuerySet, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
-from apps.rooms.models import Room, RoomJoinRequest, RoomMembership, RoomPin
+from apps.rooms.models import Room, RoomJoinRequest, RoomMembership, RoomPin, RoomVisit
 from apps.rooms.policies import (
     can_annotate_room,
     can_edit_room,
@@ -36,24 +37,38 @@ Convention in this project:
 
 def list_owned_rooms(*, user: User) -> QuerySet[Room]:
     pinned_subquery = RoomPin.objects.filter(room_id=OuterRef("pk"), user=user)
+    pin_order_subquery = pinned_subquery.order_by("sort_order", "id").values("sort_order")[:1]
+    visit_subquery = RoomVisit.objects.filter(room_id=OuterRef("pk"), user=user).order_by("-last_accessed_at").values("last_accessed_at")[:1]
     return (
         Room.objects.filter(created_by=user)
-        .annotate(is_pinned=Exists(pinned_subquery))
+        .annotate(
+            is_pinned=Exists(pinned_subquery),
+            pin_sort_order=Subquery(pin_order_subquery),
+            last_accessed_at=Subquery(visit_subquery, output_field=DateTimeField()),
+        )
+        .annotate(activity_at=Coalesce("last_accessed_at", "created_at"))
         .select_related("created_by")
         .prefetch_related("tasks", "memberships", "labels")
-        .order_by("-is_pinned", "-created_at", "-id")
+        .order_by("-is_pinned", "pin_sort_order", "-activity_at", "-id")
     )
 
 
 def list_member_rooms(*, user: User) -> QuerySet[Room]:
     pinned_subquery = RoomPin.objects.filter(room_id=OuterRef("pk"), user=user)
+    pin_order_subquery = pinned_subquery.order_by("sort_order", "id").values("sort_order")[:1]
+    visit_subquery = RoomVisit.objects.filter(room_id=OuterRef("pk"), user=user).order_by("-last_accessed_at").values("last_accessed_at")[:1]
     return (
         Room.objects.filter(memberships__user=user)
-        .annotate(is_pinned=Exists(pinned_subquery))
+        .annotate(
+            is_pinned=Exists(pinned_subquery),
+            pin_sort_order=Subquery(pin_order_subquery),
+            last_accessed_at=Subquery(visit_subquery, output_field=DateTimeField()),
+        )
+        .annotate(activity_at=Coalesce("last_accessed_at", "created_at"))
         .select_related("created_by")
         .prefetch_related("memberships", "tasks", "labels")
         .distinct()
-        .order_by("-is_pinned", "-created_at", "-id")
+        .order_by("-is_pinned", "pin_sort_order", "-activity_at", "-id")
     )
 
 

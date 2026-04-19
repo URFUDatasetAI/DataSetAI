@@ -237,6 +237,8 @@ class RoomSerializer(serializers.ModelSerializer):
     completed_tasks = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    pin_sort_order = serializers.SerializerMethodField()
+    last_accessed_at = serializers.SerializerMethodField()
     labels = RoomLabelSerializer(many=True, read_only=True)
     export_formats = serializers.SerializerMethodField()
 
@@ -261,6 +263,8 @@ class RoomSerializer(serializers.ModelSerializer):
             "completed_tasks",
             "progress_percent",
             "is_pinned",
+            "pin_sort_order",
+            "last_accessed_at",
             "labels",
             "export_formats",
             "created_at",
@@ -313,6 +317,23 @@ class RoomSerializer(serializers.ModelSerializer):
             return False
 
         return RoomPin.objects.filter(room=obj, user=user).exists()
+
+    def get_pin_sort_order(self, obj):
+        if hasattr(obj, "pin_sort_order"):
+            return obj.pin_sort_order
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+
+        pin = RoomPin.objects.filter(room=obj, user=user).order_by("sort_order", "id").first()
+        return pin.sort_order if pin else None
+
+    def get_last_accessed_at(self, obj):
+        if hasattr(obj, "last_accessed_at"):
+            return obj.last_accessed_at.isoformat() if obj.last_accessed_at else None
+        return None
 
     def get_export_formats(self, obj):
         return get_supported_export_formats(room=obj)
@@ -394,3 +415,17 @@ class RoomJoinRequestDecisionSerializer(serializers.Serializer):
 
 class RoomPinSerializer(serializers.Serializer):
     is_pinned = serializers.BooleanField()
+
+
+class RoomPinReorderSerializer(serializers.Serializer):
+    direction = serializers.ChoiceField(choices=("up", "down"), required=False)
+    ordered_room_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=False,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get("direction") and not attrs.get("ordered_room_ids"):
+            raise serializers.ValidationError("Укажи направление или новый порядок закреплённых комнат.")
+        return attrs
