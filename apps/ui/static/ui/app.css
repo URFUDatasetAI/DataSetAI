@@ -3427,6 +3427,52 @@ input[type="file"]::-webkit-file-upload-button:hover {
     resize: vertical;
 }
 
+.bbox-result-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.bbox-result-card {
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--field-background);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bbox-result-card__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.bbox-result-card__head strong {
+    font-size: 1rem;
+}
+
+.bbox-result-card__head span {
+    color: var(--text-soft);
+    font-size: 0.92rem;
+}
+
+.bbox-result-card__json {
+    margin: 0;
+    padding: 14px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(17, 17, 17, 0.08);
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 980px) {
     .media-tool__layout,
     .label-editor-row {

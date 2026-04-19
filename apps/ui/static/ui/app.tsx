@@ -4722,6 +4722,29 @@ function RoomWorkPage() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const isGraphicTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
+  const splitPayloadAnnotations = useMemo(() => {
+    if (!isGraphicTask) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(payloadText);
+      const annotations = Array.isArray(parsed?.annotations) ? parsed.annotations : [];
+      return annotations.map((annotation: any, index: number) => {
+        const label = labelsRef.current.find((item) => item.id === annotation.label_id);
+        return {
+          key: `${annotation.label_id || "no-label"}-${annotation.frame ?? 0}-${index}`,
+          title: `Бокс #${index + 1}`,
+          labelName: label?.name || `Label #${annotation.label_id ?? "?"}`,
+          frame: annotation.frame ?? 0,
+          json: JSON.stringify(annotation, null, 2),
+        };
+      });
+    } catch (error) {
+      return [];
+    }
+  }, [isGraphicTask, payloadText]);
 
   // The editor callbacks outlive individual renders, so refs expose the latest
   // task and labels without recreating the imperative editor on every update.
@@ -4979,13 +5002,34 @@ function RoomWorkPage() {
 
             <label className="field">
               <span ref={resultLabelRef}>Результат разметки</span>
-              <textarea
-                ref={resultJsonRef}
-                rows={10}
-                value={payloadText}
-                readOnly={Boolean(currentTask && ["image", "video"].includes(currentTask.source_type))}
-                onChange={(event) => setPayloadText(event.currentTarget.value)}
-              ></textarea>
+              {isGraphicTask ? (
+                <div className="bbox-result-list">
+                  {splitPayloadAnnotations.length ? (
+                    splitPayloadAnnotations.map((item) => (
+                      <article key={item.key} className="bbox-result-card">
+                        <div className="bbox-result-card__head">
+                          <strong>{item.title}</strong>
+                          <span>
+                            {item.labelName} · frame {item.frame}
+                          </span>
+                        </div>
+                        <pre className="bbox-result-card__json">{item.json}</pre>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="empty-card">Добавь хотя бы один bbox, и здесь появится JSON по каждому боксу отдельно.</div>
+                  )}
+                  <textarea ref={resultJsonRef} rows={10} value={payloadText} readOnly className="hidden"></textarea>
+                </div>
+              ) : (
+                <textarea
+                  ref={resultJsonRef}
+                  rows={10}
+                  value={payloadText}
+                  readOnly={false}
+                  onChange={(event) => setPayloadText(event.currentTarget.value)}
+                ></textarea>
+              )}
             </label>
             <button ref={submitBtnRef} className="btn btn--primary hidden" type="submit" disabled={submitting}>
               Отправить результат

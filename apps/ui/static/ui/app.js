@@ -25333,6 +25333,28 @@
     );
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     const [loading, setLoading] = (0, import_react.useState)(true);
+    const isGraphicTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
+    const splitPayloadAnnotations = (0, import_react.useMemo)(() => {
+      if (!isGraphicTask) {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(payloadText);
+        const annotations = Array.isArray(parsed?.annotations) ? parsed.annotations : [];
+        return annotations.map((annotation, index) => {
+          const label = labelsRef.current.find((item) => item.id === annotation.label_id);
+          return {
+            key: `${annotation.label_id || "no-label"}-${annotation.frame ?? 0}-${index}`,
+            title: `\u0411\u043E\u043A\u0441 #${index + 1}`,
+            labelName: label?.name || `Label #${annotation.label_id ?? "?"}`,
+            frame: annotation.frame ?? 0,
+            json: JSON.stringify(annotation, null, 2)
+          };
+        });
+      } catch (error) {
+        return [];
+      }
+    }, [isGraphicTask, payloadText]);
     currentTaskRef.current = currentTask;
     labelsRef.current = dashboard?.labels || [];
     (0, import_react.useEffect)(() => {
@@ -25543,13 +25565,26 @@
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { ref: resultLabelRef, children: "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          isGraphicTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bbox-result-list", children: [
+            splitPayloadAnnotations.length ? splitPayloadAnnotations.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "bbox-result-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "bbox-result-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: item.title }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                  item.labelName,
+                  " \u00B7 frame ",
+                  item.frame
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "bbox-result-card__json", children: item.json })
+            ] }, item.key)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0414\u043E\u0431\u0430\u0432\u044C \u0445\u043E\u0442\u044F \u0431\u044B \u043E\u0434\u0438\u043D bbox, \u0438 \u0437\u0434\u0435\u0441\u044C \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F JSON \u043F\u043E \u043A\u0430\u0436\u0434\u043E\u043C\u0443 \u0431\u043E\u043A\u0441\u0443 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E." }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("textarea", { ref: resultJsonRef, rows: 10, value: payloadText, readOnly: true, className: "hidden" })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "textarea",
             {
               ref: resultJsonRef,
               rows: 10,
               value: payloadText,
-              readOnly: Boolean(currentTask && ["image", "video"].includes(currentTask.source_type)),
+              readOnly: false,
               onChange: (event) => setPayloadText(event.currentTarget.value)
             }
           )
