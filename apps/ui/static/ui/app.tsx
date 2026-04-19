@@ -492,8 +492,15 @@ function formatApiError(data: any, fallbackStatus: number) {
 
   if (typeof data === "object") {
     const messages: string[] = [];
+    const apiFieldLabels: Record<string, string> = {
+      password: "Пароль",
+      deadline: "Дедлайн",
+      title: "Название",
+      description: "Описание",
+      dataset_label: "Название датасета",
+    };
     Object.entries(data).forEach(([key, value]) => {
-      const fieldName = key === "non_field_errors" ? "Ошибка" : key;
+      const fieldName = key === "non_field_errors" ? "Ошибка" : apiFieldLabels[key] || key;
       if (Array.isArray(value)) {
         messages.push(`${fieldName}: ${value.join(", ")}`);
       } else if (typeof value === "string") {
@@ -2688,6 +2695,9 @@ function RoomDetailPage() {
   const [reviewTasks, setReviewTasks] = useState<ReviewTaskListItem[]>([]);
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
+  const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = useState(false);
+  const [deleteRoomPassword, setDeleteRoomPassword] = useState("");
+  const [deleteRoomBusy, setDeleteRoomBusy] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
@@ -2974,20 +2984,34 @@ function RoomDetailPage() {
       return;
     }
 
-    const shouldDelete = window.confirm(
-      "Удалить комнату? Это действие удалит саму комнату, задачи, участников и результаты разметки без возможности восстановления."
-    );
-    if (!shouldDelete) {
+    if (!deleteRoomConfirmOpen) {
+      setDeleteRoomConfirmOpen(true);
+      return;
+    }
+
+    if (!deleteRoomPassword.trim()) {
+      addToast("Введи текущий пароль владельца комнаты, чтобы подтвердить удаление.", "error");
       return;
     }
 
     clearToasts();
+    setDeleteRoomBusy(true);
     try {
-      await api(`/api/v1/rooms/${roomId}/`, { method: "DELETE" });
+      await api(`/api/v1/rooms/${roomId}/`, {
+        method: "DELETE",
+        body: { password: deleteRoomPassword },
+      });
       window.location.href = "/rooms/";
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setDeleteRoomBusy(false);
     }
+  }
+
+  function handleCancelDeleteRoom() {
+    setDeleteRoomConfirmOpen(false);
+    setDeleteRoomPassword("");
   }
 
   async function handleExport() {
@@ -3163,7 +3187,7 @@ function RoomDetailPage() {
                               </a>
                             ) : null}
                             {dashboard.actor.can_delete_room ? (
-                              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom}>
+                              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
                                 Удалить комнату
                               </button>
                             ) : null}
@@ -3561,6 +3585,45 @@ function RoomDetailPage() {
             </section>
           </div>
         </details>
+      ) : null}
+
+      {deleteRoomConfirmOpen ? (
+        <div className="modal-shell" role="presentation" onClick={handleCancelDeleteRoom}>
+          <div
+            className="modal-card modal-card--danger"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-room-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-card__head">
+              <span className="eyebrow">Опасное действие</span>
+              <h2 id="delete-room-modal-title">Удалить комнату?</h2>
+              <p>
+                Комната, задачи, участники и результаты разметки будут удалены без возможности восстановления. Для подтверждения
+                введи текущий пароль владельца.
+              </p>
+            </div>
+            <label className="field field--full">
+              <span>Пароль владельца</span>
+              <input
+                value={deleteRoomPassword}
+                type="password"
+                placeholder="Введи текущий пароль аккаунта"
+                autoFocus
+                onChange={(event) => setDeleteRoomPassword(event.currentTarget.value)}
+              />
+            </label>
+            <div className="modal-card__actions">
+              <button className="btn btn--muted" type="button" onClick={handleCancelDeleteRoom} disabled={deleteRoomBusy}>
+                Отмена
+              </button>
+              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
+                {deleteRoomBusy ? "Удаляем..." : "Подтвердить удаление"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </>
   );

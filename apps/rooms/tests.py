@@ -74,10 +74,26 @@ class RoomListCreateViewTests(TestCase):
     def test_owner_can_delete_room(self):
         room = Room.objects.create(title="Delete me", created_by=self.user)
 
-        response = self.client.delete(f"/api/v1/rooms/{room.id}/")
+        response = self.client.delete(
+            f"/api/v1/rooms/{room.id}/",
+            data={"password": "secret123"},
+            format="json",
+        )
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Room.objects.filter(id=room.id).exists())
+
+    def test_owner_cannot_delete_room_without_valid_password(self):
+        room = Room.objects.create(title="Delete me", created_by=self.user)
+
+        response = self.client.delete(
+            f"/api/v1/rooms/{room.id}/",
+            data={"password": "wrong-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Room.objects.filter(id=room.id).exists())
 
     def test_owner_can_update_room_settings(self):
         room = Room.objects.create(

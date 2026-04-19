@@ -206,6 +206,17 @@ class RoomUpdateSerializer(serializers.Serializer):
         return attrs
 
 
+class RoomDeleteSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
+
+    def validate_password(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated or not user.check_password(value):
+            raise serializers.ValidationError("Укажи текущий пароль владельца комнаты.")
+        return value
+
+
 class RoomLabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomLabel

@@ -21875,8 +21875,15 @@
     }
     if (typeof data === "object") {
       const messages = [];
+      const apiFieldLabels = {
+        password: "\u041F\u0430\u0440\u043E\u043B\u044C",
+        deadline: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D",
+        title: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435",
+        description: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435",
+        dataset_label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430"
+      };
       Object.entries(data).forEach(([key, value]) => {
-        const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : key;
+        const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : apiFieldLabels[key] || key;
         if (Array.isArray(value)) {
           messages.push(`${fieldName}: ${value.join(", ")}`);
         } else if (typeof value === "string") {
@@ -23702,6 +23709,9 @@
     const [reviewTasks, setReviewTasks] = (0, import_react.useState)([]);
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
+    const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = (0, import_react.useState)(false);
+    const [deleteRoomPassword, setDeleteRoomPassword] = (0, import_react.useState)("");
+    const [deleteRoomBusy, setDeleteRoomBusy] = (0, import_react.useState)(false);
     const [inviteBusy, setInviteBusy] = (0, import_react.useState)(false);
     const [joinRequestBusyId, setJoinRequestBusyId] = (0, import_react.useState)(null);
     const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
@@ -23936,19 +23946,31 @@
       if (!roomId) {
         return;
       }
-      const shouldDelete = window.confirm(
-        "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443? \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0443\u0434\u0430\u043B\u0438\u0442 \u0441\u0430\u043C\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u0443, \u0437\u0430\u0434\u0430\u0447\u0438, \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432 \u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0438 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F."
-      );
-      if (!shouldDelete) {
+      if (!deleteRoomConfirmOpen) {
+        setDeleteRoomConfirmOpen(true);
+        return;
+      }
+      if (!deleteRoomPassword.trim()) {
+        addToast("\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435.", "error");
         return;
       }
       clearToasts();
+      setDeleteRoomBusy(true);
       try {
-        await api(`/api/v1/rooms/${roomId}/`, { method: "DELETE" });
+        await api(`/api/v1/rooms/${roomId}/`, {
+          method: "DELETE",
+          body: { password: deleteRoomPassword }
+        });
         window.location.href = "/rooms/";
       } catch (error) {
         addToast(getErrorMessage(error), "error");
+      } finally {
+        setDeleteRoomBusy(false);
       }
+    }
+    function handleCancelDeleteRoom() {
+      setDeleteRoomConfirmOpen(false);
+      setDeleteRoomPassword("");
     }
     async function handleExport() {
       if (!roomId || !dashboard) {
@@ -24096,7 +24118,7 @@
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                         dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
-                        dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
+                        dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
                       ] })
                     ] })
                   ] }) : null,
@@ -24360,7 +24382,32 @@
             ] })
           ]
         }
-      ) : null
+      ) : null,
+      deleteRoomConfirmOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "modal-shell", role: "presentation", onClick: handleCancelDeleteRoom, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "modal-card modal-card--danger",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-labelledby": "delete-room-modal-title",
+          onClick: (event) => event.stopPropagation(),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041E\u043F\u0430\u0441\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { id: "delete-room-modal-title", children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443?" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430, \u0437\u0430\u0434\u0430\u0447\u0438, \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 \u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0443\u0434\u0443\u0442 \u0443\u0434\u0430\u043B\u0435\u043D\u044B \u0431\u0435\u0437 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0438 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F. \u0414\u043B\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430." })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deleteRoomPassword, type: "password", placeholder: "\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430", autoFocus: true, onChange: (event) => setDeleteRoomPassword(event.currentTarget.value) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__actions", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: handleCancelDeleteRoom, disabled: deleteRoomBusy, children: "\u041E\u0442\u043C\u0435\u043D\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: deleteRoomBusy ? "\u0423\u0434\u0430\u043B\u044F\u0435\u043C..." : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435" })
+            ] })
+          ]
+        }
+      ) }) : null
     ] });
   }
   function createMediaAnnotationEditor(options) {

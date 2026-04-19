@@ -12,6 +12,7 @@ from apps.rooms.api.v1.serializers import (
     RoomJoinRequestSerializer,
     RoomUpdateSerializer,
     RoomJoinSerializer,
+    RoomDeleteSerializer,
     RoomMembershipSerializer,
     RoomMembershipRoleSerializer,
     RoomPinSerializer,
@@ -110,6 +111,8 @@ class RoomDetailView(APIView):
 
     def delete(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
+        serializer = RoomDeleteSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
         room.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
