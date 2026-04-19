@@ -2013,6 +2013,17 @@ input[type="file"]::-webkit-file-upload-button:hover {
     gap: 10px;
 }
 
+.manage-card-legacy--export .label-chip {
+    width: 100%;
+    max-width: 100%;
+}
+
+.manage-card-legacy--export .label-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .manage-card-legacy--export .btn {
     width: 100%;
 }
@@ -3247,6 +3258,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text);
     flex: 0 0 auto;
     white-space: nowrap;
+}
+
+.label-chip span {
+    min-width: 0;
 }
 
 .label-chip i {
