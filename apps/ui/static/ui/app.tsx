@@ -5133,24 +5133,25 @@ function RoomWorkPage() {
               <div ref={instructionsRef} className="panel-note hidden"></div>
               <div ref={labelPaletteRef} className="label-chip-list"></div>
               <div ref={activeLabelNoteRef} className="panel-note hidden"></div>
-              <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
-                <div className="media-zoom">
-                  <button ref={zoomOutBtnRef} className="btn btn--muted btn--compact" type="button">
-                    -
-                  </button>
-                  <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
-                  <button ref={zoomResetBtnRef} className="btn btn--muted btn--compact" type="button">
-                    100%
-                  </button>
-                  <button ref={zoomInBtnRef} className="btn btn--muted btn--compact" type="button">
-                    +
-                  </button>
-                </div>
-                <div className="media-tool__hint">Ctrl + колесо меняет масштаб, а Space + перетаскивание или средняя кнопка перемещают увеличенное изображение.</div>
-              </div>
               <div className="media-tool__layout">
-                <div ref={mediaStageRef} className="media-stage empty-card">
-                  Файл задачи загрузится автоматически.
+                <div className="media-tool__canvas">
+                  <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
+                    <div className="media-zoom" aria-label="Управление масштабом">
+                      <button ref={zoomOutBtnRef} className="media-zoom__btn" type="button" aria-label="Уменьшить масштаб">
+                        -
+                      </button>
+                      <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" aria-label="Масштаб" />
+                      <button ref={zoomResetBtnRef} className="media-zoom__btn media-zoom__btn--value" type="button" aria-label="Сбросить масштаб">
+                        100%
+                      </button>
+                      <button ref={zoomInBtnRef} className="media-zoom__btn" type="button" aria-label="Увеличить масштаб">
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div ref={mediaStageRef} className="media-stage empty-card">
+                    Файл задачи загрузится автоматически.
+                  </div>
                 </div>
                 <div className="media-tool__sidebar">
                   <div ref={annotationListRef} className="annotation-list empty-card">
