@@ -2199,7 +2199,7 @@ function RoomCreatePage() {
               <input
                 value={password}
                 name="password"
-                type="text"
+                type="password"
                 placeholder="Например, demo123"
                 className={passwordTooLong ? "field__control--invalid" : ""}
                 aria-invalid={passwordTooLong}
@@ -2592,7 +2592,7 @@ function RoomEditPage() {
               <span>Новый пароль комнаты</span>
               <input
                 value={password}
-                type="text"
+                type="password"
                 disabled={!passwordEnabled}
                 className={passwordTooLong ? "field__control--invalid" : ""}
                 aria-invalid={passwordTooLong}
