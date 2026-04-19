@@ -23254,7 +23254,7 @@
               {
                 value: password,
                 name: "password",
-                type: "text",
+                type: "password",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, demo123",
                 className: passwordTooLong ? "field__control--invalid" : "",
                 "aria-invalid": passwordTooLong,
@@ -23642,7 +23642,7 @@
               "input",
               {
                 value: password,
-                type: "text",
+                type: "password",
                 disabled: !passwordEnabled,
                 className: passwordTooLong ? "field__control--invalid" : "",
                 "aria-invalid": passwordTooLong,
