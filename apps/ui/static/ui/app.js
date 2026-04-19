@@ -24076,11 +24076,8 @@
                     dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list manage-request-list-legacy", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row manage-request-row-legacy", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-                          joinRequest.email,
-                          " \xB7 ",
-                          translateMembership(joinRequest.status)
-                        ] })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: joinRequest.email }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "manage-request-row-legacy__status", children: translateMembership(joinRequest.status) })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "role-assignment-box__actions", children: joinRequest.status === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(

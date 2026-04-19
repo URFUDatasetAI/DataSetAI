@@ -1914,20 +1914,52 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .manage-request-row-legacy {
     min-width: 0;
-    padding: 16px;
-    border-radius: 20px;
+    padding: 14px 16px;
+    border-radius: 18px;
     border: 1px solid var(--line);
     background: rgba(255, 255, 255, 0.78);
-    align-items: flex-start;
-    gap: 14px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.manage-request-row-legacy .annotator-row__meta {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+.manage-request-row-legacy .annotator-row__meta strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.manage-request-row-legacy .annotator-row__meta span {
+    line-height: 1.45;
+    display: block;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.manage-request-row-legacy__status {
+    white-space: nowrap;
 }
 
 .manage-request-row-legacy .role-assignment-box__actions {
     width: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    align-self: stretch;
 }
 
 .manage-request-row-legacy .panel-note {
     margin-top: 0;
+}
+
+.manage-request-row-legacy .role-assignment-box__actions .btn {
+    flex: 1 1 0;
+    min-height: 46px;
+    padding: 0 18px;
 }
 
 .workspace-grid--owner-manage {
