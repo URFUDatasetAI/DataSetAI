@@ -237,6 +237,18 @@ def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, ro
     return membership
 
 
+def remove_room_membership(*, room: Room, owner: User, target_user_id: int) -> None:
+    if room.created_by_id != owner.id:
+        raise AccessDeniedError("Only the room owner can remove participants from the room.")
+
+    if target_user_id == room.created_by_id:
+        raise ConflictError("Room owner cannot be removed from the room.")
+
+    deleted_count, _ = RoomMembership.objects.filter(room=room, user_id=target_user_id).delete()
+    if not deleted_count:
+        raise NotFoundError("Room membership not found.")
+
+
 def validate_room_password(*, room: Room, password: str = "") -> None:
     if not room.check_access_password(password):
         raise AccessDeniedError("Incorrect room password.")

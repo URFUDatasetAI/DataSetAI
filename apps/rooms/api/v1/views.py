@@ -34,6 +34,7 @@ from apps.rooms.services import (
     invite_user_to_room,
     join_room,
     regenerate_room_invite,
+    remove_room_membership,
     reject_room_join_request,
     set_room_membership_role,
     set_room_pinned,
@@ -216,6 +217,19 @@ class RoomMembershipRoleView(APIView):
             role=serializer.validated_data["role"],
         )
         return Response(RoomMembershipSerializer(membership).data)
+
+
+class RoomMembershipDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, room_id: int, user_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        remove_room_membership(
+            room=room,
+            owner=request.user,
+            target_user_id=user_id,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MyRoomListView(APIView):

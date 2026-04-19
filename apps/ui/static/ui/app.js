@@ -23912,6 +23912,26 @@
         addToast(getErrorMessage(error), "error");
       }
     }
+    async function handleRemoveAnnotator() {
+      if (!roomId || !activeAnnotator) {
+        return;
+      }
+      const shouldRemove = window.confirm(`\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430 #${activeAnnotator.user_id} \u0438\u0437 \u043A\u043E\u043C\u043D\u0430\u0442\u044B? \u041E\u043D \u043F\u043E\u0442\u0435\u0440\u044F\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0437\u0430\u0434\u0430\u0447\u0430\u043C \u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u0435.`);
+      if (!shouldRemove) {
+        return;
+      }
+      clearToasts();
+      try {
+        await api(`/api/v1/rooms/${roomId}/memberships/${activeAnnotator.user_id}/`, {
+          method: "DELETE"
+        });
+        addToast(`\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A #${activeAnnotator.user_id} \u0443\u0434\u0430\u043B\u0451\u043D \u0438\u0437 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.`, "success");
+        setSelectedAnnotatorUserId(null);
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      }
+    }
     async function handleDeleteRoom() {
       if (!roomId) {
         return;
@@ -24239,7 +24259,8 @@
                       ] }) : null,
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: `/users/${activeAnnotator.user_id}/profile/`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C" }),
-                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleRoleSubmit, children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0440\u043E\u043B\u044C" }) : null
+                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleRoleSubmit, children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0440\u043E\u043B\u044C" }) : null,
+                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", onClick: handleRemoveAnnotator, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" }) : null
                       ] })
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: activeAnnotator.activity }) })

@@ -2944,6 +2944,31 @@ function RoomDetailPage() {
     }
   }
 
+  async function handleRemoveAnnotator() {
+    if (!roomId || !activeAnnotator) {
+      return;
+    }
+
+    const shouldRemove = window.confirm(
+      `Удалить участника #${activeAnnotator.user_id} из комнаты? Он потеряет доступ к задачам и комнате.`
+    );
+    if (!shouldRemove) {
+      return;
+    }
+
+    clearToasts();
+    try {
+      await api(`/api/v1/rooms/${roomId}/memberships/${activeAnnotator.user_id}/`, {
+        method: "DELETE",
+      });
+      addToast(`Участник #${activeAnnotator.user_id} удалён из комнаты.`, "success");
+      setSelectedAnnotatorUserId(null);
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
   async function handleDeleteRoom() {
     if (!roomId) {
       return;
@@ -3385,6 +3410,11 @@ function RoomDetailPage() {
                         {dashboard.actor.can_assign_roles ? (
                           <button className="btn btn--secondary btn--compact" type="button" onClick={handleRoleSubmit}>
                             Сохранить роль
+                          </button>
+                        ) : null}
+                        {dashboard.actor.can_assign_roles ? (
+                          <button className="btn btn--danger btn--compact" type="button" onClick={handleRemoveAnnotator}>
+                            Удалить участника
                           </button>
                         ) : null}
                       </div>

@@ -131,6 +131,28 @@ class RoomListCreateViewTests(TestCase):
         self.assertFalse(room.has_password)
         self.assertTrue(room.check_access_password(""))
 
+    def test_owner_can_remove_room_member(self):
+        room = Room.objects.create(title="Review room", created_by=self.user)
+        annotator = User.objects.create_user(email="annotator@example.com", full_name="Annotator", password="secret123")
+        RoomMembership.objects.create(
+            room=room,
+            user=annotator,
+            status=RoomMembership.Status.JOINED,
+            role=RoomMembership.Role.ANNOTATOR,
+        )
+
+        response = self.client.delete(f"/api/v1/rooms/{room.id}/memberships/{annotator.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(RoomMembership.objects.filter(room=room, user=annotator).exists())
+
+    def test_owner_cannot_remove_self_from_room(self):
+        room = Room.objects.create(title="Review room", created_by=self.user)
+
+        response = self.client.delete(f"/api/v1/rooms/{room.id}/memberships/{self.user.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+
     def test_non_owner_cannot_update_room_settings(self):
         outsider = User.objects.create_user(email="outsider@example.com", full_name="Outsider", password="secret123")
         room = Room.objects.create(title="Owner room", created_by=self.user)
