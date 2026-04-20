@@ -58,6 +58,30 @@
     --theme-toggle-knob: linear-gradient(180deg, #ffd54a 0%, #ffc919 100%);
     --theme-toggle-knob-checked: linear-gradient(180deg, #fffdf8 0%, #efe6d4 100%);
     --toast-shadow: 0 20px 48px rgba(50, 42, 26, 0.18);
+    --raised-surface-background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 244, 236, 0.94));
+    --raised-surface-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.65),
+        0 10px 24px rgba(26, 26, 26, 0.08);
+    --card-elevated-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.08), transparent 42%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 249, 240, 0.88));
+    --card-elevated-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.62),
+        0 12px 26px rgba(26, 26, 26, 0.04);
+    --disclosure-hover-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.12), transparent 38%),
+        rgba(255, 255, 255, 0.46);
+    --lock-chip-background: rgba(255, 255, 255, 0.74);
+    --bbox-fill: rgba(255, 255, 255, 0.04);
+    --bbox-handle-border: rgba(255, 255, 255, 0.96);
+    --room-progress-panel-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.22), transparent 44%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 250, 236, 0.82));
+    --room-progress-panel-border: rgba(255, 201, 25, 0.28);
+    --room-progress-panel-eyebrow-background: rgba(26, 26, 26, 0.06);
+    --bbox-result-json-background: rgba(255, 255, 255, 0.72);
+    --bbox-result-json-border: rgba(17, 17, 17, 0.08);
+    --bbox-result-json-text: var(--text);
 }
 
 :root[data-theme="dark"] {
@@ -110,6 +134,30 @@
     --theme-toggle-knob: linear-gradient(180deg, #ffd44d 0%, #ffc919 100%);
     --theme-toggle-knob-checked: linear-gradient(180deg, #faf3df 0%, #d9ccb2 100%);
     --toast-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+    --raised-surface-background: linear-gradient(180deg, rgba(48, 48, 48, 0.96), rgba(30, 30, 30, 0.94));
+    --raised-surface-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),
+        0 14px 30px rgba(0, 0, 0, 0.28);
+    --card-elevated-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.08), transparent 42%),
+        linear-gradient(180deg, rgba(42, 42, 42, 0.96), rgba(26, 26, 26, 0.92));
+    --card-elevated-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        0 14px 30px rgba(0, 0, 0, 0.24);
+    --disclosure-hover-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.1), transparent 38%),
+        rgba(255, 255, 255, 0.06);
+    --lock-chip-background: rgba(255, 255, 255, 0.06);
+    --bbox-fill: rgba(255, 255, 255, 0.02);
+    --bbox-handle-border: rgba(255, 255, 255, 0.24);
+    --room-progress-panel-background:
+        radial-gradient(circle at top right, rgba(255, 213, 74, 0.1), transparent 44%),
+        linear-gradient(180deg, rgba(34, 34, 34, 0.96), rgba(22, 22, 22, 0.94));
+    --room-progress-panel-border: rgba(255, 213, 74, 0.16);
+    --room-progress-panel-eyebrow-background: rgba(255, 255, 255, 0.08);
+    --bbox-result-json-background: rgba(255, 255, 255, 0.06);
+    --bbox-result-json-border: rgba(255, 255, 255, 0.1);
+    --bbox-result-json-text: var(--payload-text);
 }
 
 * {
@@ -851,11 +899,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .room-progress-panel {
     width: 100%;
     padding: 18px;
-    border: 1px solid rgba(255, 201, 25, 0.28);
+    border: 1px solid var(--room-progress-panel-border);
     border-radius: var(--radius-lg);
-    background:
-        radial-gradient(circle at top right, rgba(255, 213, 74, 0.22), transparent 44%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 250, 236, 0.82));
+    background: var(--room-progress-panel-background);
     box-shadow: var(--shadow);
     display: flex;
     flex-direction: column;
@@ -868,7 +914,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     max-width: 100%;
     padding: 8px 12px;
     border-radius: 999px;
-    background: rgba(26, 26, 26, 0.06);
+    background: var(--room-progress-panel-eyebrow-background);
     color: var(--text-soft);
     font-size: 0.76rem;
     text-transform: uppercase;
@@ -1502,6 +1548,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text-soft);
 }
 
+.page-topbar--room .page-topbar__copy p {
+    max-width: min(100%, 820px);
+}
+
 .room-card {
     width: 100%;
     max-width: none;
@@ -1769,9 +1819,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .section-disclosure__summary:hover {
-    background:
-        radial-gradient(circle at top right, rgba(255, 213, 74, 0.12), transparent 38%),
-        rgba(255, 255, 255, 0.46);
+    background: var(--disclosure-hover-background);
 }
 
 .section-disclosure__copy {
@@ -1800,12 +1848,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
     border-radius: 50%;
     flex: 0 0 auto;
     align-self: center;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 244, 236, 0.94));
+    background: var(--raised-surface-background);
     border: 1px solid rgba(26, 26, 26, 0.08);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.65),
-        0 10px 24px rgba(26, 26, 26, 0.08);
+    box-shadow: var(--raised-surface-shadow);
     transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
@@ -1852,12 +1897,8 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding: 22px;
     border: 1px solid var(--line);
     border-radius: 26px;
-    background:
-        radial-gradient(circle at top right, rgba(255, 213, 74, 0.08), transparent 42%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(252, 249, 240, 0.88));
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.62),
-        0 12px 26px rgba(26, 26, 26, 0.04);
+    background: var(--card-elevated-background);
+    box-shadow: var(--card-elevated-shadow);
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -1901,7 +1942,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding: 14px 16px;
     border-radius: 18px;
     border: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.74);
+    background: var(--lock-chip-background);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -3334,7 +3375,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding: 0;
     border: 1px solid var(--line);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--field-background);
     color: var(--text);
     font: inherit;
     font-size: 1rem;
@@ -3486,7 +3527,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     appearance: none;
     -webkit-appearance: none;
     border: 2px solid var(--bbox-color, #b8b8b8);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--bbox-fill);
     border-radius: 0;
     cursor: grab;
     padding: 0;
@@ -3534,7 +3575,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     width: 18px;
     height: 18px;
     border-radius: 999px;
-    border: 2px solid rgba(255, 255, 255, 0.96);
+    border: 2px solid var(--bbox-handle-border);
     background: var(--bbox-color, #b8b8b8);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
     opacity: 0;
@@ -3657,8 +3698,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
     margin: 0;
     padding: 14px;
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(17, 17, 17, 0.08);
+    background: var(--bbox-result-json-background);
+    border: 1px solid var(--bbox-result-json-border);
+    color: var(--bbox-result-json-text);
     font-family: var(--font-mono);
     font-size: 0.82rem;
     line-height: 1.55;
