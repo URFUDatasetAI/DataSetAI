@@ -21772,12 +21772,13 @@
     standard: "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430",
     text_detect_text: "Object detect + text"
   };
-  var ROOM_TITLE_MAX_LENGTH = 255;
+  var ROOM_TITLE_MAX_LENGTH = 128;
   var ROOM_DATASET_LABEL_MAX_LENGTH = 255;
   var ROOM_DESCRIPTION_MAX_LENGTH = 2e3;
-  var ROOM_PASSWORD_MAX_LENGTH = 255;
+  var ROOM_PASSWORD_MAX_LENGTH = 64;
   var ROOM_LABEL_NAME_MAX_LENGTH = 64;
   var ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
+  var ROOM_DEADLINE_MAX_DAYS_AHEAD = 365;
   var labelColorPool = [
     "#FF6B6B",
     "#4ECDC4",
@@ -21874,8 +21875,15 @@
     }
     if (typeof data === "object") {
       const messages = [];
+      const apiFieldLabels = {
+        password: "\u041F\u0430\u0440\u043E\u043B\u044C",
+        deadline: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D",
+        title: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435",
+        description: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435",
+        dataset_label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430"
+      };
       Object.entries(data).forEach(([key, value]) => {
-        const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : key;
+        const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : apiFieldLabels[key] || key;
         if (Array.isArray(value)) {
           messages.push(`${fieldName}: ${value.join(", ")}`);
         } else if (typeof value === "string") {
@@ -21998,6 +22006,24 @@
     const minutes = String(date.getMinutes()).padStart(2, "0");
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   }
+  function validateRoomDeadline(value) {
+    if (!value) {
+      return "";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "\u0423\u043A\u0430\u0436\u0438 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u0443\u044E \u0434\u0430\u0442\u0443 \u0434\u0435\u0434\u043B\u0430\u0439\u043D\u0430.";
+    }
+    const now = /* @__PURE__ */ new Date();
+    if (date.getTime() <= now.getTime()) {
+      return "\u0423\u043A\u0430\u0436\u0438 \u0434\u0435\u0434\u043B\u0430\u0439\u043D \u0432 \u0431\u0443\u0434\u0443\u0449\u0435\u043C.";
+    }
+    const latestAllowed = new Date(now.getTime() + ROOM_DEADLINE_MAX_DAYS_AHEAD * 24 * 60 * 60 * 1e3);
+    if (date.getTime() > latestAllowed.getTime()) {
+      return `\u0414\u0435\u0434\u043B\u0430\u0439\u043D \u043C\u043E\u0436\u043D\u043E \u043F\u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u043D\u0435 \u0434\u0430\u043B\u044C\u0448\u0435 \u0447\u0435\u043C \u043D\u0430 ${ROOM_DEADLINE_MAX_DAYS_AHEAD} \u0434\u043D\u0435\u0439 \u0432\u043F\u0435\u0440\u0451\u0434.`;
+    }
+    return "";
+  }
   function readStoredDisclosureState(storageKey, defaultOpen = false) {
     if (!storageKey) {
       return defaultOpen;
@@ -22066,8 +22092,23 @@
   function pickRandomLabelColor() {
     return labelColorPool[Math.floor(Math.random() * labelColorPool.length)];
   }
-  function clampTextLength(value, maxLength) {
-    return value.length > maxLength ? value.slice(0, maxLength) : value;
+  function isTextLimitExceeded(value, maxLength) {
+    return value.length > maxLength;
+  }
+  function CharacterLimitLabel({
+    label,
+    value,
+    maxLength
+  }) {
+    const isInvalid = isTextLimitExceeded(value, maxLength);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field__label-row", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `field__limit ${isInvalid ? "is-invalid" : ""}`, children: [
+        value.length,
+        "/",
+        maxLength
+      ] })
+    ] });
   }
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -22711,8 +22752,34 @@
     const { authUser, api, addToast, clearToasts } = useApp();
     const [rooms, setRooms] = (0, import_react.useState)([]);
     const [loading, setLoading] = (0, import_react.useState)(true);
+    const [pinBusyRoomId, setPinBusyRoomId] = (0, import_react.useState)(null);
     const [roomId, setRoomId] = (0, import_react.useState)("");
     const [password, setPassword] = (0, import_react.useState)("");
+    function sortRooms(list) {
+      return [...list].sort((left, right) => {
+        if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
+          return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
+        }
+        if (left.is_pinned && right.is_pinned) {
+          const leftOrder = left.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+          const rightOrder = right.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+          if (leftOrder !== rightOrder) {
+            return leftOrder - rightOrder;
+          }
+        }
+        const rightAccess = right.last_accessed_at ? new Date(right.last_accessed_at).getTime() : 0;
+        const leftAccess = left.last_accessed_at ? new Date(left.last_accessed_at).getTime() : 0;
+        if (rightAccess !== leftAccess) {
+          return rightAccess - leftAccess;
+        }
+        const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
+        const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
+        if (rightCreatedAt !== leftCreatedAt) {
+          return rightCreatedAt - leftCreatedAt;
+        }
+        return Number(right.id) - Number(left.id);
+      });
+    }
     async function loadRooms() {
       if (!authUser) {
         return;
@@ -22726,18 +22793,7 @@
             roomMap.set(room.id, room);
           }
         });
-        const sortedRooms = Array.from(roomMap.values()).sort((left, right) => {
-          if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
-            return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
-          }
-          const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
-          const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
-          if (rightCreatedAt !== leftCreatedAt) {
-            return rightCreatedAt - leftCreatedAt;
-          }
-          return Number(right.id) - Number(left.id);
-        });
-        setRooms(sortedRooms);
+        setRooms(sortRooms(Array.from(roomMap.values())));
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       } finally {
@@ -22760,12 +22816,15 @@
         window.location.href = response.redirect_url;
       } catch (error) {
         addToast(getErrorMessage(error), "error");
+      } finally {
+        setPinBusyRoomId(null);
       }
     }
     async function handleTogglePin(event, room) {
       event.preventDefault();
       event.stopPropagation();
       clearToasts();
+      setPinBusyRoomId(room.id);
       try {
         await api(`/api/v1/rooms/${room.id}/pin/`, {
           method: "POST",
@@ -22775,102 +22834,176 @@
         await loadRooms();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
+      } finally {
+        setPinBusyRoomId(null);
       }
     }
+    async function handleReorderPin(event, room, direction) {
+      event.preventDefault();
+      event.stopPropagation();
+      clearToasts();
+      setPinBusyRoomId(room.id);
+      try {
+        await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
+          method: "POST",
+          body: { direction }
+        });
+        await loadRooms();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setPinBusyRoomId(null);
+      }
+    }
+    const pinnedRooms = rooms.filter((room) => room.is_pinned);
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--rooms", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0412\u0432\u0435\u0434\u0438 ID \u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0434\u043B\u044F \u043F\u0440\u044F\u043C\u043E\u0433\u043E \u0432\u0445\u043E\u0434\u0430 \u0438\u043B\u0438 \u043E\u0442\u043A\u0440\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u043D\u0438\u0436\u0435." })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435, \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044F ID \u0438 \u043F\u0430\u0440\u043E\u043B\u044C. \u0422\u0430\u043A\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445." })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-toolbar-card", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: roomId, type: "number", min: "1", placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 1", onChange: (event) => setRoomId(event.currentTarget.value) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card__copy", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u041D\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0430 \u0441 \u0432\u044B\u0431\u043E\u0440\u043E\u043C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0438 \u043F\u0440\u043E\u0447\u0438\u0445 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u043E\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-create-card__action", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: password, type: "password", placeholder: "\u041F\u0430\u0440\u043E\u043B\u044C", onChange: (event) => setPassword(event.currentTarget.value) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              className: `btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`,
-              type: "button",
-              disabled: !roomId.trim().length,
-              onClick: handleDirectEnter,
-              children: "\u0412\u043E\u0439\u0442\u0438 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443"
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
-        ] }) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-card room-toolbar-card--join", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-card__intro", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u0412\u0445\u043E\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0418\u043B\u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0434\u043E\u0441\u0442\u0443\u043F\u0430." })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: roomId, type: "number", min: "1", placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 1", onChange: (event) => setRoomId(event.currentTarget.value) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: password, type: "password", placeholder: "\u041F\u0430\u0440\u043E\u043B\u044C", onChange: (event) => setPassword(event.currentTarget.value) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  className: `btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`,
+                  type: "button",
+                  disabled: !roomId.trim().length,
+                  onClick: handleDirectEnter,
+                  children: "\u0412\u043E\u0439\u0442\u0438 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443"
+                }
+              )
+            ] })
+          ] })
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-grid-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-grid-section__header", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid-section__divider", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0430\u0448\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B \u0441\u043E\u0437\u0434\u0430\u043B\u0438 \u0438\u043B\u0438 \u043A \u043A\u043E\u0442\u043E\u0440\u044B\u043C \u0443 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F." })
+        ] }),
         loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
-        !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid", children: rooms.map((room) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "article",
-          {
-            className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
-            onClick: () => {
-              setRoomId(String(room.id));
-              window.location.href = `/rooms/${room.id}/`;
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
-                    "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
+        !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid", children: rooms.map((room) => {
+          const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+          const canMoveUp = room.is_pinned && pinnedIndex > 0;
+          const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "article",
+            {
+              className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
+              onClick: () => {
+                setRoomId(String(room.id));
+                window.location.href = `/rooms/${room.id}/`;
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
+                      "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
+                      room.id
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__actions", children: [
+                      room.is_pinned ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__pin-order", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "button",
+                          {
+                            className: "room-card__reorder",
+                            type: "button",
+                            disabled: !canMoveUp || pinBusyRoomId === room.id,
+                            "aria-label": "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0432\u044B\u0448\u0435",
+                            title: "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0432\u044B\u0448\u0435",
+                            onClick: (event) => handleReorderPin(event, room, "up"),
+                            children: "\u2191"
+                          }
+                        ),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "button",
+                          {
+                            className: "room-card__reorder",
+                            type: "button",
+                            disabled: !canMoveDown || pinBusyRoomId === room.id,
+                            "aria-label": "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043D\u0438\u0436\u0435",
+                            title: "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043D\u0438\u0436\u0435",
+                            onClick: (event) => handleReorderPin(event, room, "down"),
+                            children: "\u2193"
+                          }
+                        )
+                      ] }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          className: "room-card__pin",
+                          type: "button",
+                          disabled: pinBusyRoomId === room.id,
+                          "aria-pressed": room.is_pinned,
+                          "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                          title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                          onClick: (event) => handleTogglePin(event, room),
+                          children: room.is_pinned ? "?" : "?"
+                        }
+                      )
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "???????? ???? ?? ?????????." })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "ID: ",
                     room.id
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "button",
-                    {
-                      className: "room-card__pin",
-                      type: "button",
-                      "aria-pressed": room.is_pinned,
-                      "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                      title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                      onClick: (event) => handleTogglePin(event, room),
-                      children: room.is_pinned ? "\u2605" : "\u2606"
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E." })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "ID: ",
-                  room.id
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0421\u0442\u0430\u0442\u0443\u0441: ",
-                  translateMembership(room.membership_status || "owner")
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435: ",
-                  translateRole(room.membership_role || "owner")
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441: ",
-                  formatPercent(room.progress_percent)
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u0417\u0430\u0434\u0430\u0447\u0438: ",
-                  room.completed_tasks,
-                  "/",
-                  room.total_tasks
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  "\u041F\u0430\u0440\u043E\u043B\u044C: ",
-                  room.has_password ? "\u0435\u0441\u0442\u044C" : "\u043D\u0435 \u0437\u0430\u0434\u0430\u043D"
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "??????: ",
+                    translateMembership(room.membership_status || "owner")
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "???? ? ???????: ",
+                    translateRole(room.membership_role || "owner")
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "????????: ",
+                    formatPercent(room.progress_percent)
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "??????: ",
+                    room.completed_tasks,
+                    "/",
+                    room.total_tasks
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    "????????????: ",
+                    room.has_password ? "????????" : "???? ??????????"
+                  ] })
                 ] })
-              ] })
-            ]
-          },
-          room.id
-        )) })
+              ]
+            },
+            room.id
+          );
+        }) })
       ] })
     ] });
   }
@@ -22956,29 +23089,11 @@
       }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--profile", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0440\u043E\u0444\u0438\u043B\u044C" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043F\u043E \u0441\u043E\u0437\u0434\u0430\u043D\u043D\u044B\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u0430\u043C, \u0443\u0447\u0430\u0441\u0442\u0438\u044E \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435 \u0438 \u043B\u0438\u0447\u043D\u043E\u0439 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u0438." })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-grid profile-metrics-grid", children: overview ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: roomSeries[0]?.value || 0 })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(roomSeries) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0431\u043E\u0442\u0430" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: (workSeries[0]?.value || 0) + (workSeries[1]?.value || 0) })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(workSeries) })
-          ] })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F." }) })
-      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "page-topbar page-topbar--profile", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0440\u043E\u0444\u0438\u043B\u044C" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0421\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043F\u043E \u0441\u043E\u0437\u0434\u0430\u043D\u043D\u044B\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u0430\u043C, \u0443\u0447\u0430\u0441\u0442\u0438\u044E \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435 \u0438 \u043B\u0438\u0447\u043D\u043E\u0439 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u0438." })
+      ] }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "wide-card wide-card--stack wide-card--profile", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435" }),
@@ -23025,7 +23140,23 @@
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "wide-card__column wide-card__column--activity", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: profile.activity }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F." }) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: profile ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: profile.activity }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F." }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-grid profile-metrics-grid profile-metrics-grid--embedded", children: overview ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: roomSeries[0]?.value || 0 })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(roomSeries) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "profile-chart-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "profile-chart-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0431\u043E\u0442\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: (workSeries[0]?.value || 0) + (workSeries[1]?.value || 0) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "profile-chart-card__rows", children: renderChartRows(workSeries) })
+            ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0414\u0430\u043D\u043D\u044B\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F." }) })
         ] })
       ] })
     ] });
@@ -23163,6 +23294,14 @@
     }, [datasetMode]);
     const modeConfig = datasetModeConfig[datasetMode];
     const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
+    const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+    const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+    const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+    const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
+    const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+    const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+    const deadlineError = validateRoomDeadline(deadline);
+    const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
     function updateLabel(index, key, value) {
       setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
     }
@@ -23181,6 +23320,12 @@
         }
         if (crossValidationEnabled && Number(crossValidationCount) < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (hasCreateTextLimitError) {
+          throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
+        }
+        if (deadlineError) {
+          throw new Error(deadlineError);
         }
         const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
         const payload = new FormData();
@@ -23228,7 +23373,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "create-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "form-card", onSubmit: handleSubmit, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-grid", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23237,8 +23382,9 @@
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
                 required: true,
-                maxLength: ROOM_TITLE_MAX_LENGTH,
-                onChange: (event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))
+                className: titleTooLong ? "field__control--invalid" : "",
+                "aria-invalid": titleTooLong,
+                onChange: (event) => setTitle(event.currentTarget.value)
               }
             )
           ] }),
@@ -23249,15 +23395,16 @@
               {
                 value: password,
                 name: "password",
-                type: "text",
+                type: "password",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, demo123",
-                maxLength: ROOM_PASSWORD_MAX_LENGTH,
-                onChange: (event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))
+                className: passwordTooLong ? "field__control--invalid" : "",
+                "aria-invalid": passwordTooLong,
+                onChange: (event) => setPassword(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "textarea",
               {
@@ -23265,17 +23412,29 @@
                 name: "description",
                 rows: 4,
                 placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                maxLength: ROOM_DESCRIPTION_MAX_LENGTH,
-                onChange: (event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))
+                className: descriptionTooLong ? "field__control--invalid" : "",
+                "aria-invalid": descriptionTooLong,
+                onChange: (event) => setDescription(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, name: "deadline", type: "datetime-local", onChange: (event) => setDeadline(event.currentTarget.value) })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: deadline,
+                name: "deadline",
+                type: "datetime-local",
+                className: deadlineError ? "field__control--invalid" : "",
+                "aria-invalid": Boolean(deadlineError),
+                onChange: (event) => setDeadline(event.currentTarget.value)
+              }
+            ),
+            deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432", value: annotatorIds, maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23283,8 +23442,9 @@
                 name: "annotator_ids",
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 2,3,7",
-                maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH,
-                onChange: (event) => setAnnotatorIds(clampTextLength(event.currentTarget.value, ROOM_ANNOTATOR_IDS_MAX_LENGTH))
+                className: annotatorIdsTooLong ? "field__control--invalid" : "",
+                "aria-invalid": annotatorIdsTooLong,
+                onChange: (event) => setAnnotatorIds(event.currentTarget.value)
               }
             )
           ] }),
@@ -23342,15 +23502,16 @@
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
                 value: datasetLabel,
                 name: "dataset_label",
                 type: "text",
-                maxLength: ROOM_DATASET_LABEL_MAX_LENGTH,
-                onChange: (event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))
+                className: datasetLabelTooLong ? "field__control--invalid" : "",
+                "aria-invalid": datasetLabelTooLong,
+                onChange: (event) => setDatasetLabel(event.currentTarget.value)
               }
             )
           ] }),
@@ -23384,16 +23545,16 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note", children: "\u0426\u0432\u0435\u0442 \u043A\u0430\u0436\u0434\u043E\u043C\u0443 label-\u0443 \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0435\u0442\u0441\u044F \u0441\u043B\u0443\u0447\u0430\u0439\u043D\u043E, \u043D\u043E \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0441\u0440\u0430\u0437\u0443 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C." }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-editor-list", children: labels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "label-editor-row", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0435\u0439\u0431\u043B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041B\u0435\u0439\u0431\u043B", value: label.name, maxLength: ROOM_LABEL_NAME_MAX_LENGTH }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "input",
                 {
-                  className: "label-editor-row__name",
+                  className: `label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`,
                   type: "text",
                   placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, car",
                   value: label.name,
-                  maxLength: ROOM_LABEL_NAME_MAX_LENGTH,
-                  onChange: (event) => updateLabel(index, "name", clampTextLength(event.currentTarget.value, ROOM_LABEL_NAME_MAX_LENGTH))
+                  "aria-invalid": isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH),
+                  onChange: (event) => updateLabel(index, "name", event.currentTarget.value)
                 }
               )
             ] }),
@@ -23452,6 +23613,12 @@
       }
       loadRoom();
     }, []);
+    const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+    const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+    const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+    const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+    const deadlineError = validateRoomDeadline(deadline);
+    const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
     async function handleSubmit(event) {
       event.preventDefault();
       if (!roomId) {
@@ -23469,6 +23636,12 @@
         }
         if (crossValidationEnabled && nextCrossValidationCount < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (hasEditTextLimitError) {
+          throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
+        }
+        if (deadlineError) {
+          throw new Error(deadlineError);
         }
         await api(`/api/v1/rooms/${roomId}/`, {
           method: "PATCH",
@@ -23524,7 +23697,7 @@
         ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "summary-stack room-edit-summary empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-grid", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
@@ -23532,27 +23705,39 @@
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
                 required: true,
-                maxLength: ROOM_TITLE_MAX_LENGTH,
-                onChange: (event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))
+                className: titleTooLong ? "field__control--invalid" : "",
+                "aria-invalid": titleTooLong,
+                onChange: (event) => setTitle(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
               {
                 value: datasetLabel,
                 type: "text",
                 placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u041E\u0442\u0437\u044B\u0432\u044B Q2",
-                maxLength: ROOM_DATASET_LABEL_MAX_LENGTH,
-                onChange: (event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))
+                className: datasetLabelTooLong ? "field__control--invalid" : "",
+                "aria-invalid": datasetLabelTooLong,
+                onChange: (event) => setDatasetLabel(event.currentTarget.value)
               }
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: deadline, type: "datetime-local", onChange: (event) => setDeadline(event.currentTarget.value) })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: deadline,
+                type: "datetime-local",
+                className: deadlineError ? "field__control--invalid" : "",
+                "aria-invalid": Boolean(deadlineError),
+                onChange: (event) => setDeadline(event.currentTarget.value)
+              }
+            ),
+            deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0449\u0438\u0442\u0430 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" }),
@@ -23604,15 +23789,16 @@
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "textarea",
               {
                 value: description,
                 rows: 4,
                 placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                maxLength: ROOM_DESCRIPTION_MAX_LENGTH,
-                onChange: (event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))
+                className: descriptionTooLong ? "field__control--invalid" : "",
+                "aria-invalid": descriptionTooLong,
+                onChange: (event) => setDescription(event.currentTarget.value)
               }
             )
           ] }),
@@ -23622,11 +23808,12 @@
               "input",
               {
                 value: password,
-                type: "text",
+                type: "password",
                 disabled: !passwordEnabled,
-                maxLength: ROOM_PASSWORD_MAX_LENGTH,
+                className: passwordTooLong ? "field__control--invalid" : "",
+                "aria-invalid": passwordTooLong,
                 placeholder: initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u0443\u0441\u0442\u044B\u043C, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C" : "\u0417\u0430\u0434\u0430\u0439 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C",
-                onChange: (event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))
+                onChange: (event) => setPassword(event.currentTarget.value)
               }
             )
           ] }),
@@ -23652,6 +23839,9 @@
     const [reviewTasks, setReviewTasks] = (0, import_react.useState)([]);
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
+    const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = (0, import_react.useState)(false);
+    const [deleteRoomPassword, setDeleteRoomPassword] = (0, import_react.useState)("");
+    const [deleteRoomBusy, setDeleteRoomBusy] = (0, import_react.useState)(false);
     const [inviteBusy, setInviteBusy] = (0, import_react.useState)(false);
     const [joinRequestBusyId, setJoinRequestBusyId] = (0, import_react.useState)(null);
     const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
@@ -23862,23 +24052,57 @@
         addToast(getErrorMessage(error), "error");
       }
     }
-    async function handleDeleteRoom() {
-      if (!roomId) {
+    async function handleRemoveAnnotator() {
+      if (!roomId || !activeAnnotator) {
         return;
       }
-      const shouldDelete = window.confirm(
-        "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443? \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u0443\u0434\u0430\u043B\u0438\u0442 \u0441\u0430\u043C\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u0443, \u0437\u0430\u0434\u0430\u0447\u0438, \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432 \u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0438 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F."
+      const shouldRemove = window.confirm(
+        `\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430 #${activeAnnotator.user_id} \u0438\u0437 \u043A\u043E\u043C\u043D\u0430\u0442\u044B? \u041E\u043D \u043F\u043E\u0442\u0435\u0440\u044F\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F \u043A \u0437\u0430\u0434\u0430\u0447\u0430\u043C \u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u0435.`
       );
-      if (!shouldDelete) {
+      if (!shouldRemove) {
         return;
       }
       clearToasts();
       try {
-        await api(`/api/v1/rooms/${roomId}/`, { method: "DELETE" });
-        window.location.href = "/rooms/";
+        await api(`/api/v1/rooms/${roomId}/memberships/${activeAnnotator.user_id}/`, {
+          method: "DELETE"
+        });
+        addToast(`\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A #${activeAnnotator.user_id} \u0443\u0434\u0430\u043B\u0451\u043D \u0438\u0437 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.`, "success");
+        setSelectedAnnotatorUserId(null);
+        await refresh();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
+    }
+    async function handleDeleteRoom() {
+      if (!roomId) {
+        return;
+      }
+      if (!deleteRoomConfirmOpen) {
+        setDeleteRoomConfirmOpen(true);
+        return;
+      }
+      if (!deleteRoomPassword.trim()) {
+        addToast("\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435.", "error");
+        return;
+      }
+      clearToasts();
+      setDeleteRoomBusy(true);
+      try {
+        await api(`/api/v1/rooms/${roomId}/`, {
+          method: "DELETE",
+          body: { password: deleteRoomPassword }
+        });
+        window.location.href = "/rooms/";
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setDeleteRoomBusy(false);
+      }
+    }
+    function handleCancelDeleteRoom() {
+      setDeleteRoomConfirmOpen(false);
+      setDeleteRoomPassword("");
     }
     async function handleExport() {
       if (!roomId || !dashboard) {
@@ -23921,19 +24145,8 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: dashboard?.room.title || "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B..." }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: dashboard?.room.description || "\u041F\u043E\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0443 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043A\u043E\u043D\u0442\u0443\u0440." })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-side", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-header-metrics", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            RoomProgressChart,
-            {
-              totalTasks: dashboard.overview.total_tasks,
-              completedTasks: dashboard.overview.completed_tasks,
-              remainingTasks: dashboard.overview.remaining_tasks,
-              progressPercent: dashboard.overview.progress_percent
-            }
-          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-header-meta", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-header-meta__stack", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: dashboard?.room.description || "\u041F\u043E\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0443 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043A\u043E\u043D\u0442\u0443\u0440." }),
+          dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-header-inline-meta", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
@@ -23957,8 +24170,20 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
-        ] })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "room-header-side", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-panel", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "room-progress-panel__eyebrow", children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            RoomProgressChart,
+            {
+              totalTasks: dashboard.overview.total_tasks,
+              completedTasks: dashboard.overview.completed_tasks,
+              remainingTasks: dashboard.overview.remaining_tasks,
+              progressPercent: dashboard.overview.progress_percent
+            }
+          )
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
       ] }),
       loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
       dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""}`, children: [
@@ -24004,8 +24229,8 @@
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack", children: [
-                  dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack", children: [
+                  dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
                       dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "\u0422\u043E\u043B\u044C\u043A\u043E \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446" }) : null
@@ -24024,11 +24249,11 @@
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                         dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
-                        dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
+                        dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
                       ] })
                     ] })
                   ] }) : null,
-                  dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 \u0438 \u043B\u0435\u0439\u0431\u043B\u044B" }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-chip-list label-chip-list--static", children: dashboard.labels.length ? dashboard.labels.map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "label-chip label-chip--static", style: { ["--label-color"]: label.color }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
@@ -24036,7 +24261,7 @@
                     ] }, label.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B." }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
                   ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--invite", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430" }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "stack-form stack-form--compact", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
@@ -24048,9 +24273,9 @@
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E \u044D\u0442\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0441\u043C\u043E\u0436\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443. \u0421\u0442\u0430\u0440\u044B\u0439 invite \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u043F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438." })
                   ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--requests", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0438 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435" }) }),
-                    dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row", children: [
+                    dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list manage-request-list-legacy", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row manage-request-row-legacy", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
@@ -24190,7 +24415,8 @@
                       ] }) : null,
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: `/users/${activeAnnotator.user_id}/profile/`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C" }),
-                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleRoleSubmit, children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0440\u043E\u043B\u044C" }) : null
+                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleRoleSubmit, children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0440\u043E\u043B\u044C" }) : null,
+                        dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", onClick: handleRemoveAnnotator, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" }) : null
                       ] })
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: activeAnnotator.activity }) })
@@ -24290,7 +24516,41 @@
             ] })
           ]
         }
-      ) : null
+      ) : null,
+      deleteRoomConfirmOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "modal-shell", role: "presentation", onClick: handleCancelDeleteRoom, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          className: "modal-card modal-card--danger",
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-labelledby": "delete-room-modal-title",
+          onClick: (event) => event.stopPropagation(),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041E\u043F\u0430\u0441\u043D\u043E\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { id: "delete-room-modal-title", children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443?" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430, \u0437\u0430\u0434\u0430\u0447\u0438, \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 \u0438 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0443\u0434\u0443\u0442 \u0443\u0434\u0430\u043B\u0435\u043D\u044B \u0431\u0435\u0437 \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0438 \u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F. \u0414\u043B\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430." })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: deleteRoomPassword,
+                  type: "password",
+                  placeholder: "\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430",
+                  autoFocus: true,
+                  onChange: (event) => setDeleteRoomPassword(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__actions", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: handleCancelDeleteRoom, disabled: deleteRoomBusy, children: "\u041E\u0442\u043C\u0435\u043D\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: deleteRoomBusy ? "\u0423\u0434\u0430\u043B\u044F\u0435\u043C..." : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435" })
+            ] })
+          ]
+        }
+      ) }) : null
     ] });
   }
   function createMediaAnnotationEditor(options) {

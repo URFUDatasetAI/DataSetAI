@@ -11,11 +11,13 @@
 - Поддерживаемые source types задач: `text`, `image`, `video`.
 - Поддерживаемые workflow: `standard` и `text_detect_text` (`TEXT_DETECTION` -> `TEXT_TRANSCRIPTION`).
 - Экспорт: `native_json` всегда; `coco_json` и `yolo_zip` только для image/video-комнат вне detect+text workflow.
+- Закреплённые комнаты опираются на явный `RoomPin.sort_order`, а сортировка списков комнат использует `RoomVisit.last_accessed_at` как сигнал недавней активности.
 - CI на Pull Request запускает сборку UI, `python manage.py check` и `python manage.py test`. Merge в `main` запускает production deploy.
 
 ## Current Focus
 
 - Удерживать в рабочем состоянии MVP командной разметки без регрессий в room lifecycle: создание, редактирование, invite links, join requests, pinning, роли и вход в комнату.
+- Не ломать новый UX списка комнат: pinning, reorder закреплённых комнат, удаление участника и recency-сортировка по посещениям должны оставаться согласованными между backend и UI.
 - Сохранять надёжность пайплайна разметки: выдача задач, submit, cross-validation, review/reject и экспорт готовых данных.
 - Поддерживать image/video и detect+text сценарии как основные, а не второстепенные кейсы.
 - Развивать `room-work` как отдельный fullscreen editor shell, где сцена, инструменты и отправка результата доступны без прокрутки всей страницы.
@@ -27,6 +29,7 @@
 - Надёжность и корректность пайплайна разметки важнее быстрого добавления новых фич.
 - Конкурентная безопасность назначения и отправки задач обязательна: изменения не должны создавать двойные назначения, гонки раундов или потерю аннотаций.
 - Room/access workflow должен оставаться предсказуемым: invite links, join requests, password access, роли и visibility не должны деградировать.
+- Списки комнат должны оставаться детерминированными: закреплённые комнаты ограничены по количеству, порядок pinned-комнат задаётся `sort_order`, а внутри каждого pin-state приоритет задаётся недавним посещением комнаты.
 - Media и OCR-сценарии считаются first-class: import, review, progress и export для image/video и detect+text нельзя рассматривать как edge cases.
 - Производительность editor UX важна сама по себе: pointer-driven взаимодействия в `room-work` должны оставаться максимально прямыми, без ощутимого отставания курсора и лишних React re-render на hot path.
 - Workspace редактора должен задаваться layout-ом, а не размером изображения/видео: media может быть меньше или больше viewport-а, но stage и tool chrome должны оставаться стабильными.
@@ -38,13 +41,15 @@
 ## Hotspots
 
 - `apps/rooms/services.py`
-  - Создание комнат, импорт датасетов, invite/join flow, pinning, room updates, export.
+  - Создание комнат, импорт датасетов, invite/join flow, pinning/reorder pinned rooms, room visit tracking, room updates, export.
+- `apps/rooms/models.py`
+  - `Room`, `RoomPin`, `RoomVisit`, membership и join-request сущности, на которых держатся room lifecycle и сортировка комнат.
 - `apps/labeling/services.py`
   - Выдача задач, submit, cross-validation, повторные раунды, review reject.
 - `apps/labeling/consensus.py`
   - Расчёт сходства и выбор consensus payload для text/media сценариев.
 - `apps/rooms/selectors.py`
-  - Dashboard, invite preview, progress, actor-specific room payloads.
+  - Dashboard, invite preview, progress, actor-specific room payloads и порядок списков комнат по pin/visit activity.
 - `apps/labeling/workflows.py`
   - Разделение primary/final tasks, особенно для `text_detect_text`.
 - `apps/ui/views.py`, `apps/ui/templates/ui/base.html`, `apps/ui/static/ui/app.tsx`
@@ -68,6 +73,7 @@
 - UI не является отдельным SPA-сервером: Django задаёт `page_key` и bootstrap, React выбирает нужный экран по этому bootstrap-контракту.
 - `room-work` должен оставаться отдельной рабочей поверхностью: fullscreen layout, без page-level scroll на desktop, с internal scroll только у вспомогательных панелей и с приоритетом на быстрый pointer/keyboard feedback.
 - Явные границы media в `room-work` должны быть привязаны к самому media/overlay и клиппиться вместе с ним; нельзя подменять их отдельной внешней рамкой, живущей вне реальных границ изображения или видео.
+- Pinning-комнаты нельзя рассматривать как просто boolean-флаг: `RoomPin.sort_order`, лимит количества pinned rooms и `RoomVisit.last_accessed_at` участвуют в порядке выдачи списков и должны обновляться согласованно.
 - Header auth через `X-User-Id` всё ещё часть текущего MVP и уже встроен в API/UI сценарии; не ломать его случайными изменениями auth-слоя.
 
 ## Maintenance Protocol

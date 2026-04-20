@@ -93,6 +93,8 @@ type RoomItem = {
   completed_tasks: number;
   progress_percent: number;
   is_pinned: boolean;
+  pin_sort_order: number | null;
+  last_accessed_at: string | null;
   labels: LabelItem[];
   export_formats: Array<{ value: string; label: string }>;
   created_at: string;
@@ -368,12 +370,13 @@ const annotationWorkflowLabels: Record<string, string> = {
   text_detect_text: "Object detect + text",
 };
 
-const ROOM_TITLE_MAX_LENGTH = 255;
+const ROOM_TITLE_MAX_LENGTH = 128;
 const ROOM_DATASET_LABEL_MAX_LENGTH = 255;
 const ROOM_DESCRIPTION_MAX_LENGTH = 2000;
-const ROOM_PASSWORD_MAX_LENGTH = 255;
+const ROOM_PASSWORD_MAX_LENGTH = 64;
 const ROOM_LABEL_NAME_MAX_LENGTH = 64;
 const ROOM_ANNOTATOR_IDS_MAX_LENGTH = 255;
+const ROOM_DEADLINE_MAX_DAYS_AHEAD = 365;
 
 const labelColorPool = [
   "#FF6B6B",
@@ -491,8 +494,15 @@ function formatApiError(data: any, fallbackStatus: number) {
 
   if (typeof data === "object") {
     const messages: string[] = [];
+    const apiFieldLabels: Record<string, string> = {
+      password: "Пароль",
+      deadline: "Дедлайн",
+      title: "Название",
+      description: "Описание",
+      dataset_label: "Название датасета",
+    };
     Object.entries(data).forEach(([key, value]) => {
-      const fieldName = key === "non_field_errors" ? "Ошибка" : key;
+      const fieldName = key === "non_field_errors" ? "Ошибка" : apiFieldLabels[key] || key;
       if (Array.isArray(value)) {
         messages.push(`${fieldName}: ${value.join(", ")}`);
       } else if (typeof value === "string") {
@@ -638,6 +648,29 @@ function formatDateTimeLocal(value: string | null | undefined) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function validateRoomDeadline(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Укажи корректную дату дедлайна.";
+  }
+
+  const now = new Date();
+  if (date.getTime() <= now.getTime()) {
+    return "Укажи дедлайн в будущем.";
+  }
+
+  const latestAllowed = new Date(now.getTime() + ROOM_DEADLINE_MAX_DAYS_AHEAD * 24 * 60 * 60 * 1000);
+  if (date.getTime() > latestAllowed.getTime()) {
+    return `Дедлайн можно поставить не дальше чем на ${ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд.`;
+  }
+
+  return "";
+}
+
 function readStoredDisclosureState(storageKey: string | null, defaultOpen = false) {
   if (!storageKey) {
     return defaultOpen;
@@ -722,6 +755,31 @@ function pickRandomLabelColor() {
 
 function clampTextLength(value: string, maxLength: number) {
   return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function isTextLimitExceeded(value: string, maxLength: number) {
+  return value.length > maxLength;
+}
+
+function CharacterLimitLabel({
+  label,
+  value,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  maxLength: number;
+}) {
+  const isInvalid = isTextLimitExceeded(value, maxLength);
+
+  return (
+    <span className="field__label-row">
+      <span>{label}</span>
+      <span className={`field__limit ${isInvalid ? "is-invalid" : ""}`}>
+        {value.length}/{maxLength}
+      </span>
+    </span>
+  );
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1553,8 +1611,39 @@ function RoomsPage() {
   const { authUser, api, addToast, clearToasts } = useApp();
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
   const [roomId, setRoomId] = useState("");
   const [password, setPassword] = useState("");
+
+  function sortRooms(list: RoomItem[]) {
+    return [...list].sort((left, right) => {
+      if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
+        return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
+      }
+
+      if (left.is_pinned && right.is_pinned) {
+        const leftOrder = left.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.pin_sort_order ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+      }
+
+      const rightAccess = right.last_accessed_at ? new Date(right.last_accessed_at).getTime() : 0;
+      const leftAccess = left.last_accessed_at ? new Date(left.last_accessed_at).getTime() : 0;
+      if (rightAccess !== leftAccess) {
+        return rightAccess - leftAccess;
+      }
+
+      const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
+      const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
+      if (rightCreatedAt !== leftCreatedAt) {
+        return rightCreatedAt - leftCreatedAt;
+      }
+
+      return Number(right.id) - Number(left.id);
+    });
+  }
 
   async function loadRooms() {
     if (!authUser) {
@@ -1570,20 +1659,7 @@ function RoomsPage() {
           roomMap.set(room.id, room);
         }
       });
-      const sortedRooms = Array.from(roomMap.values()).sort((left, right) => {
-        if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
-          return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
-        }
-
-        const rightCreatedAt = right.created_at ? new Date(right.created_at).getTime() : 0;
-        const leftCreatedAt = left.created_at ? new Date(left.created_at).getTime() : 0;
-        if (rightCreatedAt !== leftCreatedAt) {
-          return rightCreatedAt - leftCreatedAt;
-        }
-
-        return Number(right.id) - Number(left.id);
-      });
-      setRooms(sortedRooms);
+      setRooms(sortRooms(Array.from(roomMap.values())));
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     } finally {
@@ -1608,6 +1684,8 @@ function RoomsPage() {
       window.location.href = response.redirect_url;
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
     }
   }
 
@@ -1615,6 +1693,7 @@ function RoomsPage() {
     event.preventDefault();
     event.stopPropagation();
     clearToasts();
+    setPinBusyRoomId(room.id);
 
     try {
       await api(`/api/v1/rooms/${room.id}/pin/`, {
@@ -1625,8 +1704,31 @@ function RoomsPage() {
       await loadRooms();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
     }
   }
+
+  async function handleReorderPin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem, direction: "up" | "down") {
+    event.preventDefault();
+    event.stopPropagation();
+    clearToasts();
+    setPinBusyRoomId(room.id);
+
+    try {
+      await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
+        method: "POST",
+        body: { direction },
+      });
+      await loadRooms();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setPinBusyRoomId(null);
+    }
+  }
+
+  const pinnedRooms = rooms.filter((room) => room.is_pinned);
 
   return (
     <>
@@ -1634,77 +1736,130 @@ function RoomsPage() {
         <div className="page-topbar__copy">
           <span className="eyebrow">Комнаты</span>
           <h1>Доступные комнаты</h1>
-          <p>Введи ID и пароль для прямого входа или открой комнату из списка ниже.</p>
+          <p>Создайте комнату или войдите в нее, используя ID и пароль. Также можно выбрать комнату из списка доступных.</p>
         </div>
-        <div className="room-toolbar-card">
-          <div className="room-toolbar">
-            <label className="inline-field">
-              <span>ID комнаты</span>
-              <input value={roomId} type="number" min="1" placeholder="Например, 1" onChange={(event) => setRoomId(event.currentTarget.value)} />
-            </label>
-            <label className="inline-field">
-              <span>Пароль комнаты</span>
-              <input value={password} type="password" placeholder="Пароль" onChange={(event) => setPassword(event.currentTarget.value)} />
-            </label>
-            <button
-              className={`btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`}
-              type="button"
-              disabled={!roomId.trim().length}
-              onClick={handleDirectEnter}
-            >
-              Войти в комнату
-            </button>
-            <a className="btn btn--primary" href="/rooms/create/">
+        <div className="room-toolbar-stack">
+          <div className="room-create-card">
+            <div className="room-create-card__copy">
+              <span className="header-note">Новая комната</span>
+              <strong>Создайте новую комнату</strong>
+              <p>Откроется полная форма с выбором названия, описания и прочих параметров и загрузкой датасета.</p>
+            </div>
+            <a className="btn btn--primary room-create-card__action" href="/rooms/create/">
               Создать комнату
             </a>
+          </div>
+          <div className="room-toolbar-card room-toolbar-card--join">
+            <div className="room-toolbar-card__intro">
+              <span className="header-note">Вход в комнату</span>
+              <strong>Или войдите в уже существующую комнату</strong>
+              <p>Укажите ID комнаты и пароль доступа.</p>
+            </div>
+            <div className="room-toolbar">
+              <label className="inline-field">
+                <span>ID комнаты</span>
+                <input value={roomId} type="number" min="1" placeholder="Например, 1" onChange={(event) => setRoomId(event.currentTarget.value)} />
+              </label>
+              <label className="inline-field">
+                <span>Пароль комнаты</span>
+                <input value={password} type="password" placeholder="Пароль" onChange={(event) => setPassword(event.currentTarget.value)} />
+              </label>
+              <button
+                className={`btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`}
+                type="button"
+                disabled={!roomId.trim().length}
+                onClick={handleDirectEnter}
+              >
+                Войти в комнату
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
       <section className="room-grid-section">
+        <div className="room-grid-section__header">
+          <div className="room-grid-section__divider">
+            <span>Ваши комнаты</span>
+          </div>
+          <p>Комнаты, которые вы создали или к которым у вас уже есть доступ.</p>
+        </div>
         {loading ? <div className="empty-card">Загружаем комнаты.</div> : null}
         {!loading && !rooms.length ? (
           <div className="empty-card">У выбранного пользователя пока нет доступных комнат.</div>
         ) : (
           <div className="room-grid">
-            {rooms.map((room) => (
-              <article
-                key={room.id}
-                className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
-                onClick={() => {
-                  setRoomId(String(room.id));
-                  window.location.href = `/rooms/${room.id}/`;
-                }}
-              >
-                <div>
-                  <div className="room-card__head">
-                    <div className="room-card__id">Комната #{room.id}</div>
-                    <button
-                      className="room-card__pin"
-                      type="button"
-                      aria-pressed={room.is_pinned}
-                      aria-label={room.is_pinned ? "Убрать комнату из закрепленных" : "Закрепить комнату"}
-                      title={room.is_pinned ? "Убрать из закрепленных" : "Закрепить комнату"}
-                      onClick={(event) => handleTogglePin(event, room)}
-                    >
-                      {room.is_pinned ? "★" : "☆"}
-                    </button>
-                  </div>
-                  <div className="room-card__title">{room.title}</div>
-                  <div className="room-card__meta">{room.description || "Описание пока не добавлено."}</div>
-                </div>
-                <div className="room-card__footer">
-                  <div>ID: {room.id}</div>
-                  <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
-                  <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
-                  <div>Прогресс: {formatPercent(room.progress_percent)}</div>
+            {rooms.map((room) => {
+              const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+              const canMoveUp = room.is_pinned && pinnedIndex > 0;
+              const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+
+              return (
+                <article
+                  key={room.id}
+                  className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
+                  onClick={() => {
+                    setRoomId(String(room.id));
+                    window.location.href = `/rooms/${room.id}/`;
+                  }}
+                >
                   <div>
-                    Задачи: {room.completed_tasks}/{room.total_tasks}
+                    <div className="room-card__head">
+                      <div className="room-card__id">Комната #{room.id}</div>
+                      <div className="room-card__actions">
+                        {room.is_pinned ? (
+                          <div className="room-card__pin-order">
+                            <button
+                              className="room-card__reorder"
+                              type="button"
+                              disabled={!canMoveUp || pinBusyRoomId === room.id}
+                              aria-label="Поднять закреплённую комнату выше"
+                              title="Поднять выше"
+                              onClick={(event) => handleReorderPin(event, room, "up")}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              className="room-card__reorder"
+                              type="button"
+                              disabled={!canMoveDown || pinBusyRoomId === room.id}
+                              aria-label="Опустить закреплённую комнату ниже"
+                              title="Опустить ниже"
+                              onClick={(event) => handleReorderPin(event, room, "down")}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        ) : null}
+                        <button
+                          className="room-card__pin"
+                          type="button"
+                          disabled={pinBusyRoomId === room.id}
+                          aria-pressed={room.is_pinned}
+                          aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
+                          title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
+                          onClick={(event) => handleTogglePin(event, room)}
+                        >
+                          {room.is_pinned ? "?" : "?"}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="room-card__title">{room.title}</div>
+                    <div className="room-card__meta">{room.description || "???????? ???? ?? ?????????."}</div>
                   </div>
-                  <div>Пароль: {room.has_password ? "есть" : "не задан"}</div>
-                </div>
-              </article>
-            ))}
+                  <div className="room-card__footer">
+                    <div>ID: {room.id}</div>
+                    <div>??????: {translateMembership(room.membership_status || "owner")}</div>
+                    <div>???? ? ???????: {translateRole(room.membership_role || "owner")}</div>
+                    <div>????????: {formatPercent(room.progress_percent)}</div>
+                    <div>
+                      ??????: {room.completed_tasks}/{room.total_tasks}
+                    </div>
+                    <div>????????????: {room.has_password ? "????????" : "???? ??????????"}</div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -1819,28 +1974,6 @@ function ProfilePage() {
           <h1>Статистика пользователя</h1>
           <p>Сводка по созданным комнатам, участию в разметке и личной активности.</p>
         </div>
-        <div className="card-grid profile-metrics-grid">
-          {overview ? (
-            <>
-              <article className="profile-chart-card">
-                <div className="profile-chart-card__head">
-                  <span>Комнаты</span>
-                  <strong>{roomSeries[0]?.value || 0}</strong>
-                </div>
-                <div className="profile-chart-card__rows">{renderChartRows(roomSeries)}</div>
-              </article>
-              <article className="profile-chart-card">
-                <div className="profile-chart-card__head">
-                  <span>Работа</span>
-                  <strong>{(workSeries[0]?.value || 0) + (workSeries[1]?.value || 0)}</strong>
-                </div>
-                <div className="profile-chart-card__rows">{renderChartRows(workSeries)}</div>
-              </article>
-            </>
-          ) : (
-            <div className="empty-card">Данные профиля загружаются.</div>
-          )}
-        </div>
       </section>
 
       <section className="wide-card wide-card--stack wide-card--profile">
@@ -1895,6 +2028,28 @@ function ProfilePage() {
         <div className="wide-card__column wide-card__column--activity">
           <h2>Активность</h2>
           <div className="activity-board">{profile ? <ActivityBoard series={profile.activity} /> : <div className="empty-card">Активность загружается.</div>}</div>
+          <div className="card-grid profile-metrics-grid profile-metrics-grid--embedded">
+            {overview ? (
+              <>
+                <article className="profile-chart-card">
+                  <div className="profile-chart-card__head">
+                    <span>Комнаты</span>
+                    <strong>{roomSeries[0]?.value || 0}</strong>
+                  </div>
+                  <div className="profile-chart-card__rows">{renderChartRows(roomSeries)}</div>
+                </article>
+                <article className="profile-chart-card">
+                  <div className="profile-chart-card__head">
+                    <span>Работа</span>
+                    <strong>{(workSeries[0]?.value || 0) + (workSeries[1]?.value || 0)}</strong>
+                  </div>
+                  <div className="profile-chart-card__rows">{renderChartRows(workSeries)}</div>
+                </article>
+              </>
+            ) : (
+              <div className="empty-card">Данные профиля загружаются.</div>
+            )}
+          </div>
         </div>
       </section>
     </>
@@ -2089,6 +2244,14 @@ function RoomCreatePage() {
 
   const modeConfig = datasetModeConfig[datasetMode];
   const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
+  const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+  const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+  const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+  const annotatorIdsTooLong = isTextLimitExceeded(annotatorIds, ROOM_ANNOTATOR_IDS_MAX_LENGTH);
+  const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+  const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
+  const deadlineError = validateRoomDeadline(deadline);
+  const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
 
   function updateLabel(index: number, key: "name" | "color", value: string) {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
@@ -2116,6 +2279,14 @@ function RoomCreatePage() {
 
       if (crossValidationEnabled && Number(crossValidationCount) < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (hasCreateTextLimitError) {
+        throw new Error("Сократи текст в полях, которые выделены красным.");
+      }
+
+      if (deadlineError) {
+        throw new Error(deadlineError);
       }
 
       const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
@@ -2173,15 +2344,16 @@ function RoomCreatePage() {
         <form className="form-card" onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="field">
-              <span>Название комнаты</span>
+              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
               <input
                 value={title}
                 name="title"
                 type="text"
                 placeholder="Например, Разметка отзывов Q2"
                 required
-                maxLength={ROOM_TITLE_MAX_LENGTH}
-                onChange={(event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))}
+                className={titleTooLong ? "field__control--invalid" : ""}
+                aria-invalid={titleTooLong}
+                onChange={(event) => setTitle(event.currentTarget.value)}
               />
             </label>
             <label className="field">
@@ -2189,36 +2361,47 @@ function RoomCreatePage() {
               <input
                 value={password}
                 name="password"
-                type="text"
+                type="password"
                 placeholder="Например, demo123"
-                maxLength={ROOM_PASSWORD_MAX_LENGTH}
-                onChange={(event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))}
+                className={passwordTooLong ? "field__control--invalid" : ""}
+                aria-invalid={passwordTooLong}
+                onChange={(event) => setPassword(event.currentTarget.value)}
               />
             </label>
             <label className="field field--full">
-              <span>Описание</span>
+              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
               <textarea
                 value={description}
                 name="description"
                 rows={4}
                 placeholder="Кратко опиши задачу и правила разметки"
-                maxLength={ROOM_DESCRIPTION_MAX_LENGTH}
-                onChange={(event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))}
+                className={descriptionTooLong ? "field__control--invalid" : ""}
+                aria-invalid={descriptionTooLong}
+                onChange={(event) => setDescription(event.currentTarget.value)}
               ></textarea>
             </label>
             <label className="field">
               <span>Дедлайн (необязательно)</span>
-              <input value={deadline} name="deadline" type="datetime-local" onChange={(event) => setDeadline(event.currentTarget.value)} />
+              <input
+                value={deadline}
+                name="deadline"
+                type="datetime-local"
+                className={deadlineError ? "field__control--invalid" : ""}
+                aria-invalid={Boolean(deadlineError)}
+                onChange={(event) => setDeadline(event.currentTarget.value)}
+              />
+              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
             </label>
             <label className="field">
-              <span>ID приглашенных участников</span>
+              <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
               <input
                 value={annotatorIds}
                 name="annotator_ids"
                 type="text"
                 placeholder="Например, 2,3,7"
-                maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH}
-                onChange={(event) => setAnnotatorIds(clampTextLength(event.currentTarget.value, ROOM_ANNOTATOR_IDS_MAX_LENGTH))}
+                className={annotatorIdsTooLong ? "field__control--invalid" : ""}
+                aria-invalid={annotatorIdsTooLong}
+                onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
               />
             </label>
             <label className="field field--checkbox">
@@ -2271,13 +2454,14 @@ function RoomCreatePage() {
               </label>
             )}
             <label className="field">
-              <span>Название датасета</span>
+              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
               <input
                 value={datasetLabel}
                 name="dataset_label"
                 type="text"
-                maxLength={ROOM_DATASET_LABEL_MAX_LENGTH}
-                onChange={(event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))}
+                className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                aria-invalid={datasetLabelTooLong}
+                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
               />
             </label>
             {datasetMode === "demo" && (
@@ -2316,14 +2500,14 @@ function RoomCreatePage() {
                 {labels.map((label, index) => (
                   <div key={`label-${index}`} className="label-editor-row">
                     <label className="field">
-                      <span>Лейбл</span>
+                      <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
                       <input
-                        className="label-editor-row__name"
+                        className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
                         type="text"
                         placeholder="Например, car"
                         value={label.name}
-                        maxLength={ROOM_LABEL_NAME_MAX_LENGTH}
-                        onChange={(event) => updateLabel(index, "name", clampTextLength(event.currentTarget.value, ROOM_LABEL_NAME_MAX_LENGTH))}
+                        aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
+                        onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
                       />
                     </label>
                     <label className="field field--color">
@@ -2402,6 +2586,13 @@ function RoomEditPage() {
     loadRoom();
   }, []);
 
+  const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
+  const descriptionTooLong = isTextLimitExceeded(description, ROOM_DESCRIPTION_MAX_LENGTH);
+  const datasetLabelTooLong = isTextLimitExceeded(datasetLabel, ROOM_DATASET_LABEL_MAX_LENGTH);
+  const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
+  const deadlineError = validateRoomDeadline(deadline);
+  const hasEditTextLimitError = titleTooLong || descriptionTooLong || datasetLabelTooLong || passwordTooLong;
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!roomId) {
@@ -2423,6 +2614,14 @@ function RoomEditPage() {
 
       if (crossValidationEnabled && nextCrossValidationCount < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (hasEditTextLimitError) {
+        throw new Error("Сократи текст в полях, которые выделены красным.");
+      }
+
+      if (deadlineError) {
+        throw new Error(deadlineError);
       }
 
       await api(`/api/v1/rooms/${roomId}/`, {
@@ -2487,29 +2686,38 @@ function RoomEditPage() {
 
           <div className="form-grid">
             <label className="field">
-              <span>Название комнаты</span>
+              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
               <input
                 value={title}
                 type="text"
                 placeholder="Например, Разметка отзывов Q2"
                 required
-                maxLength={ROOM_TITLE_MAX_LENGTH}
-                onChange={(event) => setTitle(clampTextLength(event.currentTarget.value, ROOM_TITLE_MAX_LENGTH))}
+                className={titleTooLong ? "field__control--invalid" : ""}
+                aria-invalid={titleTooLong}
+                onChange={(event) => setTitle(event.currentTarget.value)}
               />
             </label>
             <label className="field">
-              <span>Название датасета</span>
+              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
               <input
                 value={datasetLabel}
                 type="text"
                 placeholder="Например, Отзывы Q2"
-                maxLength={ROOM_DATASET_LABEL_MAX_LENGTH}
-                onChange={(event) => setDatasetLabel(clampTextLength(event.currentTarget.value, ROOM_DATASET_LABEL_MAX_LENGTH))}
+                className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                aria-invalid={datasetLabelTooLong}
+                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
               />
             </label>
             <label className="field">
               <span>Дедлайн (необязательно)</span>
-              <input value={deadline} type="datetime-local" onChange={(event) => setDeadline(event.currentTarget.value)} />
+              <input
+                value={deadline}
+                type="datetime-local"
+                className={deadlineError ? "field__control--invalid" : ""}
+                aria-invalid={Boolean(deadlineError)}
+                onChange={(event) => setDeadline(event.currentTarget.value)}
+              />
+              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
             </label>
             <label className="field field--checkbox">
               <span>Защита паролем</span>
@@ -2552,24 +2760,26 @@ function RoomEditPage() {
               />
             </label>
             <label className="field field--full">
-              <span>Описание</span>
+              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
               <textarea
                 value={description}
                 rows={4}
                 placeholder="Кратко опиши задачу и правила разметки"
-                maxLength={ROOM_DESCRIPTION_MAX_LENGTH}
-                onChange={(event) => setDescription(clampTextLength(event.currentTarget.value, ROOM_DESCRIPTION_MAX_LENGTH))}
+                className={descriptionTooLong ? "field__control--invalid" : ""}
+                aria-invalid={descriptionTooLong}
+                onChange={(event) => setDescription(event.currentTarget.value)}
               ></textarea>
             </label>
             <label className="field field--full">
               <span>Новый пароль комнаты</span>
               <input
                 value={password}
-                type="text"
+                type="password"
                 disabled={!passwordEnabled}
-                maxLength={ROOM_PASSWORD_MAX_LENGTH}
+                className={passwordTooLong ? "field__control--invalid" : ""}
+                aria-invalid={passwordTooLong}
                 placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
-                onChange={(event) => setPassword(clampTextLength(event.currentTarget.value, ROOM_PASSWORD_MAX_LENGTH))}
+                onChange={(event) => setPassword(event.currentTarget.value)}
               />
             </label>
             <div className="panel-note room-edit-password-note">
@@ -2611,6 +2821,9 @@ function RoomDetailPage() {
   const [reviewTasks, setReviewTasks] = useState<ReviewTaskListItem[]>([]);
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
+  const [deleteRoomConfirmOpen, setDeleteRoomConfirmOpen] = useState(false);
+  const [deleteRoomPassword, setDeleteRoomPassword] = useState("");
+  const [deleteRoomBusy, setDeleteRoomBusy] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
@@ -2867,25 +3080,64 @@ function RoomDetailPage() {
     }
   }
 
-  async function handleDeleteRoom() {
-    if (!roomId) {
+  async function handleRemoveAnnotator() {
+    if (!roomId || !activeAnnotator) {
       return;
     }
 
-    const shouldDelete = window.confirm(
-      "Удалить комнату? Это действие удалит саму комнату, задачи, участников и результаты разметки без возможности восстановления."
+    const shouldRemove = window.confirm(
+      `Удалить участника #${activeAnnotator.user_id} из комнаты? Он потеряет доступ к задачам и комнате.`
     );
-    if (!shouldDelete) {
+    if (!shouldRemove) {
       return;
     }
 
     clearToasts();
     try {
-      await api(`/api/v1/rooms/${roomId}/`, { method: "DELETE" });
-      window.location.href = "/rooms/";
+      await api(`/api/v1/rooms/${roomId}/memberships/${activeAnnotator.user_id}/`, {
+        method: "DELETE",
+      });
+      addToast(`Участник #${activeAnnotator.user_id} удалён из комнаты.`, "success");
+      setSelectedAnnotatorUserId(null);
+      await refresh();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     }
+  }
+
+  async function handleDeleteRoom() {
+    if (!roomId) {
+      return;
+    }
+
+    if (!deleteRoomConfirmOpen) {
+      setDeleteRoomConfirmOpen(true);
+      return;
+    }
+
+    if (!deleteRoomPassword.trim()) {
+      addToast("Введи текущий пароль владельца комнаты, чтобы подтвердить удаление.", "error");
+      return;
+    }
+
+    clearToasts();
+    setDeleteRoomBusy(true);
+    try {
+      await api(`/api/v1/rooms/${roomId}/`, {
+        method: "DELETE",
+        body: { password: deleteRoomPassword },
+      });
+      window.location.href = "/rooms/";
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setDeleteRoomBusy(false);
+    }
+  }
+
+  function handleCancelDeleteRoom() {
+    setDeleteRoomConfirmOpen(false);
+    setDeleteRoomPassword("");
   }
 
   async function handleExport() {
@@ -2936,49 +3188,48 @@ function RoomDetailPage() {
           <span className="eyebrow">Комната</span>
           <h1>{dashboard?.room.title || "Загрузка комнаты..."}</h1>
           <p>{dashboard?.room.description || "Подгружаем статистику и рабочий контур."}</p>
+          {dashboard ? (
+            <div className="summary-stack room-header-inline-meta">
+              <div className="summary-row">
+                <span>ID комнаты</span>
+                <strong>#{dashboard.room.id}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Датасет</span>
+                <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Тип</span>
+                <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Дедлайн</span>
+                <strong>{formatDate(dashboard.room.deadline)}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Доступ</span>
+                <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
+              </div>
+            </div>
+          ) : (
+            <div className="empty-card room-header-inline-meta__empty">Загрузка.</div>
+          )}
         </div>
-        <div className="room-header-side">
-          <div className="room-header-metrics">
-            {dashboard ? (
+        <aside className="room-header-side">
+          {dashboard ? (
+            <div className="room-progress-panel">
+              <span className="room-progress-panel__eyebrow">Прогресс комнаты</span>
               <RoomProgressChart
                 totalTasks={dashboard.overview.total_tasks}
                 completedTasks={dashboard.overview.completed_tasks}
                 remainingTasks={dashboard.overview.remaining_tasks}
                 progressPercent={dashboard.overview.progress_percent}
               />
-            ) : (
-              <div className="empty-card">Загрузка.</div>
-            )}
-          </div>
-          <div className="room-header-meta">
-            {dashboard ? (
-              <div className="summary-stack room-header-meta__stack">
-                <div className="summary-row">
-                  <span>ID комнаты</span>
-                  <strong>#{dashboard.room.id}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Датасет</span>
-                  <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Тип</span>
-                  <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Дедлайн</span>
-                  <strong>{formatDate(dashboard.room.deadline)}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Доступ</span>
-                  <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
-                </div>
-              </div>
-            ) : (
-              <div className="empty-card">Загрузка.</div>
-            )}
-          </div>
-        </div>
+            </div>
+          ) : (
+            <div className="empty-card">Загрузка.</div>
+          )}
+        </aside>
       </section>
 
       {loading ? <div className="empty-card">Загрузка комнаты.</div> : null}
@@ -3034,9 +3285,9 @@ function RoomDetailPage() {
                   <span className="section-disclosure__icon" aria-hidden="true"></span>
                 </summary>
                 <div className="section-disclosure__content">
-                  <div className="workspace-grid__side--stack">
+                  <div className="workspace-grid__side--stack manage-stack">
                     {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room) ? (
-                      <div className="panel-card room-settings-panel">
+                      <div className="panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings">
                         <div className="panel-card__head">
                           <h2>Параметры комнаты</h2>
                           {dashboard.actor.can_edit_room ? <span className="eyebrow room-settings-panel__eyebrow">Только владелец</span> : null}
@@ -3062,7 +3313,7 @@ function RoomDetailPage() {
                               </a>
                             ) : null}
                             {dashboard.actor.can_delete_room ? (
-                              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom}>
+                              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
                                 Удалить комнату
                               </button>
                             ) : null}
@@ -3072,7 +3323,7 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_export ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--export">
                         <div className="panel-card__head">
                           <h2>Экспорт и лейблы</h2>
                         </div>
@@ -3095,7 +3346,7 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_invite ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--invite">
                         <div className="panel-card__head">
                           <h2>Invite-ссылка</h2>
                         </div>
@@ -3118,14 +3369,14 @@ function RoomDetailPage() {
                     ) : null}
 
                     {dashboard.actor.can_invite ? (
-                      <div className="panel-card">
+                      <div className="panel-card manage-card-legacy manage-card-legacy--requests">
                         <div className="panel-card__head">
                           <h2>Заявки на вступление</h2>
                         </div>
                         {dashboard.join_requests?.length ? (
-                          <div className="annotators-list">
+                          <div className="annotators-list manage-request-list-legacy">
                             {dashboard.join_requests.map((joinRequest) => (
-                              <div key={joinRequest.id} className="annotator-row">
+                              <div key={joinRequest.id} className="annotator-row manage-request-row-legacy">
                                 <div className="annotator-row__meta">
                                   <strong>{joinRequest.display_name}</strong>
                                   <span>
@@ -3311,6 +3562,11 @@ function RoomDetailPage() {
                             Сохранить роль
                           </button>
                         ) : null}
+                        {dashboard.actor.can_assign_roles ? (
+                          <button className="btn btn--danger btn--compact" type="button" onClick={handleRemoveAnnotator}>
+                            Удалить участника
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                     <div className="activity-board">
@@ -3455,6 +3711,45 @@ function RoomDetailPage() {
             </section>
           </div>
         </details>
+      ) : null}
+
+      {deleteRoomConfirmOpen ? (
+        <div className="modal-shell" role="presentation" onClick={handleCancelDeleteRoom}>
+          <div
+            className="modal-card modal-card--danger"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-room-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-card__head">
+              <span className="eyebrow">Опасное действие</span>
+              <h2 id="delete-room-modal-title">Удалить комнату?</h2>
+              <p>
+                Комната, задачи, участники и результаты разметки будут удалены без возможности восстановления. Для подтверждения
+                введи текущий пароль владельца.
+              </p>
+            </div>
+            <label className="field field--full">
+              <span>Пароль владельца</span>
+              <input
+                value={deleteRoomPassword}
+                type="password"
+                placeholder="Введи текущий пароль аккаунта"
+                autoFocus
+                onChange={(event) => setDeleteRoomPassword(event.currentTarget.value)}
+              />
+            </label>
+            <div className="modal-card__actions">
+              <button className="btn btn--muted" type="button" onClick={handleCancelDeleteRoom} disabled={deleteRoomBusy}>
+                Отмена
+              </button>
+              <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
+                {deleteRoomBusy ? "Удаляем..." : "Подтвердить удаление"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </>
   );
