@@ -14,7 +14,9 @@ from apps.rooms.api.v1.views import (
     RoomJoinRequestRejectView,
     RoomListCreateView,
     RoomMembershipRoleView,
+    RoomMembershipDeleteView,
     RoomPinView,
+    RoomPinReorderView,
     RoomExportView,
 )
 
@@ -39,7 +41,9 @@ urlpatterns = [
         name="room-join-request-reject",
     ),
     path("rooms/<int:room_id>/memberships/<int:user_id>/role/", RoomMembershipRoleView.as_view(), name="room-membership-role"),
+    path("rooms/<int:room_id>/memberships/<int:user_id>/", RoomMembershipDeleteView.as_view(), name="room-membership-delete"),
     path("rooms/<int:room_id>/pin/", RoomPinView.as_view(), name="room-pin"),
+    path("rooms/<int:room_id>/pin/reorder/", RoomPinReorderView.as_view(), name="room-pin-reorder"),
     path("rooms/<int:room_id>/export/", RoomExportView.as_view(), name="room-export"),
     path("me/rooms/", MyRoomListView.as_view(), name="my-rooms"),
     path("rooms/<int:room_id>/join/", RoomJoinView.as_view(), name="room-join"),

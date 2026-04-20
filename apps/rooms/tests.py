@@ -4,11 +4,12 @@ from pathlib import Path
 
 from django.conf import settings
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.labeling.models import Task
-from apps.rooms.models import Room, RoomMembership
+from apps.rooms.models import Room, RoomMembership, RoomPin, RoomVisit
 from apps.users.models import User
 
 
@@ -73,10 +74,26 @@ class RoomListCreateViewTests(TestCase):
     def test_owner_can_delete_room(self):
         room = Room.objects.create(title="Delete me", created_by=self.user)
 
-        response = self.client.delete(f"/api/v1/rooms/{room.id}/")
+        response = self.client.delete(
+            f"/api/v1/rooms/{room.id}/",
+            data={"password": "secret123"},
+            format="json",
+        )
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Room.objects.filter(id=room.id).exists())
+
+    def test_owner_cannot_delete_room_without_valid_password(self):
+        room = Room.objects.create(title="Delete me", created_by=self.user)
+
+        response = self.client.delete(
+            f"/api/v1/rooms/{room.id}/",
+            data={"password": "wrong-password"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(Room.objects.filter(id=room.id).exists())
 
     def test_owner_can_update_room_settings(self):
         room = Room.objects.create(
@@ -129,6 +146,29 @@ class RoomListCreateViewTests(TestCase):
         room.refresh_from_db()
         self.assertFalse(room.has_password)
         self.assertTrue(room.check_access_password(""))
+
+    def test_owner_can_remove_room_member(self):
+        room = Room.objects.create(title="Review room", created_by=self.user)
+        annotator = User.objects.create_user(email="annotator@example.com", full_name="Annotator", password="secret123")
+        RoomMembership.objects.create(
+            room=room,
+            user=annotator,
+            invited_by=self.user,
+            status=RoomMembership.Status.JOINED,
+            role=RoomMembership.Role.ANNOTATOR,
+        )
+
+        response = self.client.delete(f"/api/v1/rooms/{room.id}/memberships/{annotator.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(RoomMembership.objects.filter(room=room, user=annotator).exists())
+
+    def test_owner_cannot_remove_self_from_room(self):
+        room = Room.objects.create(title="Review room", created_by=self.user)
+
+        response = self.client.delete(f"/api/v1/rooms/{room.id}/memberships/{self.user.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
     def test_non_owner_cannot_update_room_settings(self):
         outsider = User.objects.create_user(email="outsider@example.com", full_name="Outsider", password="secret123")
@@ -188,6 +228,80 @@ class RoomListCreateViewTests(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("dataset_label", response.data)
+
+    def test_create_room_rejects_past_deadline(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Past deadline room",
+                "dataset_mode": Room.DatasetType.DEMO,
+                "deadline": (timezone.now() - timezone.timedelta(hours=1)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("deadline", response.data)
+
+    def test_user_cannot_pin_more_than_five_rooms(self):
+        rooms = [Room.objects.create(title=f"Room {index}", created_by=self.user) for index in range(6)]
+        for room in rooms[:5]:
+            response = self.client.post(
+                f"/api/v1/rooms/{room.id}/pin/",
+                data={"is_pinned": True},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self.client.post(
+            f"/api/v1/rooms/{rooms[5].id}/pin/",
+            data={"is_pinned": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(RoomPin.objects.filter(user=self.user).count(), 5)
+
+    def test_user_can_reorder_pinned_rooms(self):
+        first = Room.objects.create(title="First", created_by=self.user)
+        second = Room.objects.create(title="Second", created_by=self.user)
+        self.client.post(f"/api/v1/rooms/{first.id}/pin/", data={"is_pinned": True}, format="json")
+        self.client.post(f"/api/v1/rooms/{second.id}/pin/", data={"is_pinned": True}, format="json")
+
+        response = self.client.post(
+            f"/api/v1/rooms/{second.id}/pin/reorder/",
+            data={"direction": "up"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ordered_ids = list(RoomPin.objects.filter(user=self.user).order_by("sort_order", "id").values_list("room_id", flat=True))
+        self.assertEqual(ordered_ids, [second.id, first.id])
+
+    def test_rooms_are_sorted_by_last_access_for_unpinned_items(self):
+        first = Room.objects.create(title="First", created_by=self.user)
+        second = Room.objects.create(title="Second", created_by=self.user)
+        RoomVisit.objects.create(room=first, user=self.user, last_accessed_at=timezone.now() - timezone.timedelta(days=1))
+        RoomVisit.objects.create(room=second, user=self.user, last_accessed_at=timezone.now())
+
+        response = self.client.get("/api/v1/rooms/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in response.data[:2]], [second.id, first.id])
+
+    def test_update_room_rejects_too_distant_deadline(self):
+        room = Room.objects.create(title="Far future room", created_by=self.user)
+
+        response = self.client.patch(
+            f"/api/v1/rooms/{room.id}/",
+            data={
+                "deadline": (timezone.now() + timezone.timedelta(days=366)).isoformat(),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("deadline", response.data)
 
     @staticmethod
     def _uploaded_file(name: str):

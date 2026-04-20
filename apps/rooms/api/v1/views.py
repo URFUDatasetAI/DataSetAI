@@ -12,9 +12,11 @@ from apps.rooms.api.v1.serializers import (
     RoomJoinRequestSerializer,
     RoomUpdateSerializer,
     RoomJoinSerializer,
+    RoomDeleteSerializer,
     RoomMembershipSerializer,
     RoomMembershipRoleSerializer,
     RoomPinSerializer,
+    RoomPinReorderSerializer,
     RoomSerializer,
 )
 from apps.rooms.selectors import (
@@ -34,6 +36,10 @@ from apps.rooms.services import (
     invite_user_to_room,
     join_room,
     regenerate_room_invite,
+    record_room_visit,
+    remove_room_membership,
+    reorder_room_pin,
+    reorder_room_pins,
     reject_room_join_request,
     set_room_membership_role,
     set_room_pinned,
@@ -97,6 +103,7 @@ class RoomDetailView(APIView):
 
     def get(self, request, room_id: int):
         room = get_visible_room(room_id=room_id, user=request.user)
+        record_room_visit(room=room, user=request.user)
         serializer = RoomSerializer(room, context={"request": request})
         return Response(serializer.data)
 
@@ -109,6 +116,8 @@ class RoomDetailView(APIView):
 
     def delete(self, request, room_id: int):
         room = get_room_for_owner(room_id=room_id, owner=request.user)
+        serializer = RoomDeleteSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
         room.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -118,6 +127,7 @@ class RoomDashboardView(APIView):
 
     def get(self, request, room_id: int):
         room = get_visible_room(room_id=room_id, user=request.user)
+        record_room_visit(room=room, user=request.user)
         return Response(build_room_dashboard(room=room, actor=request.user, request=request))
 
 
@@ -218,6 +228,19 @@ class RoomMembershipRoleView(APIView):
         return Response(RoomMembershipSerializer(membership).data)
 
 
+class RoomMembershipDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, room_id: int, user_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        remove_room_membership(
+            room=room,
+            owner=request.user,
+            target_user_id=user_id,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class MyRoomListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -248,6 +271,7 @@ class RoomAccessView(APIView):
                 )
 
             membership = join_room(room=room, annotator=request.user, password=password)
+            record_room_visit(room=room, user=request.user)
             return Response(
                 {
                     "room": RoomSerializer(room, context={"request": request}).data,
@@ -256,6 +280,7 @@ class RoomAccessView(APIView):
                 }
             )
 
+        record_room_visit(room=room, user=request.user)
         return Response(
             {
                 "room": RoomSerializer(room, context={"request": request}).data,
@@ -274,6 +299,7 @@ class RoomJoinView(APIView):
         serializer = RoomJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         membership = join_room(room=room, annotator=request.user, password=serializer.validated_data.get("password"))
+        record_room_visit(room=room, user=request.user)
         return Response(RoomMembershipSerializer(membership).data)
 
 
@@ -293,6 +319,34 @@ class RoomPinView(APIView):
             {
                 "room_id": room.id,
                 "is_pinned": is_pinned,
+            }
+        )
+
+
+class RoomPinReorderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomPinReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ordered_room_ids = serializer.validated_data.get("ordered_room_ids")
+        if ordered_room_ids:
+            reorder_room_pins(
+                user=request.user,
+                ordered_room_ids=ordered_room_ids,
+            )
+            pin = room.pins.get(user=request.user)
+        else:
+            pin = reorder_room_pin(
+                room=room,
+                user=request.user,
+                direction=serializer.validated_data["direction"],
+            )
+        return Response(
+            {
+                "room_id": room.id,
+                "sort_order": pin.sort_order,
             }
         )
 

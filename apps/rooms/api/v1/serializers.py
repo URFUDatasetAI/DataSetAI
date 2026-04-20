@@ -1,5 +1,8 @@
 import json
 
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
@@ -8,7 +11,9 @@ from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_prim
 from common.exceptions import ConflictError
 
 ROOM_TEXT_MAX_LENGTH = 255
+ROOM_TITLE_MAX_LENGTH = 128
 ROOM_DESCRIPTION_MAX_LENGTH = 2000
+ROOM_DEADLINE_MAX_DAYS_AHEAD = 365
 
 
 class JsonStringField(serializers.Field):
@@ -44,7 +49,7 @@ class MediaManifestItemSerializer(serializers.Serializer):
 
 
 class RoomCreateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH)
+    title = serializers.CharField(max_length=ROOM_TITLE_MAX_LENGTH)
     description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
@@ -72,6 +77,20 @@ class RoomCreateSerializer(serializers.Serializer):
     )
     labels = JsonStringField(required=False)
     media_manifest = JsonStringField(required=False)
+
+    def validate_deadline(self, value):
+        if value is None:
+            return value
+
+        now = timezone.now()
+        latest_allowed = now + timedelta(days=ROOM_DEADLINE_MAX_DAYS_AHEAD)
+        if value <= now:
+            raise serializers.ValidationError("Укажи дедлайн в будущем.")
+        if value > latest_allowed:
+            raise serializers.ValidationError(
+                f"Дедлайн можно поставить не дальше чем на {ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд."
+            )
+        return value
 
     def validate(self, attrs):
         if attrs.get("cross_validation_enabled"):
@@ -130,7 +149,7 @@ class RoomCreateSerializer(serializers.Serializer):
 
 
 class RoomUpdateSerializer(serializers.Serializer):
-    title = serializers.CharField(max_length=ROOM_TEXT_MAX_LENGTH, required=False)
+    title = serializers.CharField(max_length=ROOM_TITLE_MAX_LENGTH, required=False)
     description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
     dataset_label = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
@@ -139,6 +158,20 @@ class RoomUpdateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
+
+    def validate_deadline(self, value):
+        if value is None:
+            return value
+
+        now = timezone.now()
+        latest_allowed = now + timedelta(days=ROOM_DEADLINE_MAX_DAYS_AHEAD)
+        if value <= now:
+            raise serializers.ValidationError("Укажи дедлайн в будущем.")
+        if value > latest_allowed:
+            raise serializers.ValidationError(
+                f"Дедлайн можно поставить не дальше чем на {ROOM_DEADLINE_MAX_DAYS_AHEAD} дней вперёд."
+            )
+        return value
 
     def validate(self, attrs):
         room = self.instance
@@ -173,6 +206,17 @@ class RoomUpdateSerializer(serializers.Serializer):
         return attrs
 
 
+class RoomDeleteSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
+
+    def validate_password(self, value):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated or not user.check_password(value):
+            raise serializers.ValidationError("Укажи текущий пароль владельца комнаты.")
+        return value
+
+
 class RoomLabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = RoomLabel
@@ -193,6 +237,8 @@ class RoomSerializer(serializers.ModelSerializer):
     completed_tasks = serializers.SerializerMethodField()
     progress_percent = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
+    pin_sort_order = serializers.SerializerMethodField()
+    last_accessed_at = serializers.SerializerMethodField()
     labels = RoomLabelSerializer(many=True, read_only=True)
     export_formats = serializers.SerializerMethodField()
 
@@ -217,6 +263,8 @@ class RoomSerializer(serializers.ModelSerializer):
             "completed_tasks",
             "progress_percent",
             "is_pinned",
+            "pin_sort_order",
+            "last_accessed_at",
             "labels",
             "export_formats",
             "created_at",
@@ -269,6 +317,23 @@ class RoomSerializer(serializers.ModelSerializer):
             return False
 
         return RoomPin.objects.filter(room=obj, user=user).exists()
+
+    def get_pin_sort_order(self, obj):
+        if hasattr(obj, "pin_sort_order"):
+            return obj.pin_sort_order
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated:
+            return None
+
+        pin = RoomPin.objects.filter(room=obj, user=user).order_by("sort_order", "id").first()
+        return pin.sort_order if pin else None
+
+    def get_last_accessed_at(self, obj):
+        if hasattr(obj, "last_accessed_at"):
+            return obj.last_accessed_at.isoformat() if obj.last_accessed_at else None
+        return None
 
     def get_export_formats(self, obj):
         return get_supported_export_formats(room=obj)
@@ -350,3 +415,17 @@ class RoomJoinRequestDecisionSerializer(serializers.Serializer):
 
 class RoomPinSerializer(serializers.Serializer):
     is_pinned = serializers.BooleanField()
+
+
+class RoomPinReorderSerializer(serializers.Serializer):
+    direction = serializers.ChoiceField(choices=("up", "down"), required=False)
+    ordered_room_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        allow_empty=False,
+    )
+
+    def validate(self, attrs):
+        if not attrs.get("direction") and not attrs.get("ordered_room_ids"):
+            raise serializers.ValidationError("Укажи направление или новый порядок закреплённых комнат.")
+        return attrs
