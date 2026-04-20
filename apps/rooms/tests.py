@@ -153,6 +153,7 @@ class RoomListCreateViewTests(TestCase):
         RoomMembership.objects.create(
             room=room,
             user=annotator,
+            invited_by=self.user,
             status=RoomMembership.Status.JOINED,
             role=RoomMembership.Role.ANNOTATOR,
         )
