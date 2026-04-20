@@ -22963,13 +22963,13 @@
                           "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
                           title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
                           onClick: (event) => handleTogglePin(event, room),
-                          children: room.is_pinned ? "?" : "?"
+                          children: room.is_pinned ? "\u2605" : "\u2606"
                         }
                       )
                     ] })
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "???????? ???? ?? ?????????." })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E." })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -22977,26 +22977,26 @@
                     room.id
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "??????: ",
+                    "\u0421\u0442\u0430\u0442\u0443\u0441: ",
                     translateMembership(room.membership_status || "owner")
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "???? ? ???????: ",
+                    "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435: ",
                     translateRole(room.membership_role || "owner")
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "????????: ",
+                    "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441: ",
                     formatPercent(room.progress_percent)
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "??????: ",
+                    "\u0417\u0430\u0434\u0430\u0447\u0438: ",
                     room.completed_tasks,
                     "/",
                     room.total_tasks
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "????????????: ",
-                    room.has_password ? "????????" : "???? ??????????"
+                    "\u0417\u0430\u0449\u0438\u0442\u0430: ",
+                    room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F"
                   ] })
                 ] })
               ]
@@ -23305,6 +23305,12 @@
     function updateLabel(index, key, value) {
       setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
     }
+    function handleOpenFilePicker() {
+      if (!modeConfig.usesFiles) {
+        return;
+      }
+      fileInputRef.current?.click();
+    }
     async function handleSubmit(event) {
       event.preventDefault();
       clearToasts();
@@ -23530,6 +23536,7 @@
               "input",
               {
                 ref: fileInputRef,
+                className: "dataset-box__input",
                 type: "file",
                 disabled: !modeConfig.usesFiles,
                 accept: modeConfig.accept,
@@ -23537,6 +23544,8 @@
                 onChange: (event) => setSelectedFiles(Array.from(event.currentTarget.files || []))
               }
             ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted dataset-box__picker", type: "button", disabled: !modeConfig.usesFiles, onClick: handleOpenFilePicker, children: modeConfig.multiple ? "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B" : "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0444\u0430\u0439\u043B" }),
+            !modeConfig.usesFiles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0414\u043B\u044F demo-\u0440\u0435\u0436\u0438\u043C\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F." }) : null,
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: summarizeSelectedFiles(selectedFiles) })
           ] })
         ] }),

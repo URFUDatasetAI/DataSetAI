@@ -1840,22 +1840,22 @@ function RoomsPage() {
                           title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
                           onClick={(event) => handleTogglePin(event, room)}
                         >
-                          {room.is_pinned ? "?" : "?"}
+                          {room.is_pinned ? "★" : "☆"}
                         </button>
                       </div>
                     </div>
                     <div className="room-card__title">{room.title}</div>
-                    <div className="room-card__meta">{room.description || "???????? ???? ?? ?????????."}</div>
+                    <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
                   </div>
                   <div className="room-card__footer">
                     <div>ID: {room.id}</div>
-                    <div>??????: {translateMembership(room.membership_status || "owner")}</div>
-                    <div>???? ? ???????: {translateRole(room.membership_role || "owner")}</div>
-                    <div>????????: {formatPercent(room.progress_percent)}</div>
+                    <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
+                    <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
+                    <div>Прогресс: {formatPercent(room.progress_percent)}</div>
                     <div>
-                      ??????: {room.completed_tasks}/{room.total_tasks}
+                      Задачи: {room.completed_tasks}/{room.total_tasks}
                     </div>
-                    <div>????????????: {room.has_password ? "????????" : "???? ??????????"}</div>
+                    <div>Защита: {room.has_password ? "С паролем" : "Без пароля"}</div>
                   </div>
                 </article>
               );
@@ -2257,6 +2257,13 @@ function RoomCreatePage() {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
   }
 
+  function handleOpenFilePicker() {
+    if (!modeConfig.usesFiles) {
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     clearToasts();
@@ -2480,12 +2487,17 @@ function RoomCreatePage() {
             <div className="dataset-box__actions dataset-box__actions--stack">
               <input
                 ref={fileInputRef}
+                className="dataset-box__input"
                 type="file"
                 disabled={!modeConfig.usesFiles}
                 accept={modeConfig.accept}
                 multiple={modeConfig.multiple}
                 onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
               />
+              <button className="btn btn--muted dataset-box__picker" type="button" disabled={!modeConfig.usesFiles} onClick={handleOpenFilePicker}>
+                {modeConfig.multiple ? "Выбрать файлы" : "Выбрать файл"}
+              </button>
+              {!modeConfig.usesFiles ? <div className="panel-note">Для demo-режима загрузка файлов не требуется.</div> : null}
               <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
             </div>
           </div>
