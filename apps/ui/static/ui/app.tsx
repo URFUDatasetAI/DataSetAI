@@ -2257,13 +2257,6 @@ function RoomCreatePage() {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
   }
 
-  function handleOpenFilePicker() {
-    if (!modeConfig.usesFiles) {
-      return;
-    }
-    fileInputRef.current?.click();
-  }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     clearToasts();
@@ -2487,17 +2480,12 @@ function RoomCreatePage() {
             <div className="dataset-box__actions dataset-box__actions--stack">
               <input
                 ref={fileInputRef}
-                className="dataset-box__input"
                 type="file"
                 disabled={!modeConfig.usesFiles}
                 accept={modeConfig.accept}
                 multiple={modeConfig.multiple}
                 onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
               />
-              <button className="btn btn--muted dataset-box__picker" type="button" disabled={!modeConfig.usesFiles} onClick={handleOpenFilePicker}>
-                {modeConfig.multiple ? "Выбрать файлы" : "Выбрать файл"}
-              </button>
-              {!modeConfig.usesFiles ? <div className="panel-note">Для demo-режима загрузка файлов не требуется.</div> : null}
               <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
             </div>
           </div>

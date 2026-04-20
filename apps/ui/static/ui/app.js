@@ -23305,12 +23305,6 @@
     function updateLabel(index, key, value) {
       setLabels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item));
     }
-    function handleOpenFilePicker() {
-      if (!modeConfig.usesFiles) {
-        return;
-      }
-      fileInputRef.current?.click();
-    }
     async function handleSubmit(event) {
       event.preventDefault();
       clearToasts();
@@ -23536,7 +23530,6 @@
               "input",
               {
                 ref: fileInputRef,
-                className: "dataset-box__input",
                 type: "file",
                 disabled: !modeConfig.usesFiles,
                 accept: modeConfig.accept,
@@ -23544,8 +23537,6 @@
                 onChange: (event) => setSelectedFiles(Array.from(event.currentTarget.files || []))
               }
             ),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted dataset-box__picker", type: "button", disabled: !modeConfig.usesFiles, onClick: handleOpenFilePicker, children: modeConfig.multiple ? "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0444\u0430\u0439\u043B\u044B" : "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u0444\u0430\u0439\u043B" }),
-            !modeConfig.usesFiles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0414\u043B\u044F demo-\u0440\u0435\u0436\u0438\u043C\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F." }) : null,
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: summarizeSelectedFiles(selectedFiles) })
           ] })
         ] }),
