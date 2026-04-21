@@ -21798,22 +21798,22 @@
       usesLabels: false
     },
     json: {
-      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043E\u0434\u0438\u043D JSON-\u0444\u0430\u0439\u043B. \u041A\u0430\u0436\u0434\u044B\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D \u043A\u0430\u043A \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430.",
-      accept: ".json,application/json",
+      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043E\u0434\u0438\u043D JSON-\u0444\u0430\u0439\u043B \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0441 JSON-\u0434\u0430\u0442\u0430\u0441\u0435\u0442\u043E\u043C. \u041A\u0430\u0436\u0434\u044B\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D \u043A\u0430\u043A \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430.",
+      accept: ".json,.zip,application/json,application/zip",
       multiple: false,
       usesFiles: true,
       usesLabels: false
     },
     image: {
-      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0439. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0439 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0438 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F bbox-\u0437\u0430\u0434\u0430\u0447\u0430.",
-      accept: "image/*",
+      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0439 \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0441 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F\u043C\u0438. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0439 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0438 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F bbox-\u0437\u0430\u0434\u0430\u0447\u0430.",
+      accept: "image/*,.zip,application/zip",
       multiple: true,
       usesFiles: true,
       usesLabels: true
     },
     video: {
-      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043D\u0430\u0431\u043E\u0440 \u0432\u0438\u0434\u0435\u043E\u0440\u043E\u043B\u0438\u043A\u043E\u0432. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0432\u0438\u0434\u0435\u043E \u0431\u0443\u0434\u0443\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C.",
-      accept: "video/*",
+      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043D\u0430\u0431\u043E\u0440 \u0432\u0438\u0434\u0435\u043E\u0440\u043E\u043B\u0438\u043A\u043E\u0432 \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0441 \u0432\u0438\u0434\u0435\u043E. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0432\u0438\u0434\u0435\u043E \u0431\u0443\u0434\u0443\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C.",
+      accept: "video/*,.zip,application/zip",
       multiple: true,
       usesFiles: true,
       usesLabels: true
@@ -22070,6 +22070,15 @@
       return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E";
     }
     return taskStatusLabels[status] || status;
+  }
+  function translateReviewOutcome(outcome) {
+    if (outcome === "accepted") {
+      return "\u041F\u0440\u0438\u043D\u044F\u0442\u0430";
+    }
+    if (outcome === "rejected") {
+      return "\u041D\u0435 \u043F\u0440\u0438\u043D\u044F\u0442\u0430";
+    }
+    return "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438";
   }
   function translateDatasetMode(mode) {
     if (!mode) {
@@ -23257,6 +23266,7 @@
     const [crossValidationEnabled, setCrossValidationEnabled] = (0, import_react.useState)(false);
     const [crossValidationCount, setCrossValidationCount] = (0, import_react.useState)("2");
     const [crossValidationThreshold, setCrossValidationThreshold] = (0, import_react.useState)("80");
+    const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
     const [datasetMode, setDatasetMode] = (0, import_react.useState)("demo");
     const [annotationWorkflow, setAnnotationWorkflow] = (0, import_react.useState)("standard");
     const [datasetLabel, setDatasetLabel] = (0, import_react.useState)("\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442");
@@ -23323,6 +23333,7 @@
         payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
         payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
         payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
+        payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
         normalizedAnnotatorIds.forEach((item) => payload.append("annotator_ids", String(item)));
         selectedFiles.forEach((file) => payload.append("dataset_files", file));
         if (deadline) {
@@ -23427,6 +23438,13 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0412\u043A\u043B\u044E\u0447\u0438\u0442\u044C" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: crossValidationEnabled, name: "cross_validation_enabled", type: "checkbox", onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked) })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: ownerIsAnnotator, name: "owner_is_annotator", type: "checkbox", onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked) })
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
@@ -23560,6 +23578,7 @@
     const [crossValidationEnabled, setCrossValidationEnabled] = (0, import_react.useState)(false);
     const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = (0, import_react.useState)("2");
     const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = (0, import_react.useState)("80");
+    const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
     const [initialHasPassword, setInitialHasPassword] = (0, import_react.useState)(false);
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
@@ -23581,6 +23600,7 @@
           setCrossValidationEnabled(Boolean(nextRoom.cross_validation_enabled));
           setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
           setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
+          setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
         } catch (error) {
           addToast(getErrorMessage(error), "error");
         }
@@ -23628,7 +23648,8 @@
             has_password: passwordEnabled,
             cross_validation_enabled: crossValidationEnabled,
             cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
-            cross_validation_similarity_threshold: nextCrossValidationThreshold
+            cross_validation_similarity_threshold: nextCrossValidationThreshold,
+            owner_is_annotator: ownerIsAnnotator
           }
         });
         addToast(`\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B #${roomId} \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u044B.`, "success");
@@ -23721,6 +23742,20 @@
                   checked: crossValidationEnabled,
                   type: "checkbox",
                   onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked)
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  checked: ownerIsAnnotator,
+                  type: "checkbox",
+                  onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked)
                 }
               )
             ] })
@@ -24389,7 +24424,7 @@
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0438\u0441\u043A" }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: reviewSearch, type: "text", placeholder: "\u0417\u0430\u0434\u0430\u0447\u0430, \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0442\u0438\u043F", onChange: (event) => setReviewSearch(event.currentTarget.value) })
                   ] }),
-                  reviewTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438." }) : !reviewTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412 \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0439 \u0432\u044B\u0431\u043E\u0440\u043A\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438." }) : !filteredReviewTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E \u044D\u0442\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443 \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list annotators-list--scroll", children: filteredReviewTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  reviewTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438." }) : !reviewTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0420\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0445 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442." }) : !filteredReviewTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E \u044D\u0442\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443 \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list annotators-list--scroll", children: filteredReviewTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                     "button",
                     {
                       className: `annotator-row review-task-row ${task.id === selectedReviewTaskId ? "is-active" : ""}`,
@@ -24404,7 +24439,7 @@
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: task.source_name || translateSourceType(task.source_type) })
                         ] }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__brief", children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: task.validation_score == null ? "\u0411\u0435\u0437 score" : `${task.validation_score}%` }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: translateReviewOutcome(task.review_outcome) }),
                           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                             task.annotations_count,
                             " \u0430\u043D\u043D\u043E\u0442\u0430\u0446."
@@ -24427,7 +24462,7 @@
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u0442\u0443\u0441" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateTaskStatus(reviewDetail.task.status) })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateReviewOutcome(reviewDetail.review_outcome) })
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F" }),
@@ -24460,6 +24495,7 @@
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "review-annotation-entry__head", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: annotation.annotator_display_name || `#${annotation.annotator_id}` }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `review-annotation-entry__status review-annotation-entry__status--${annotation.review_outcome}`, children: translateReviewOutcome(annotation.review_outcome) }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
                         "\u0420\u0430\u0443\u043D\u0434 ",
                         annotation.round_number,

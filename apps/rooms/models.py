@@ -75,6 +75,7 @@ class Room(TimeStampedModel):
     cross_validation_enabled = models.BooleanField(default=False)
     cross_validation_annotators_count = models.PositiveSmallIntegerField(default=1)
     cross_validation_similarity_threshold = models.PositiveSmallIntegerField(default=80)
+    owner_is_annotator = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

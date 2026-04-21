@@ -254,6 +254,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "cross_validation_enabled": room.cross_validation_enabled,
             "cross_validation_annotators_count": room.cross_validation_annotators_count,
             "cross_validation_similarity_threshold": room.cross_validation_similarity_threshold,
+            "owner_is_annotator": room.owner_is_annotator,
             "deadline": room.deadline.isoformat() if room.deadline else None,
             "has_password": room.has_password,
             "is_pinned": RoomPin.objects.filter(room=room, user=actor).exists(),
@@ -323,8 +324,11 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
 
     annotators = []
     memberships = RoomMembership.objects.filter(room=room).select_related("user").order_by("user__full_name", "user__email", "user_id")
+    listed_user_ids: set[int] = set()
     for membership in memberships:
         user = membership.user
+        listed_user_ids.add(user.id)
+        is_owner = user.id == room.created_by_id
         user_completed = _count_completed_items_for_user(room=room, user=user)
         user_in_progress = TaskAssignment.objects.filter(
             task__room=room,
@@ -340,8 +344,8 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
                 "email": user.email,
                 "full_name": user.full_name,
                 "display_name": user.display_name,
-                "status": membership.status,
-                "role": membership.role,
+                "status": "owner" if is_owner else membership.status,
+                "role": "owner" if is_owner else membership.role,
                 "joined_at": membership.joined_at.isoformat() if membership.joined_at else None,
                 "completed_tasks": user_completed,
                 "in_progress_tasks": user_in_progress,
@@ -352,6 +356,37 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
                 ),
             }
         )
+
+    if room.owner_is_annotator and room.created_by_id not in listed_user_ids:
+        owner = room.created_by
+        owner_completed = _count_completed_items_for_user(room=room, user=owner)
+        owner_in_progress = TaskAssignment.objects.filter(
+            task__room=room,
+            annotator=owner,
+            status=TaskAssignment.Status.IN_PROGRESS,
+        ).count()
+        owner_remaining = max(total_tasks - owner_completed, 0)
+        owner_progress = round((owner_completed / total_tasks) * 100, 1) if total_tasks else 0.0
+        annotators.append(
+            {
+                "user_id": owner.id,
+                "email": owner.email,
+                "full_name": owner.full_name,
+                "display_name": owner.display_name,
+                "status": "owner",
+                "role": "owner",
+                "joined_at": room.created_at.isoformat(),
+                "completed_tasks": owner_completed,
+                "in_progress_tasks": owner_in_progress,
+                "remaining_tasks": owner_remaining,
+                "progress_percent": owner_progress,
+                "activity": build_activity_series(
+                    annotations_qs=Annotation.objects.filter(task__room=room, annotator=owner),
+                ),
+            }
+        )
+
+    annotators.sort(key=lambda item: ((item["full_name"] or item["display_name"] or item["email"] or "").lower(), item["user_id"]))
 
     payload["annotators"] = annotators
     if can_invite_members(room=room, user=actor, membership=actor_membership):

@@ -84,6 +84,7 @@ type RoomItem = {
   cross_validation_enabled: boolean;
   cross_validation_annotators_count: number;
   cross_validation_similarity_threshold: number;
+  owner_is_annotator: boolean;
   deadline: string | null;
   created_by_id: number;
   membership_status: string | null;
@@ -161,6 +162,7 @@ type RoomDashboard = {
     cross_validation_enabled: boolean;
     cross_validation_annotators_count: number;
     cross_validation_similarity_threshold: number;
+    owner_is_annotator: boolean;
     deadline: string | null;
     has_password: boolean;
     is_pinned: boolean;
@@ -234,6 +236,7 @@ type ReviewTaskListItem = {
   source_file_url: string | null;
   annotations_count: number;
   annotator_ids: number[];
+  review_outcome: string;
   updated_at: string;
 };
 
@@ -244,6 +247,7 @@ type AnnotationItem = {
   annotator_id: number;
   annotator_display_name: string;
   round_number: number;
+  review_outcome: string;
   result_payload: Record<string, any>;
   submitted_at: string;
   created_at: string;
@@ -287,6 +291,7 @@ type ReviewTaskDetail = {
   task: TaskItem;
   consensus_payload: Record<string, any> | null;
   annotations: AnnotationItem[];
+  review_outcome: string;
 };
 
 type ToastItem = {
@@ -407,22 +412,22 @@ const datasetModeConfig: Record<
     usesLabels: false,
   },
   json: {
-    hint: "Загрузи один JSON-файл. Каждый элемент массива будет создан как отдельная задача.",
-    accept: ".json,application/json",
+    hint: "Загрузи один JSON-файл или ZIP-архив с JSON-датасетом. Каждый элемент массива будет создан как отдельная задача.",
+    accept: ".json,.zip,application/json,application/zip",
     multiple: false,
     usesFiles: true,
     usesLabels: false,
   },
   image: {
-    hint: "Загрузи набор фотографий. Для каждой фотографии будет создана отдельная bbox-задача.",
-    accept: "image/*",
+    hint: "Загрузи набор фотографий или ZIP-архив с изображениями. Для каждой фотографии будет создана отдельная bbox-задача.",
+    accept: "image/*,.zip,application/zip",
     multiple: true,
     usesFiles: true,
     usesLabels: true,
   },
   video: {
-    hint: "Загрузи набор видеороликов. Для каждого видео будут доступны bbox-разметки по кадрам.",
-    accept: "video/*",
+    hint: "Загрузи набор видеороликов или ZIP-архив с видео. Для каждого видео будут доступны bbox-разметки по кадрам.",
+    accept: "video/*,.zip,application/zip",
     multiple: true,
     usesFiles: true,
     usesLabels: true,
@@ -726,6 +731,16 @@ function translateTaskStatus(status: string | null | undefined) {
     return "Неизвестно";
   }
   return taskStatusLabels[status] || status;
+}
+
+function translateReviewOutcome(outcome: string | null | undefined) {
+  if (outcome === "accepted") {
+    return "Принята";
+  }
+  if (outcome === "rejected") {
+    return "Не принята";
+  }
+  return "Ожидает проверки";
 }
 
 function translateDatasetMode(mode: string | null | undefined) {
@@ -2174,6 +2189,7 @@ function RoomCreatePage() {
   const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
   const [crossValidationCount, setCrossValidationCount] = useState("2");
   const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
+  const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [datasetMode, setDatasetMode] = useState("demo");
   const [annotationWorkflow, setAnnotationWorkflow] = useState("standard");
   const [datasetLabel, setDatasetLabel] = useState("Тестовый датасет");
@@ -2255,6 +2271,7 @@ function RoomCreatePage() {
       payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
       payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
       payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
+      payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
       normalizedAnnotatorIds.forEach((item) => payload.append("annotator_ids", String(item)));
       selectedFiles.forEach((file) => payload.append("dataset_files", file));
 
@@ -2362,6 +2379,13 @@ function RoomCreatePage() {
               <span className="field--checkbox__control">
                 <span className="field--checkbox__text">Включить</span>
                 <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
+              </span>
+            </label>
+            <label className="field field--checkbox">
+              <span>Создатель в разметке</span>
+              <span className="field--checkbox__control">
+                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
               </span>
             </label>
             <label className="field">
@@ -2508,6 +2532,7 @@ function RoomEditPage() {
   const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
   const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = useState("2");
   const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = useState("80");
+  const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [initialHasPassword, setInitialHasPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2531,6 +2556,7 @@ function RoomEditPage() {
         setCrossValidationEnabled(Boolean(nextRoom.cross_validation_enabled));
         setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
         setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
+        setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -2589,6 +2615,7 @@ function RoomEditPage() {
           cross_validation_enabled: crossValidationEnabled,
           cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
           cross_validation_similarity_threshold: nextCrossValidationThreshold,
+          owner_is_annotator: ownerIsAnnotator,
         },
       });
       addToast(`Настройки комнаты #${roomId} обновлены.`, "success");
@@ -2687,6 +2714,17 @@ function RoomEditPage() {
                   checked={crossValidationEnabled}
                   type="checkbox"
                   onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
+                />
+              </span>
+            </label>
+            <label className="field field--checkbox">
+              <span>Создатель в разметке</span>
+              <span className="field--checkbox__control">
+                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                <input
+                  checked={ownerIsAnnotator}
+                  type="checkbox"
+                  onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)}
                 />
               </span>
             </label>
@@ -3563,7 +3601,7 @@ function RoomDetailPage() {
                 {reviewTasksLoading ? (
                   <div className="empty-card">Загружаем объекты для проверки.</div>
                 ) : !reviewTasks.length ? (
-                  <div className="empty-card">В итоговой выборке пока нет объектов для проверки.</div>
+                  <div className="empty-card">Размеченных объектов для проверки пока нет.</div>
                 ) : !filteredReviewTasks.length ? (
                   <div className="empty-card">По этому запросу объекты не найдены.</div>
                 ) : (
@@ -3580,7 +3618,7 @@ function RoomDetailPage() {
                           <span>{task.source_name || translateSourceType(task.source_type)}</span>
                         </div>
                         <div className="annotator-row__brief">
-                          <div>{task.validation_score == null ? "Без score" : `${task.validation_score}%`}</div>
+                          <div>{translateReviewOutcome(task.review_outcome)}</div>
                           <div>{task.annotations_count} аннотац.</div>
                         </div>
                       </button>
@@ -3601,7 +3639,7 @@ function RoomDetailPage() {
                     </div>
                     <div className="summary-row">
                       <span>Статус</span>
-                      <strong>{translateTaskStatus(reviewDetail.task.status)}</strong>
+                      <strong>{translateReviewOutcome(reviewDetail.review_outcome)}</strong>
                     </div>
                     <div className="summary-row">
                       <span>Тип</span>
@@ -3657,6 +3695,9 @@ function RoomDetailPage() {
                             <header className="review-annotation-entry__head">
                               <strong>Аннотация пользователя</strong>
                               <span>{annotation.annotator_display_name || `#${annotation.annotator_id}`}</span>
+                              <span className={`review-annotation-entry__status review-annotation-entry__status--${annotation.review_outcome}`}>
+                                {translateReviewOutcome(annotation.review_outcome)}
+                              </span>
                               <span>
                                 Раунд {annotation.round_number} · {formatDate(annotation.submitted_at)}
                               </span>
