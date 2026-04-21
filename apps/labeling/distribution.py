@@ -111,6 +111,9 @@ def get_task_designated_annotator_ids(
     if not assignment_pool_ids or reviews_per_round <= 0:
         return []
 
+    if reviews_per_round == 1:
+        return [annotator_id for annotator_id in assignment_pool_ids if annotator_id not in (current_round_annotator_ids or set())]
+
     current_round_annotator_ids = current_round_annotator_ids or set()
     designated_annotator_ids: list[int] = []
 

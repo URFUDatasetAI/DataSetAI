@@ -150,6 +150,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Balanced room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
         )
@@ -191,6 +192,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Single group room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
         )
@@ -234,6 +236,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Single group assignment flow",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
             cross_validation_similarity_threshold=60,
@@ -317,6 +320,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Grouped room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
         )
@@ -363,6 +367,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Consensus room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
             cross_validation_similarity_threshold=80,
@@ -453,6 +458,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Grouped consensus room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
             cross_validation_similarity_threshold=80,
@@ -522,6 +528,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Review room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
             cross_validation_similarity_threshold=60,
@@ -599,6 +606,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
         room = Room.objects.create(
             title="Accepted cleanup room",
             created_by=self.owner,
+            owner_is_annotator=False,
             cross_validation_enabled=True,
             cross_validation_annotators_count=2,
             cross_validation_similarity_threshold=60,

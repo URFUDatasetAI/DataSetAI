@@ -212,7 +212,7 @@ class RoomListCreateViewTests(TestCase):
             owner_is_annotator=True,
         )
 
-        response = self.client.get(f"/api/v1/rooms/{room.id}/")
+        response = self.client.get(f"/api/v1/rooms/{room.id}/dashboard/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         annotators_by_id = {item["user_id"]: item for item in response.data["annotators"]}
