@@ -2290,6 +2290,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor__identity,
+.room-editor__tabs,
 .room-editor__actions,
 .room-editor__summary,
 .room-editor__body,
@@ -2357,6 +2358,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
     flex: 0 0 auto;
 }
 
+.room-editor__tabs {
+    align-items: center;
+    gap: 5px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
 .room-editor .btn--compact {
     padding: 8px 10px;
 }
@@ -2421,7 +2429,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     height: 100%;
     margin: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) auto;
     align-items: stretch;
     border: 0;
     background: transparent;
@@ -2446,6 +2454,123 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding: 8px 10px 10px;
     gap: 10px;
     overflow: hidden;
+}
+
+.room-editor__taskrail {
+    min-width: 0;
+    border-right: 1px solid var(--editor-border);
+    background: var(--editor-surface-muted);
+    overflow: hidden;
+}
+
+.editor-sidepanel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    height: 100%;
+    padding: 10px 12px 12px;
+    min-width: 0;
+}
+
+.editor-sidepanel__head,
+.editor-sidepanel__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.editor-sidepanel__actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+}
+
+.editor-sidepanel__section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.editor-sidepanel__label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+}
+
+.editor-sidepanel__note {
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--text-soft);
+}
+
+.room-editor__tasklist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.room-editor__taskitem {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--editor-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.room-editor__taskitem:hover {
+    border-color: var(--editor-border-strong);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+.room-editor__taskitem.is-active {
+    border-color: rgba(255, 201, 25, 0.34);
+    background: rgba(255, 201, 25, 0.08);
+}
+
+.room-editor__taskitem strong {
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.room-editor__taskitem span,
+.room-editor__taskitem small {
+    color: var(--text-soft);
+}
+
+.room-editor__source-switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.room-editor__source-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 10px;
+    border: 1px solid var(--editor-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-size: 0.78rem;
+    line-height: 1.2;
+    cursor: pointer;
+}
+
+.room-editor__source-chip.is-active {
+    border-color: rgba(255, 201, 25, 0.34);
+    background: rgba(255, 201, 25, 0.1);
 }
 
 .room-editor__stage-surface {
@@ -2815,7 +2940,14 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 @media (max-width: 1360px) {
-    .room-editor__topbar {
+.room-editor__topbar {
+        flex-wrap: wrap;
+    }
+
+    .room-editor__tabs {
+        order: 3;
+        width: 100%;
+        justify-content: flex-start;
         flex-wrap: wrap;
     }
 
@@ -2845,8 +2977,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
     .room-editor__body {
         margin: 12px;
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: auto auto;
+        grid-template-rows: auto auto auto;
         overflow: visible;
+    }
+
+    .room-editor__taskrail {
+        border-right: 0;
+        border-bottom: 1px solid rgba(23, 23, 23, 0.08);
     }
 
     .room-editor__stage,

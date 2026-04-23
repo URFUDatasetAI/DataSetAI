@@ -21,6 +21,7 @@ def make_room(
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
+    owner_is_annotator: bool = True,
 ) -> Room:
     return Room.objects.create(
         title=title,
@@ -31,6 +32,7 @@ def make_room(
         cross_validation_enabled=cross_validation_enabled,
         cross_validation_annotators_count=cross_validation_annotators_count,
         cross_validation_similarity_threshold=cross_validation_similarity_threshold,
+        owner_is_annotator=owner_is_annotator,
     )
 
 

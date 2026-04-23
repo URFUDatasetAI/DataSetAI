@@ -294,6 +294,29 @@ type ReviewTaskDetail = {
   review_outcome: string;
 };
 
+type EditableSubmissionListItem = {
+  id: number;
+  status: string;
+  current_round: number;
+  validation_score: number | null;
+  source_type: string;
+  workflow_stage: string;
+  source_name: string | null;
+  source_file_url: string | null;
+  editable: boolean;
+  editable_reason: string | null;
+  submitted_at: string;
+};
+
+type EditableSubmissionDetail = {
+  task: TaskItem;
+  annotation: AnnotationItem;
+  editable: boolean;
+  editable_reason: string | null;
+};
+
+type EditorWorkspaceMode = "queue" | "submitted" | "review";
+
 type ToastItem = {
   id: number;
   message: string;
@@ -1016,6 +1039,41 @@ function getPayloadAnnotations(payload: any) {
       annotation.points.length === 4 &&
       typeof annotation.label_id === "number"
   );
+}
+
+function normalizeEditorWorkspaceMode(
+  requestedMode: string | null | undefined,
+  options: { canAnnotate: boolean; canReview: boolean }
+): EditorWorkspaceMode {
+  if (requestedMode === "review" && options.canReview) {
+    return "review";
+  }
+  if (requestedMode === "submitted" && options.canAnnotate) {
+    return "submitted";
+  }
+  if (requestedMode === "queue" && options.canAnnotate) {
+    return "queue";
+  }
+  if (options.canAnnotate) {
+    return "queue";
+  }
+  return "review";
+}
+
+function replaceEditorUrlQuery(params: { mode: EditorWorkspaceMode; taskId?: number | null; annotatorId?: number | null }) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("mode", params.mode);
+  if (params.taskId) {
+    url.searchParams.set("task", String(params.taskId));
+  } else {
+    url.searchParams.delete("task");
+  }
+  if (params.annotatorId) {
+    url.searchParams.set("annotator", String(params.annotatorId));
+  } else {
+    url.searchParams.delete("annotator");
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function ToastCard({
@@ -3468,12 +3526,18 @@ function RoomDetailPage() {
                   <h2>Рабочая среда</h2>
                 </div>
                 <div className="action-strip">
-                  <button className="btn btn--primary" type="button" onClick={() => (window.location.href = `/rooms/${dashboard.room.id}/work/`)}>
+                  <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/work/`}>
                     Приступить к работе
-                  </button>
+                  </a>
+                  {dashboard.actor.can_review ? (
+                    <a className="btn btn--secondary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
+                      Открыть проверку
+                    </a>
+                  ) : null}
                 </div>
                 <div className="panel-note">
-                  На этой странице доступен только обзор комнаты. Получение задач и отправка результата находятся на отдельном рабочем экране.
+                  На этой странице доступен только обзор комнаты. Получение задач, редактирование своих submit-ов и review итоговых разметок
+                  находятся на отдельном рабочем экране.
                 </div>
               </div>
             </div>
@@ -3693,62 +3757,19 @@ function RoomDetailPage() {
               </div>
             </section>
 
-            <section className={`panel-card review-comparison-section ${reviewDetail ? "" : "hidden"}`}>
-              <div className="review-comparison-grid">
-                <div className="review-comparison-column">
-                  <div className="panel-card__head">
-                    <h2>Итоговая разметка</h2>
-                  </div>
-                  {reviewDetail ? (
-                    <div className="review-comparison-stack">
-                      <ReviewGraphicPreview task={reviewDetail.task} payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
-                      <ReviewTextSummary payload={reviewDetail.consensus_payload} labels={dashboard.labels} />
-                      {bootstrap.app_debug_mode && reviewDetail.consensus_payload ? (
-                        <pre className="payload-preview">{JSON.stringify(reviewDetail.consensus_payload, null, 2)}</pre>
-                      ) : null}
-                      {!reviewDetail.consensus_payload ? <div className="panel-note">Финальный payload для этой задачи пока отсутствует.</div> : null}
-                    </div>
-                  ) : (
-                    <div className="empty-card">Выбери размеченный объект в списке выше.</div>
-                  )}
-                </div>
-                <div className="review-comparison-column">
-                  {reviewDetail ? (
-                    <div className="review-comparison-stack">
-                      {reviewDetail.annotations.length ? (
-                        reviewDetail.annotations.map((annotation) => (
-                          <section key={annotation.id} className="review-annotation-entry">
-                            <header className="review-annotation-entry__head">
-                              <strong>Аннотация пользователя</strong>
-                              <span>{annotation.annotator_display_name || `#${annotation.annotator_id}`}</span>
-                              <span className={`review-annotation-entry__status review-annotation-entry__status--${annotation.review_outcome}`}>
-                                {translateReviewOutcome(annotation.review_outcome)}
-                              </span>
-                              <span>
-                                Раунд {annotation.round_number} · {formatDate(annotation.submitted_at)}
-                              </span>
-                            </header>
-                            <ReviewGraphicPreview task={reviewDetail.task} payload={annotation.result_payload} labels={dashboard.labels} />
-                            <ReviewTextSummary payload={annotation.result_payload} labels={dashboard.labels} />
-                            {bootstrap.app_debug_mode ? <pre className="payload-preview">{JSON.stringify(annotation.result_payload, null, 2)}</pre> : null}
-                          </section>
-                        ))
-                      ) : (
-                        <div className="panel-note">Аннотации для этой задачи пока отсутствуют.</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="empty-card">Выбери размеченный объект в списке выше.</div>
-                  )}
-                </div>
+            <section className="panel-card review-comparison-section">
+              <div className="panel-card__head">
+                <h2>Editor Review</h2>
               </div>
-              {reviewDetail ? (
-                <div className="review-comparison-actions">
-                  <button className="btn btn--danger" type="button" onClick={handleRejectTask}>
-                    Отклонить разметку
-                  </button>
-                </div>
-              ) : null}
+              <div className="panel-note">
+                Детальное сравнение итоговой разметки и пользовательских версий теперь открывается внутри fullscreen editor-а.
+                На странице комнаты оставлен только обзор и быстрый переход в review-режим.
+              </div>
+              <div className="action-strip">
+                <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
+                  Открыть проверку в editor-е
+                </a>
+              </div>
             </section>
           </div>
         </details>
@@ -3799,6 +3820,11 @@ function RoomDetailPage() {
 type MediaEditorController = {
   reset: (placeholderText?: string) => void;
   loadTask: (task: TaskItem | null) => void;
+  loadTaskWithPayload: (
+    task: TaskItem | null,
+    payload: Record<string, any> | null,
+    options?: { readOnly?: boolean; placeholderText?: string }
+  ) => void;
   hasUnlabeledAnnotations: () => boolean;
   getPayload: () => Record<string, any>;
   destroy: () => void;
@@ -3856,6 +3882,7 @@ function createMediaAnnotationEditor(options: {
     baseCanvasWidth: 0,
     baseCanvasHeight: 0,
     isPanKeyActive: false,
+    readOnly: false,
   };
 
   function getLabels() {
@@ -3868,6 +3895,10 @@ function createMediaAnnotationEditor(options: {
 
   function isTextTranscriptionTask() {
     return getTask()?.workflow_stage === "text_transcription";
+  }
+
+  function isReadOnly() {
+    return editor.readOnly;
   }
 
   function getLabelById(labelId: number | null) {
@@ -4082,6 +4113,32 @@ function createMediaAnnotationEditor(options: {
     annotation.points = normalizePoints(annotation.points, naturalWidth, naturalHeight);
   }
 
+  function buildLoadedAnnotations(task: TaskItem, payload: Record<string, any> | null) {
+    const sourceAnnotations =
+      payload && Array.isArray(payload.annotations)
+        ? payload.annotations
+        : isTextTranscriptionTask()
+          ? task.input_payload?.detected_annotations || []
+          : [];
+
+    return sourceAnnotations.map((annotation: any, index: number) => ({
+      local_id: `${task.id}-${index}-${annotation?.frame || 0}`,
+      type: annotation?.type || "bbox",
+      label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
+      points: Array.isArray(annotation?.points)
+        ? normalizePoints(
+            annotation.points.map((point: any) => Number(point) || 0),
+            Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
+            Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
+          )
+        : [0, 0, 0, 0],
+      frame: Number(annotation?.frame || 0),
+      attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
+      occluded: Boolean(annotation?.occluded),
+      text: typeof annotation?.text === "string" ? annotation.text : "",
+    }));
+  }
+
   function buildPayload() {
     return {
       annotations: editor.annotations
@@ -4289,7 +4346,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function updateClearButtonVisibility() {
-    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask());
+    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask() || isReadOnly());
   }
 
   function renderPalette() {
@@ -4300,7 +4357,7 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       options.labelPalette.innerHTML = labels
         .map(
           (label) => `
@@ -4311,7 +4368,9 @@ function createMediaAnnotationEditor(options: {
           `
         )
         .join("");
-      setActiveLabel(null);
+      if (isTextTranscriptionTask() || isReadOnly()) {
+        setActiveLabel(null);
+      }
       return;
     }
 
@@ -4364,23 +4423,25 @@ function createMediaAnnotationEditor(options: {
                 <small>frame ${annotation.frame}</small>
               </div>
               <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
-              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="Введи текст для области">${annotation.text || ""}</textarea>
+              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="Введи текст для области" ${isReadOnly() ? "readonly" : ""}>${annotation.text || ""}</textarea>
             </div>
           `;
         })
         .join("");
 
-      options.annotationList.querySelectorAll<HTMLTextAreaElement>("[data-text-id]").forEach((textarea) => {
-        textarea.addEventListener("input", (event) => {
-          const target = event.currentTarget as HTMLTextAreaElement;
-          const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
-          if (!annotation) {
-            return;
-          }
-          annotation.text = target.value;
-          updateResultPreview();
+      if (!isReadOnly()) {
+        options.annotationList.querySelectorAll<HTMLTextAreaElement>("[data-text-id]").forEach((textarea) => {
+          textarea.addEventListener("input", (event) => {
+            const target = event.currentTarget as HTMLTextAreaElement;
+            const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
+            if (!annotation) {
+              return;
+            }
+            annotation.text = target.value;
+            updateResultPreview();
+          });
         });
-      });
+      }
       return;
     }
 
@@ -4396,17 +4457,19 @@ function createMediaAnnotationEditor(options: {
               <small>frame ${annotation.frame}</small>
             </div>
             <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
-            <button class="btn btn--muted btn--compact" type="button" data-remove-id="${annotation.local_id}">Удалить</button>
+            ${isReadOnly() ? "" : `<button class="btn btn--muted btn--compact" type="button" data-remove-id="${annotation.local_id}">Удалить</button>`}
           </div>
         `;
       })
       .join("");
 
-    options.annotationList.querySelectorAll<HTMLButtonElement>("[data-remove-id]").forEach((button) => {
-      button.addEventListener("click", () => {
-        removeAnnotation(button.dataset.removeId);
+    if (!isReadOnly()) {
+      options.annotationList.querySelectorAll<HTMLButtonElement>("[data-remove-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          removeAnnotation(button.dataset.removeId);
+        });
       });
-    });
+    }
   }
 
   function removeBoxElement(localId: string) {
@@ -4455,12 +4518,12 @@ function createMediaAnnotationEditor(options: {
   function createBoxElement(annotation: any) {
     const element = document.createElement("button");
     element.type = "button";
-    element.className = `media-bbox${isTextTranscriptionTask() ? " media-bbox--readonly" : ""}`;
+    element.className = `media-bbox${isTextTranscriptionTask() || isReadOnly() ? " media-bbox--readonly" : ""}`;
     element.innerHTML = `
       <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       element.tabIndex = -1;
       element.setAttribute("aria-disabled", "true");
       editor.boxElements.set(annotation.local_id, element);
@@ -4587,7 +4650,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startDragging(event: PointerEvent, annotation: any) {
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       return;
     }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -4612,7 +4675,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startResizing(event: PointerEvent, annotation: any) {
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       return;
     }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -4641,7 +4704,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startDrawing(event: PointerEvent) {
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       return;
     }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -4912,7 +4975,7 @@ function createMediaAnnotationEditor(options: {
   }
 
   function handleClearAnnotations() {
-    if (isTextTranscriptionTask()) {
+    if (isTextTranscriptionTask() || isReadOnly()) {
       return;
     }
     editor.annotations = [];
@@ -5028,6 +5091,7 @@ function createMediaAnnotationEditor(options: {
     editor.baseCanvasWidth = 0;
     editor.baseCanvasHeight = 0;
     editor.isPanKeyActive = false;
+    editor.readOnly = false;
     endPointerInteraction();
     options.mediaTool.classList.add("hidden");
     options.zoomToolbar?.classList.add("hidden");
@@ -5043,8 +5107,16 @@ function createMediaAnnotationEditor(options: {
   }
 
   function loadTask(task: TaskItem | null) {
+    loadTaskWithPayload(task, null, { readOnly: false });
+  }
+
+  function loadTaskWithPayload(
+    task: TaskItem | null,
+    payload: Record<string, any> | null,
+    loadOptions: { readOnly?: boolean; placeholderText?: string } = {}
+  ) {
     if (!task || !["image", "video"].includes(task.source_type) || !task.source_file_url) {
-      reset();
+      reset(loadOptions.placeholderText);
       return;
     }
 
@@ -5052,27 +5124,11 @@ function createMediaAnnotationEditor(options: {
     detachOverlayEvents(editor.overlayElement);
     clearDraft();
     endPointerInteraction();
+    editor.readOnly = Boolean(loadOptions.readOnly);
     options.mediaTool.classList.remove("hidden");
     options.resultLabel.textContent = isTextTranscriptionTask() ? "Результат OCR-транскрибации" : "Результат bbox-разметки";
     options.resultJson.readOnly = true;
-    editor.annotations = isTextTranscriptionTask()
-      ? (task.input_payload?.detected_annotations || []).map((annotation: any, index: number) => ({
-          local_id: `detected-${task.id}-${index}`,
-          type: annotation?.type || "bbox",
-          label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
-          points: Array.isArray(annotation?.points)
-            ? normalizePoints(
-                annotation.points.map((point: any) => Number(point) || 0),
-                Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
-                Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
-              )
-            : [0, 0, 0, 0],
-          frame: Number(annotation?.frame || 0),
-          attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
-          occluded: Boolean(annotation?.occluded),
-          text: typeof annotation?.text === "string" ? annotation.text : "",
-        }))
-      : [];
+    editor.annotations = buildLoadedAnnotations(task, payload);
     editor.zoomLevel = 1;
     editor.baseCanvasWidth = 0;
     editor.baseCanvasHeight = 0;
@@ -5134,6 +5190,7 @@ function createMediaAnnotationEditor(options: {
   return {
     reset,
     loadTask,
+    loadTaskWithPayload,
     hasUnlabeledAnnotations() {
       return editor.annotations.some((annotation) => !annotation.label_id);
     },
@@ -5161,39 +5218,108 @@ function RoomWorkPage() {
   const mediaEditorRef = useRef<MediaEditorController | null>(null);
   const currentTaskRef = useRef<TaskItem | null>(null);
   const labelsRef = useRef<LabelItem[]>([]);
+  const initialSearchParamsRef = useRef(new URLSearchParams(window.location.search));
 
   const [dashboard, setDashboard] = useState<RoomDashboard | null>(null);
+  const [workspaceMode, setWorkspaceMode] = useState<EditorWorkspaceMode>("queue");
   const [currentTask, setCurrentTask] = useState<TaskItem | null>(null);
   const [payloadText, setPayloadText] = useState(JSON.stringify(createDefaultGenericPayload(), null, 2));
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeInspector, setActiveInspector] = useState<"annotations" | "payload" | null>(null);
+  const [submittedTasks, setSubmittedTasks] = useState<EditableSubmissionListItem[]>([]);
+  const [submittedTasksLoading, setSubmittedTasksLoading] = useState(false);
+  const [selectedSubmittedTaskId, setSelectedSubmittedTaskId] = useState<number | null>(null);
+  const [submittedDetail, setSubmittedDetail] = useState<EditableSubmissionDetail | null>(null);
+  const [reviewTasks, setReviewTasks] = useState<ReviewTaskListItem[]>([]);
+  const [reviewTasksLoading, setReviewTasksLoading] = useState(false);
+  const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
+  const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
+  const [selectedReviewSource, setSelectedReviewSource] = useState<"consensus" | number>("consensus");
+  const [reviewActionBusy, setReviewActionBusy] = useState<string | null>(null);
   const [editorState, setEditorState] = useState({
     annotationCount: 0,
     hasUnlabeledAnnotations: false,
   });
 
+  function parsePositiveInt(value: string | null) {
+    const parsed = Number(value || "");
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  function syncPayloadPreview(payload: unknown, fallback = createDefaultGenericPayload()) {
+    setPayloadText(JSON.stringify(payload ?? fallback, null, 2));
+  }
+
+  function getSelectedReviewPayload(detail: ReviewTaskDetail | null, source: "consensus" | number) {
+    if (!detail) {
+      return null;
+    }
+    if (source === "consensus") {
+      return detail.consensus_payload;
+    }
+    return detail.annotations.find((annotation) => annotation.id === source)?.result_payload || null;
+  }
+
   // The editor callbacks outlive individual renders, so refs expose the latest
   // task and labels without recreating the imperative editor on every update.
   currentTaskRef.current = currentTask;
   labelsRef.current = dashboard?.labels || [];
+  const canAnnotate = Boolean(dashboard?.actor.can_annotate);
+  const canReview = Boolean(dashboard?.actor.can_review);
+  const selectedReviewAnnotation =
+    selectedReviewSource === "consensus" ? null : reviewDetail?.annotations.find((annotation) => annotation.id === selectedReviewSource) || null;
+  const selectedReviewPayload =
+    workspaceMode === "review"
+      ? selectedReviewAnnotation?.result_payload || reviewDetail?.consensus_payload || null
+      : null;
+  const submittedPayload = submittedDetail?.annotation.result_payload || null;
+  const activeMediaPayload =
+    workspaceMode === "queue" ? null : workspaceMode === "submitted" ? submittedPayload : selectedReviewPayload;
+  const isReadOnlyStage =
+    workspaceMode === "review" || (workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable));
   const scenario = getWorkEditorScenario(currentTask);
   const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
   const stagePlaceholderText = loading
     ? "Загружаем редактор и следующую задачу."
     : currentTask
       ? scenario.emptyStageMessage
-      : "Доступных задач больше нет. Можно вернуться в комнату или позже запросить новую задачу.";
-  const submitDisabled = submitting || !currentTask || (isMediaTask && editorState.hasUnlabeledAnnotations);
+      : workspaceMode === "queue"
+        ? "Доступных задач больше нет. Можно вернуться в комнату или позже запросить новую задачу."
+        : workspaceMode === "submitted"
+          ? "Выбери свою отправленную разметку слева."
+          : "Выбери объект для проверки слева.";
+  const submitDisabled =
+    submitting ||
+    workspaceMode === "review" ||
+    !currentTask ||
+    (workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable)) ||
+    (isMediaTask && !isReadOnlyStage && editorState.hasUnlabeledAnnotations);
   const roomTitle = dashboard?.room.title || (roomId ? `Комната #${roomId}` : "Рабочая среда");
   const stageTitle = currentTask
     ? currentTask.source_name || `Задача #${currentTask.id}`
     : loading
       ? "Загружаем рабочую область"
-      : "Очередь задач пуста";
+      : workspaceMode === "queue"
+        ? "Очередь задач пуста"
+        : workspaceMode === "submitted"
+          ? "Мои отправленные разметки"
+          : "Режим проверки";
   const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
   const totalTasks = dashboard?.overview.total_tasks ?? 0;
   const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
+  const submitButtonLabel =
+    workspaceMode === "queue"
+      ? submitting
+        ? "Отправляем..."
+        : currentTask
+          ? "Отправить"
+          : "Нет задачи"
+      : submitting
+        ? "Сохраняем..."
+        : submittedDetail?.editable
+          ? "Сохранить изменения"
+          : "Только чтение";
 
   function toggleInspector(nextInspector: "annotations" | "payload") {
     setActiveInspector((current) => (current === nextInspector ? null : nextInspector));
@@ -5243,33 +5369,36 @@ function RoomWorkPage() {
     }
 
     if (currentTask && ["image", "video"].includes(currentTask.source_type)) {
-      mediaEditorRef.current.loadTask(currentTask);
+      mediaEditorRef.current.loadTaskWithPayload(currentTask, activeMediaPayload, {
+        readOnly: isReadOnlyStage,
+        placeholderText: stagePlaceholderText,
+      });
       return;
     }
 
     mediaEditorRef.current.reset(stagePlaceholderText);
-  }, [currentTask, stagePlaceholderText]);
+  }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText]);
 
   async function loadDashboard() {
     if (!roomId) {
       addToast("Не удалось определить ID комнаты из URL.", "error");
-      return false;
+      return null;
     }
 
     try {
       const nextDashboard = await api<RoomDashboard>(`/api/v1/rooms/${roomId}/dashboard/`);
       setDashboard(nextDashboard);
-      if (!nextDashboard.actor.can_annotate) {
-        addToast("Рабочая среда доступна только участникам комнаты, которые могут размечать задачи.", "error");
+      if (!nextDashboard.actor.can_annotate && !nextDashboard.actor.can_review) {
+        addToast("Рабочая среда доступна только участникам комнаты с правами разметки или проверки.", "error");
         window.setTimeout(() => {
           window.location.href = `/rooms/${roomId}/`;
         }, 900);
-        return false;
+        return null;
       }
-      return true;
+      return nextDashboard;
     } catch (error) {
       addToast(getErrorMessage(error), "error");
-      return false;
+      return null;
     }
   }
 
@@ -5279,19 +5408,18 @@ function RoomWorkPage() {
     }
 
     try {
-      // The work screen always operates on exactly one active task. After
-      // submit we ask the backend for the next available assignment.
       const task = await api<TaskItem | null>(`/api/v1/rooms/${roomId}/tasks/next/`);
       setCurrentTask(task);
       if (!task) {
         if (emptyMessage) {
           addToast(emptyMessage, "success");
         }
+        syncPayloadPreview(createDefaultGenericPayload());
         return null;
       }
 
       if (!["image", "video"].includes(task.source_type)) {
-        setPayloadText(JSON.stringify(createDefaultGenericPayload(), null, 2));
+        syncPayloadPreview(createDefaultGenericPayload());
       }
 
       return task;
@@ -5301,21 +5429,216 @@ function RoomWorkPage() {
     }
   }
 
+  async function loadSubmittedTasksList() {
+    if (!roomId) {
+      return [];
+    }
+
+    setSubmittedTasksLoading(true);
+    try {
+      const nextTasks = await api<EditableSubmissionListItem[]>(`/api/v1/rooms/${roomId}/tasks/submitted/mine/`);
+      setSubmittedTasks(nextTasks || []);
+      return nextTasks || [];
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setSubmittedTasks([]);
+      return [];
+    } finally {
+      setSubmittedTasksLoading(false);
+    }
+  }
+
+  async function loadSubmittedDetail(taskId: number) {
+    try {
+      const detail = await api<EditableSubmissionDetail>(`/api/v1/tasks/${taskId}/my-submission/`);
+      setSubmittedDetail(detail);
+      setCurrentTask(detail.task);
+      syncPayloadPreview(detail.annotation.result_payload);
+      return detail;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setSubmittedDetail(null);
+      setCurrentTask(null);
+      syncPayloadPreview(createDefaultGenericPayload());
+      return null;
+    }
+  }
+
+  async function loadReviewTasksList() {
+    if (!roomId) {
+      return [];
+    }
+
+    setReviewTasksLoading(true);
+    try {
+      const nextTasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${roomId}/review/tasks/`);
+      setReviewTasks(nextTasks || []);
+      return nextTasks || [];
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setReviewTasks([]);
+      return [];
+    } finally {
+      setReviewTasksLoading(false);
+    }
+  }
+
+  async function loadReviewDetail(taskId: number, requestedAnnotatorId?: number | null) {
+    try {
+      const detail = await api<ReviewTaskDetail>(`/api/v1/tasks/${taskId}/review/`);
+      const initialSource =
+        requestedAnnotatorId && detail.annotations.some((annotation) => annotation.annotator_id === requestedAnnotatorId)
+          ? detail.annotations.find((annotation) => annotation.annotator_id === requestedAnnotatorId)?.id || "consensus"
+          : "consensus";
+      setReviewDetail(detail);
+      setSelectedReviewSource(initialSource);
+      setCurrentTask(detail.task);
+      syncPayloadPreview(getSelectedReviewPayload(detail, initialSource), null);
+      return detail;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setReviewDetail(null);
+      setSelectedReviewSource("consensus");
+      setCurrentTask(null);
+      syncPayloadPreview(createDefaultGenericPayload());
+      return null;
+    }
+  }
+
+  async function activateWorkspaceMode(
+    nextMode: EditorWorkspaceMode,
+    options?: { taskId?: number | null; annotatorId?: number | null }
+  ) {
+    setWorkspaceMode(nextMode);
+    setActiveInspector(null);
+    setSubmitting(false);
+    setCurrentTask(null);
+    setLoading(true);
+
+    if (nextMode !== "submitted") {
+      setSubmittedDetail(null);
+      setSelectedSubmittedTaskId(null);
+    }
+    if (nextMode !== "review") {
+      setReviewDetail(null);
+      setSelectedReviewTaskId(null);
+      setSelectedReviewSource("consensus");
+    }
+
+    try {
+      if (nextMode === "queue") {
+        await loadNextTask("Доступных задач больше нет.");
+        replaceEditorUrlQuery({ mode: "queue" });
+        return;
+      }
+
+      if (nextMode === "submitted") {
+        const nextTasks = await loadSubmittedTasksList();
+        const fallbackTaskId = nextTasks[0]?.id || null;
+        const nextTaskId = options?.taskId && nextTasks.some((task) => task.id === options.taskId) ? options.taskId : fallbackTaskId;
+        setSelectedSubmittedTaskId(nextTaskId || null);
+        if (nextTaskId) {
+          await loadSubmittedDetail(nextTaskId);
+        } else {
+          setCurrentTask(null);
+          syncPayloadPreview(createDefaultGenericPayload());
+        }
+        replaceEditorUrlQuery({ mode: "submitted", taskId: nextTaskId || null });
+        return;
+      }
+
+      const nextTasks = await loadReviewTasksList();
+      const fallbackTaskId = nextTasks[0]?.id || null;
+      const nextTaskId = options?.taskId && nextTasks.some((task) => task.id === options.taskId) ? options.taskId : fallbackTaskId;
+      setSelectedReviewTaskId(nextTaskId || null);
+      if (nextTaskId) {
+        await loadReviewDetail(nextTaskId, options?.annotatorId || null);
+        replaceEditorUrlQuery({ mode: "review", taskId: nextTaskId, annotatorId: options?.annotatorId || null });
+      } else {
+        setCurrentTask(null);
+        syncPayloadPreview(createDefaultGenericPayload());
+        replaceEditorUrlQuery({ mode: "review" });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function initialize() {
-      setLoading(true);
-      const canAnnotate = await loadDashboard();
-      if (canAnnotate) {
-        await loadNextTask("Доступных задач больше нет.");
+      const nextDashboard = await loadDashboard();
+      if (!nextDashboard) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      const nextMode = normalizeEditorWorkspaceMode(initialSearchParamsRef.current.get("mode"), {
+        canAnnotate: nextDashboard.actor.can_annotate,
+        canReview: nextDashboard.actor.can_review,
+      });
+      await activateWorkspaceMode(nextMode, {
+        taskId: parsePositiveInt(initialSearchParamsRef.current.get("task")),
+        annotatorId: parsePositiveInt(initialSearchParamsRef.current.get("annotator")),
+      });
     }
 
     initialize();
   }, []);
 
+  async function refreshDashboardSnapshot() {
+    return loadDashboard();
+  }
+
+  async function handleModeSwitch(nextMode: EditorWorkspaceMode) {
+    if ((nextMode === "queue" || nextMode === "submitted") && !canAnnotate) {
+      return;
+    }
+    if (nextMode === "review" && !canReview) {
+      return;
+    }
+    await activateWorkspaceMode(nextMode);
+  }
+
+  async function handleSelectSubmittedTask(taskId: number) {
+    setSelectedSubmittedTaskId(taskId);
+    setLoading(true);
+    try {
+      await loadSubmittedDetail(taskId);
+      replaceEditorUrlQuery({ mode: "submitted", taskId });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSelectReviewTask(taskId: number) {
+    setSelectedReviewTaskId(taskId);
+    setLoading(true);
+    try {
+      await loadReviewDetail(taskId);
+      replaceEditorUrlQuery({ mode: "review", taskId });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleSelectReviewSource(nextSource: "consensus" | number) {
+    setSelectedReviewSource(nextSource);
+    syncPayloadPreview(getSelectedReviewPayload(reviewDetail, nextSource), null);
+    replaceEditorUrlQuery({
+      mode: "review",
+      taskId: selectedReviewTaskId,
+      annotatorId:
+        nextSource === "consensus"
+          ? null
+          : reviewDetail?.annotations.find((annotation) => annotation.id === nextSource)?.annotator_id || null,
+    });
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (workspaceMode === "review") {
+      return;
+    }
     if (!currentTask) {
       addToast("Подожди загрузки задачи.", "error");
       return;
@@ -5327,7 +5650,7 @@ function RoomWorkPage() {
     try {
       let payload: Record<string, any>;
       if (["image", "video"].includes(currentTask.source_type)) {
-        if (mediaEditorRef.current?.hasUnlabeledAnnotations()) {
+        if (!isReadOnlyStage && mediaEditorRef.current?.hasUnlabeledAnnotations()) {
           throw new Error("Назначь лейблы всем выделенным областям перед отправкой.");
         }
         payload = mediaEditorRef.current?.getPayload() || { annotations: [] };
@@ -5335,25 +5658,100 @@ function RoomWorkPage() {
         payload = JSON.parse(payloadText);
       }
 
-      const completedTaskId = currentTask.id;
-      await api(`/api/v1/tasks/${currentTask.id}/submit/`, {
-        method: "POST",
-        body: { result_payload: payload },
-      });
-      setCurrentTask(null);
-      const canAnnotate = await loadDashboard();
-      if (canAnnotate) {
+      if (workspaceMode === "queue") {
+        const completedTaskId = currentTask.id;
+        await api(`/api/v1/tasks/${currentTask.id}/submit/`, {
+          method: "POST",
+          body: { result_payload: payload },
+        });
+        setCurrentTask(null);
+        await refreshDashboardSnapshot();
         const nextTask = await loadNextTask();
         if (!nextTask) {
           addToast(`Задача #${completedTaskId} успешно размечена. Доступных задач больше нет.`, "success");
         } else {
           addToast(`Задача #${completedTaskId} успешно размечена. Следующая задача уже готова.`, "success");
         }
+      } else {
+        await api(`/api/v1/tasks/${currentTask.id}/my-submission/`, {
+          method: "PUT",
+          body: { result_payload: payload },
+        });
+        await refreshDashboardSnapshot();
+        const nextTasks = await loadSubmittedTasksList();
+        const activeTaskId =
+          selectedSubmittedTaskId && nextTasks.some((task) => task.id === selectedSubmittedTaskId)
+            ? selectedSubmittedTaskId
+            : nextTasks[0]?.id || null;
+        setSelectedSubmittedTaskId(activeTaskId);
+        if (activeTaskId) {
+          await loadSubmittedDetail(activeTaskId);
+          replaceEditorUrlQuery({ mode: "submitted", taskId: activeTaskId });
+        }
+        addToast(`Изменения по задаче #${currentTask.id} сохранены.`, "success");
       }
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleReturnForRevision() {
+    if (!reviewDetail?.task.id || !selectedReviewAnnotation) {
+      return;
+    }
+
+    const shouldReturn = window.confirm(
+      `Вернуть разметку автору ${selectedReviewAnnotation.annotator_display_name} на исправление?`
+    );
+    if (!shouldReturn) {
+      return;
+    }
+
+    clearToasts();
+    setReviewActionBusy(`return-${selectedReviewAnnotation.annotator_id}`);
+    try {
+      await api(`/api/v1/tasks/${reviewDetail.task.id}/return-for-revision/`, {
+        method: "POST",
+        body: { annotator_id: selectedReviewAnnotation.annotator_id },
+      });
+      await refreshDashboardSnapshot();
+      addToast(`Задача #${reviewDetail.task.id} возвращена автору на исправление.`, "success");
+      await activateWorkspaceMode("review");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setReviewActionBusy(null);
+    }
+  }
+
+  async function handleRejectTask() {
+    if (!reviewDetail?.task.id) {
+      return;
+    }
+
+    const shouldReject = window.confirm(
+      "Отклонить эту разметку? Задача будет исключена из итоговой выборки и отправлена на повторную разметку."
+    );
+    if (!shouldReject) {
+      return;
+    }
+
+    clearToasts();
+    setReviewActionBusy("reject");
+    try {
+      await api(`/api/v1/tasks/${reviewDetail.task.id}/reject/`, {
+        method: "POST",
+        body: {},
+      });
+      await refreshDashboardSnapshot();
+      addToast(`Разметка по задаче #${reviewDetail.task.id} отклонена.`, "success");
+      await activateWorkspaceMode("review");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setReviewActionBusy(null);
     }
   }
 
@@ -5373,6 +5771,36 @@ function RoomWorkPage() {
           </div>
         </div>
 
+        <div className="room-editor__tabs">
+          {canAnnotate ? (
+            <button
+              className={`btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => handleModeSwitch("queue")}
+            >
+              Новая задача
+            </button>
+          ) : null}
+          {canAnnotate ? (
+            <button
+              className={`btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => handleModeSwitch("submitted")}
+            >
+              Мои отправленные
+            </button>
+          ) : null}
+          {canReview ? (
+            <button
+              className={`btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`}
+              type="button"
+              onClick={() => handleModeSwitch("review")}
+            >
+              Проверка
+            </button>
+          ) : null}
+        </div>
+
         <div className="room-editor__actions">
           {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
           <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
@@ -5381,13 +5809,134 @@ function RoomWorkPage() {
           <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
             JSON
           </button>
-          <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-            {submitting ? "Отправляем..." : currentTask ? "Отправить" : "Нет задачи"}
-          </button>
+          {workspaceMode === "review" ? null : (
+            <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+              {submitButtonLabel}
+            </button>
+          )}
         </div>
       </header>
 
       <div className="room-editor__body">
+        <aside className="room-editor__taskrail">
+          {workspaceMode === "queue" ? (
+            <section className="editor-sidepanel">
+              <div className="editor-sidepanel__head">
+                <span className="editor-panel__title">Очередь</span>
+              </div>
+              <div className="editor-sidepanel__note">
+                {currentTask
+                  ? `Активна задача #${currentTask.id}. После отправки editor сразу запросит следующий item из очереди.`
+                  : "Активных задач сейчас нет. Можно вернуться в комнату или позже обновить экран."}
+              </div>
+            </section>
+          ) : null}
+
+          {workspaceMode === "submitted" ? (
+            <section className="editor-sidepanel">
+              <div className="editor-sidepanel__head">
+                <span className="editor-panel__title">Мои отправленные</span>
+                <span className="editor-chip editor-chip--ghost">{submittedTasks.length}</span>
+              </div>
+              <div className="room-editor__tasklist">
+                {submittedTasksLoading ? (
+                  <div className="empty-card">Загружаем твои отправленные разметки.</div>
+                ) : submittedTasks.length ? (
+                  submittedTasks.map((task) => (
+                    <button
+                      key={task.id}
+                      className={`room-editor__taskitem ${task.id === selectedSubmittedTaskId ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleSelectSubmittedTask(task.id)}
+                    >
+                      <strong>{task.source_name || `Задача #${task.id}`}</strong>
+                      <span>Раунд {task.current_round}</span>
+                      <small>{task.editable ? "Можно править" : task.editable_reason || "Только чтение"}</small>
+                    </button>
+                  ))
+                ) : (
+                  <div className="empty-card">У тебя пока нет submitted-разметок, которые можно открыть в editor-е.</div>
+                )}
+              </div>
+              {submittedDetail && !submittedDetail.editable ? (
+                <div className="editor-sidepanel__note">{submittedDetail.editable_reason || "Эта разметка уже зафинализирована."}</div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {workspaceMode === "review" ? (
+            <section className="editor-sidepanel">
+              <div className="editor-sidepanel__head">
+                <span className="editor-panel__title">Проверка</span>
+                <span className="editor-chip editor-chip--ghost">{reviewTasks.length}</span>
+              </div>
+              <div className="room-editor__tasklist">
+                {reviewTasksLoading ? (
+                  <div className="empty-card">Загружаем объекты для проверки.</div>
+                ) : reviewTasks.length ? (
+                  reviewTasks.map((task) => (
+                    <button
+                      key={task.id}
+                      className={`room-editor__taskitem ${task.id === selectedReviewTaskId ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleSelectReviewTask(task.id)}
+                    >
+                      <strong>{task.source_name || `Задача #${task.id}`}</strong>
+                      <span>{translateReviewOutcome(task.review_outcome)}</span>
+                      <small>{task.annotations_count} аннотаций</small>
+                    </button>
+                  ))
+                ) : (
+                  <div className="empty-card">Сейчас нет итемов, которые нужно просмотреть в review-режиме.</div>
+                )}
+              </div>
+
+              {reviewDetail ? (
+                <>
+                  <div className="editor-sidepanel__section">
+                    <div className="editor-sidepanel__label">Источник разметки</div>
+                    <div className="room-editor__source-switcher">
+                      <button
+                        className={`room-editor__source-chip ${selectedReviewSource === "consensus" ? "is-active" : ""}`}
+                        type="button"
+                        onClick={() => handleSelectReviewSource("consensus")}
+                      >
+                        Итоговая
+                      </button>
+                      {reviewDetail.annotations.map((annotation) => (
+                        <button
+                          key={annotation.id}
+                          className={`room-editor__source-chip ${selectedReviewSource === annotation.id ? "is-active" : ""}`}
+                          type="button"
+                          onClick={() => handleSelectReviewSource(annotation.id)}
+                        >
+                          {annotation.annotator_display_name} · R{annotation.round_number}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="editor-sidepanel__actions">
+                    {selectedReviewAnnotation ? (
+                      <button
+                        className="btn btn--secondary btn--compact"
+                        type="button"
+                        disabled={Boolean(reviewActionBusy)}
+                        onClick={handleReturnForRevision}
+                      >
+                        {reviewActionBusy === `return-${selectedReviewAnnotation.annotator_id}` ? "Возвращаем..." : "Вернуть автору"}
+                      </button>
+                    ) : null}
+                    <button className="btn btn--danger btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={handleRejectTask}>
+                      {reviewActionBusy === "reject" ? "Отклоняем..." : "Отклонить итог"}
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+        </aside>
+
         <section className="room-editor__stage">
           <div className="room-editor__canvas-shell">
             <div className="room-editor__stage-surface">
@@ -5444,7 +5993,7 @@ function RoomWorkPage() {
                 ref={resultJsonRef}
                 rows={16}
                 value={payloadText}
-                readOnly={Boolean(currentTask && isMediaTask)}
+                readOnly={Boolean(currentTask && isMediaTask) || isReadOnlyStage}
                 onChange={(event) => setPayloadText(event.currentTarget.value)}
               ></textarea>
             </label>

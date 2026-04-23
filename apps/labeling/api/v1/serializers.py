@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from apps.labeling.models import Annotation, Task
+from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.services import get_submission_editability
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -199,3 +200,58 @@ class ReviewTaskDetailSerializer(serializers.Serializer):
     consensus_payload = serializers.JSONField(allow_null=True)
     annotations = ReviewAnnotationSerializer(many=True)
     review_outcome = serializers.CharField()
+
+
+class EditableSubmissionListItemSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="task.id", read_only=True)
+    status = serializers.CharField(source="task.status", read_only=True)
+    current_round = serializers.IntegerField(source="task.current_round", read_only=True)
+    validation_score = serializers.FloatField(source="task.validation_score", read_only=True, allow_null=True)
+    source_type = serializers.CharField(source="task.source_type", read_only=True)
+    workflow_stage = serializers.CharField(source="task.workflow_stage", read_only=True)
+    source_name = serializers.CharField(source="task.source_name", read_only=True, allow_null=True)
+    source_file_url = serializers.SerializerMethodField()
+    editable = serializers.SerializerMethodField()
+    editable_reason = serializers.SerializerMethodField()
+    submitted_at = serializers.DateTimeField(source="annotation.submitted_at", read_only=True)
+
+    class Meta:
+        model = TaskAssignment
+        fields = (
+            "id",
+            "status",
+            "current_round",
+            "validation_score",
+            "source_type",
+            "workflow_stage",
+            "source_name",
+            "source_file_url",
+            "editable",
+            "editable_reason",
+            "submitted_at",
+        )
+
+    def get_source_file_url(self, obj):
+        if not obj.task.source_file:
+            return None
+        request = self.context.get("request")
+        if request is None:
+            return obj.task.source_file.url
+        return request.build_absolute_uri(obj.task.source_file.url)
+
+    def get_editable(self, obj):
+        return get_submission_editability(task=obj.task, assignment=obj)[0]
+
+    def get_editable_reason(self, obj):
+        return get_submission_editability(task=obj.task, assignment=obj)[1]
+
+
+class EditableSubmissionDetailSerializer(serializers.Serializer):
+    task = TaskSerializer()
+    annotation = AnnotationSerializer()
+    editable = serializers.BooleanField()
+    editable_reason = serializers.CharField(allow_null=True)
+
+
+class ReturnForRevisionSerializer(serializers.Serializer):
+    annotator_id = serializers.IntegerField(min_value=1)

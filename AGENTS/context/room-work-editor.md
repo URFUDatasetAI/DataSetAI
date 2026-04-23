@@ -11,6 +11,7 @@
 - Fullscreen workspace без desktop page scroll.
 - Быстрый pointer-driven UX без заметного отставания курсора.
 - Layout, который не схлопывается от маленького media и не ломается от большого.
+- Единая рабочая поверхность для annotate, edit-after-submit и reviewer review вместо разнесения этих потоков по разным страницам.
 - Возможность расти от bbox today к нескольким сценариям разметки tomorrow.
 
 ## Decisions Already Embedded In The Project
