@@ -23,6 +23,7 @@
 - Grouped cross-validation сознательно выбрана как deterministic room-level strategy: одинаковый набор annotator-ов должен давать предсказуемые reviewer groups.
 - Если пул annotator-ов нельзя разбить на полные группы нужного размера, система должна fallback-нуться на старую balanced strategy, а не вести себя “почти правильно”.
 - В `text_detect_text` final-stage semantics важнее сырой структуры task rows: detection может порождать transcription children, но именно transcription stage определяет прогресс готовности комнаты.
+- Ручное отклонение на review не должно выбрасывать задачу в общий пул: следующий раунд должен вернуться тем же annotator-ам, которые сдавали отклонённый раунд.
 
 ## What Refactors Must Preserve
 

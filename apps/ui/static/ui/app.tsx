@@ -2921,6 +2921,7 @@ function RoomDetailPage() {
   const [deleteRoomPassword, setDeleteRoomPassword] = useState("");
   const [deleteRoomBusy, setDeleteRoomBusy] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [selectedExportFormat, setSelectedExportFormat] = useState("native_json");
   const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
   const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
@@ -2935,6 +2936,18 @@ function RoomDetailPage() {
   useEffect(() => {
     writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
   }, [reviewSectionOpen, reviewSectionStorageKey]);
+
+  useEffect(() => {
+    const availableFormats = dashboard?.export_formats || [];
+    if (!availableFormats.length) {
+      setSelectedExportFormat("native_json");
+      return;
+    }
+
+    if (!availableFormats.some((item) => item.value === selectedExportFormat)) {
+      setSelectedExportFormat(availableFormats[0].value);
+    }
+  }, [dashboard?.export_formats, selectedExportFormat]);
 
   async function loadReviewTasks(nextRoomId = roomId) {
     if (!nextRoomId) {
@@ -3243,7 +3256,7 @@ function RoomDetailPage() {
 
     clearToasts();
     try {
-      await downloadRoomExport(roomId, dashboard.export_formats[0]?.value || "native_json", authUser);
+      await downloadRoomExport(roomId, selectedExportFormat, authUser);
       addToast("Файл с размеченным датасетом подготовлен.", "success");
     } catch (error) {
       addToast(getErrorMessage(error), "error");
@@ -3435,6 +3448,16 @@ function RoomDetailPage() {
                             <div className="empty-card">Лейблы для этой комнаты пока не заданы.</div>
                           )}
                         </div>
+                        <label className="field field--export-compact">
+                          <span>Формат выгрузки</span>
+                          <select value={selectedExportFormat} onChange={(event) => setSelectedExportFormat(event.target.value)}>
+                            {dashboard.export_formats.map((item) => (
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <button className="btn btn--secondary" type="button" onClick={handleExport}>
                           Выгрузить датасет
                         </button>

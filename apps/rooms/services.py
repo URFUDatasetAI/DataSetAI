@@ -8,6 +8,7 @@ import zipfile
 from dataclasses import dataclass
 from itertools import cycle
 from pathlib import Path
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -83,6 +84,7 @@ class ExportArtifact:
 def get_supported_export_formats(*, room: Room) -> list[dict[str, str]]:
     formats = [
         {"value": "native_json", "label": "Native JSON"},
+        {"value": "jsonl", "label": "JSONL"},
     ]
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION:
         return formats
@@ -91,6 +93,7 @@ def get_supported_export_formats(*, room: Room) -> list[dict[str, str]]:
             [
                 {"value": "coco_json", "label": "COCO JSON"},
                 {"value": "yolo_zip", "label": "YOLO ZIP"},
+                {"value": "pascal_voc_zip", "label": "Pascal VOC ZIP"},
             ]
         )
     return formats
@@ -890,6 +893,55 @@ def _build_native_export(*, room: Room, tasks, labels, base_url: str | None) -> 
     )
 
 
+def _build_jsonl_export(*, room: Room, tasks, labels, base_url: str | None) -> ExportArtifact:
+    label_lookup = {
+        label.id: {
+            "id": label.id,
+            "name": label.name,
+            "color": label.color,
+        }
+        for label in labels
+    }
+    lines = []
+
+    for task in tasks:
+        source_url = task.source_file.url if task.source_file else None
+        if source_url and base_url:
+            source_url = f"{base_url}{source_url}"
+        annotation_payload = _get_export_annotation_payload(task)
+        annotations = []
+        if annotation_payload:
+            for item in annotation_payload.get("annotations", []):
+                annotations.append(
+                    {
+                        **item,
+                        "label": label_lookup.get(item.get("label_id")),
+                    }
+                )
+        lines.append(
+            json.dumps(
+                {
+                    "task_id": task.id,
+                    "room_id": room.id,
+                    "dataset_type": room.dataset_type,
+                    "source_type": task.source_type,
+                    "source_name": task.source_name,
+                    "source_url": source_url,
+                    "input_payload": task.input_payload,
+                    "annotations": annotations,
+                    "validation_score": task.validation_score,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    return ExportArtifact(
+        content="\n".join(lines).encode("utf-8"),
+        filename=f"room_{room.id}.jsonl",
+        content_type="application/x-ndjson; charset=utf-8",
+    )
+
+
 def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
         raise ConflictError("COCO export is available only for image or video-frame datasets.")
@@ -1009,9 +1061,66 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
     )
 
 
+def _build_pascal_voc_export(*, room: Room, tasks, labels) -> ExportArtifact:
+    if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
+        raise ConflictError("Pascal VOC export is available only for image or video-frame datasets.")
+
+    labels_by_id = {label.id: label for label in labels}
+    buffer = io.BytesIO()
+
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for task in tasks:
+            width = int(task.input_payload.get("width") or 0)
+            height = int(task.input_payload.get("height") or 0)
+            depth = int(task.input_payload.get("channels") or 3)
+            source_name = task.source_name or f"task_{task.id}.jpg"
+            stem = Path(source_name).stem
+
+            annotation = Element("annotation")
+            SubElement(annotation, "folder").text = f"room_{room.id}"
+            SubElement(annotation, "filename").text = source_name
+
+            source = SubElement(annotation, "source")
+            SubElement(source, "database").text = room.dataset_label or room.title
+
+            size = SubElement(annotation, "size")
+            SubElement(size, "width").text = str(width)
+            SubElement(size, "height").text = str(height)
+            SubElement(size, "depth").text = str(depth)
+            SubElement(annotation, "segmented").text = "0"
+
+            annotation_payload = _get_export_annotation_payload(task)
+            if annotation_payload:
+                for item in annotation_payload.get("annotations", []):
+                    label = labels_by_id.get(item.get("label_id"))
+                    x_min, y_min, x_max, y_max = item["points"]
+                    obj = SubElement(annotation, "object")
+                    SubElement(obj, "name").text = label.name if label else str(item.get("label_id"))
+                    SubElement(obj, "pose").text = "Unspecified"
+                    SubElement(obj, "truncated").text = "0"
+                    SubElement(obj, "difficult").text = "0"
+                    SubElement(obj, "occluded").text = "1" if item.get("occluded") else "0"
+                    bbox = SubElement(obj, "bndbox")
+                    SubElement(bbox, "xmin").text = str(int(round(x_min)))
+                    SubElement(bbox, "ymin").text = str(int(round(y_min)))
+                    SubElement(bbox, "xmax").text = str(int(round(x_max)))
+                    SubElement(bbox, "ymax").text = str(int(round(y_max)))
+
+            archive.writestr(
+                f"Annotations/{stem}.xml",
+                tostring(annotation, encoding="utf-8", xml_declaration=True),
+            )
+
+    return ExportArtifact(
+        content=buffer.getvalue(),
+        filename=f"room_{room.id}_pascal_voc.zip",
+        content_type="application/zip",
+    )
+
+
 def export_room_annotations(*, room: Room, export_format: str, base_url: str | None = None) -> ExportArtifact:
     """
-    Produces a complete export (YOLO, COCO, or Native JSON) mapping tasks to their finalized annotations.
+    Produces a complete export mapping tasks to their finalized annotations.
     
     Only Tasks in a `SUBMITTED` state (meaning they reached consensus) are exported.
     """
@@ -1024,10 +1133,14 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
 
     if export_format == "native_json":
         return _build_native_export(room=room, tasks=tasks, labels=labels, base_url=base_url)
+    if export_format == "jsonl":
+        return _build_jsonl_export(room=room, tasks=tasks, labels=labels, base_url=base_url)
     if export_format == "coco_json":
         return _build_coco_export(room=room, tasks=tasks, labels=labels)
     if export_format == "yolo_zip":
         return _build_yolo_export(room=room, tasks=tasks, labels=labels)
+    if export_format == "pascal_voc_zip":
+        return _build_pascal_voc_export(room=room, tasks=tasks, labels=labels)
 
     raise NotFoundError("Unsupported export format.")
 

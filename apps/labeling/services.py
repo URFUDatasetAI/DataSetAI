@@ -374,9 +374,6 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
         if locked_task.status != Task.Status.SUBMITTED:
             raise ConflictError("Only submitted tasks can be rejected.")
 
-        rejected_round = locked_task.current_round
-        TaskAssignment.objects.filter(task=locked_task, round_number=rejected_round).delete()
-
         locked_task.status = Task.Status.PENDING
         locked_task.current_round += 1
         locked_task.validation_score = None
