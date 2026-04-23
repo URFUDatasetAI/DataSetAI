@@ -203,6 +203,211 @@ class LabelingApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_annotator_can_list_and_update_own_submitted_annotation_before_task_is_finalized(self):
+        cross_room = make_room(
+            customer=self.customer,
+            title="Editable cross room",
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+            cross_validation_similarity_threshold=80,
+        )
+        invite_annotator(room=cross_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=cross_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        task = make_task(room=cross_room, payload={"text": "editable sample"})
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": cross_room.id}), **self.auth(self.annotator))
+        first_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(first_submit.status_code, status.HTTP_201_CREATED)
+
+        list_response = self.client.get(
+            reverse("room-submitted-mine", kwargs={"room_id": cross_room.id}),
+            **self.auth(self.annotator),
+        )
+        detail_response = self.client.get(
+            reverse("task-my-submission", kwargs={"task_id": task.id}),
+            **self.auth(self.annotator),
+        )
+        update_response = self.client.put(
+            reverse("task-my-submission", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "negative"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data), 1)
+        self.assertEqual(list_response.data[0]["id"], task.id)
+        self.assertTrue(list_response.data[0]["editable"])
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(detail_response.data["editable"])
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(update_response.data["annotation"]["result_payload"], {"label": "negative"})
+
+        annotation = Annotation.objects.get(task=task, annotator=self.annotator)
+        self.assertEqual(annotation.result_payload, {"label": "negative"})
+
+    def test_finalized_submitted_annotation_becomes_read_only_without_revision(self):
+        self.client.get(reverse("room-next-task", kwargs={"room_id": self.room.id}), **self.auth(self.annotator))
+        submit_response = self.client.post(
+            reverse("task-submit", kwargs={"task_id": self.task_1.id}),
+            {"result_payload": {"label": "final"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        self.assertEqual(submit_response.status_code, status.HTTP_201_CREATED)
+
+        detail_response = self.client.get(
+            reverse("task-my-submission", kwargs={"task_id": self.task_1.id}),
+            **self.auth(self.annotator),
+        )
+        update_response = self.client.put(
+            reverse("task-my-submission", kwargs={"task_id": self.task_1.id}),
+            {"result_payload": {"label": "changed"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(detail_response.data["editable"])
+        self.assertEqual(update_response.status_code, status.HTTP_409_CONFLICT)
+
+    def test_reviewer_can_return_final_task_to_specific_annotator_for_revision(self):
+        cross_room = make_room(
+            customer=self.customer,
+            title="Revision room",
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+            cross_validation_similarity_threshold=80,
+        )
+        invite_annotator(room=cross_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=cross_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        task = make_task(room=cross_room, payload={"text": "revision sample"})
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": cross_room.id}), **self.auth(self.annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        self.client.get(reverse("room-next-task", kwargs={"room_id": cross_room.id}), **self.auth(self.other_annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.other_annotator),
+        )
+
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+
+        return_response = self.client.post(
+            reverse("task-return-for-revision", kwargs={"task_id": task.id}),
+            {"annotator_id": self.annotator.id},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(return_response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.IN_PROGRESS)
+        self.assertEqual(task.current_round, 2)
+        self.assertIsNone(task.consensus_payload)
+        self.assertIsNone(task.validation_score)
+        self.assertEqual(task.input_payload["revision_target_annotator_id"], self.annotator.id)
+        self.assertTrue(
+            TaskAssignment.objects.filter(
+                task=task,
+                annotator=self.annotator,
+                round_number=2,
+                status=TaskAssignment.Status.IN_PROGRESS,
+            ).exists()
+        )
+
+        annotator_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": cross_room.id}),
+            **self.auth(self.annotator),
+        )
+        other_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": cross_room.id}),
+            **self.auth(self.other_annotator),
+        )
+
+        self.assertEqual(annotator_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(annotator_next.data["id"], task.id)
+        self.assertEqual(other_next.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_returned_cross_validation_task_reenters_normal_consensus_round(self):
+        cross_room = make_room(
+            customer=self.customer,
+            title="Revision consensus room",
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+            cross_validation_similarity_threshold=80,
+        )
+        invite_annotator(room=cross_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=cross_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        task = make_task(room=cross_room, payload={"text": "revision consensus sample"})
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": cross_room.id}), **self.auth(self.annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        self.client.get(reverse("room-next-task", kwargs={"room_id": cross_room.id}), **self.auth(self.other_annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.other_annotator),
+        )
+
+        self.client.post(
+            reverse("task-return-for-revision", kwargs={"task_id": task.id}),
+            {"annotator_id": self.annotator.id},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        first_revision_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(first_revision_submit.status_code, status.HTTP_201_CREATED)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.IN_PROGRESS)
+        self.assertEqual(task.current_round, 2)
+        self.assertNotIn("revision_target_annotator_id", task.input_payload)
+
+        second_round_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": cross_room.id}),
+            **self.auth(self.other_annotator),
+        )
+        self.assertEqual(second_round_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_round_next.data["id"], task.id)
+
+        second_revision_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"label": "positive"}},
+            format="json",
+            **self.auth(self.other_annotator),
+        )
+
+        self.assertEqual(second_revision_submit.status_code, status.HTTP_201_CREATED)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+
     def test_admin_can_review_and_reject_submitted_tasks(self):
         review_room = make_room(customer=self.customer, title="Admin review room", dataset_type="image")
         invite_annotator(

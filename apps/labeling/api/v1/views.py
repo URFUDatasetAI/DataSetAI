@@ -6,13 +6,28 @@ from rest_framework.views import APIView
 from apps.labeling.api.v1.serializers import (
     AnnotationSerializer,
     AnnotationSubmitSerializer,
+    EditableSubmissionDetailSerializer,
+    EditableSubmissionListItemSerializer,
+    ReturnForRevisionSerializer,
     ReviewTaskDetailSerializer,
     ReviewTaskListItemSerializer,
     TaskSerializer,
 )
 from apps.labeling.consensus import evaluate_annotation_against_consensus
-from apps.labeling.selectors import get_task_for_review, get_task_or_404
-from apps.labeling.services import get_next_task_for_annotator, reject_task_annotation, submit_annotation
+from apps.labeling.selectors import (
+    get_current_submitted_assignment_for_annotator,
+    get_task_for_review,
+    get_task_or_404,
+    list_current_submitted_assignments_for_annotator,
+)
+from apps.labeling.services import (
+    get_next_task_for_annotator,
+    get_submission_editability,
+    reject_task_annotation,
+    return_task_annotation_for_revision,
+    submit_annotation,
+    update_submitted_annotation,
+)
 from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.policies import can_review_room
 from apps.rooms.selectors import get_visible_room
@@ -49,6 +64,48 @@ class TaskSubmitView(APIView):
             result_payload=serializer.validated_data["result_payload"],
         )
         return Response(AnnotationSerializer(annotation).data, status=status.HTTP_201_CREATED)
+
+
+class RoomSubmittedTaskListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        assignments = list_current_submitted_assignments_for_annotator(room=room, annotator=request.user)
+        serializer = EditableSubmissionListItemSerializer(assignments, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+def _build_submission_detail_payload(*, assignment):
+    editable, editable_reason = get_submission_editability(task=assignment.task, assignment=assignment)
+    return {
+        "task": assignment.task,
+        "annotation": assignment.annotation,
+        "editable": editable,
+        "editable_reason": editable_reason,
+    }
+
+
+class TaskMySubmissionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, task_id: int):
+        assignment = get_current_submitted_assignment_for_annotator(task_id=task_id, annotator=request.user)
+        payload = _build_submission_detail_payload(assignment=assignment)
+        return Response(EditableSubmissionDetailSerializer(payload, context={"request": request}).data)
+
+    def put(self, request, task_id: int):
+        assignment = get_current_submitted_assignment_for_annotator(task_id=task_id, annotator=request.user)
+        serializer = AnnotationSubmitSerializer(data=request.data, context={"task": assignment.task})
+        serializer.is_valid(raise_exception=True)
+        update_submitted_annotation(
+            task=assignment.task,
+            annotator=request.user,
+            result_payload=serializer.validated_data["result_payload"],
+        )
+        refreshed_assignment = get_current_submitted_assignment_for_annotator(task_id=task_id, annotator=request.user)
+        payload = _build_submission_detail_payload(assignment=refreshed_assignment)
+        return Response(EditableSubmissionDetailSerializer(payload, context={"request": request}).data)
 
 
 class RoomReviewTaskListView(APIView):
@@ -109,4 +166,19 @@ class TaskRejectView(APIView):
     def post(self, request, task_id: int):
         task = get_task_for_review(task_id=task_id, reviewer=request.user)
         task = reject_task_annotation(task=task, reviewer=request.user)
+        return Response(TaskSerializer(task, context={"request": request}).data)
+
+
+class TaskReturnForRevisionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id: int):
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        serializer = ReturnForRevisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        task = return_task_annotation_for_revision(
+            task=task,
+            reviewer=request.user,
+            annotator_id=serializer.validated_data["annotator_id"],
+        )
         return Response(TaskSerializer(task, context={"request": request}).data)

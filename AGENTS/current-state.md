@@ -7,13 +7,13 @@
 - Проект уже вышел за рамки только текстовой разметки: image/video и workflow `text_detect_text` считаются first-class сценариями.
 - Cross-validation больше не только “равномерная раздача по людям”: в кодовой базе уже живёт deterministic grouped distribution с fallback на legacy strategy.
 - Владелец комнаты теперь не обязан быть annotator: это управляется `Room.owner_is_annotator` и затрагивает доступ, eligible pools и room payload-ы.
-- `room-work` развивается как отдельная fullscreen рабочая поверхность, а не как секция длинной страницы комнаты.
+- `room-work` развивается как отдельная fullscreen рабочая поверхность, а не как секция длинной страницы комнаты. Этот shell больше не annotator-only: внутри него теперь должны жить и очередь задач, и редактирование своих submit-ов, и reviewer-native проверка.
 
 ## Current Priorities
 
 1. Не вносить регрессии в room lifecycle: create/edit room, invite links, join requests, pinning, recency sorting, member roles, access.
 2. Сохранять корректность labeling pipeline: task assignment, submit, consensus, review/reject, repeat rounds, export.
-3. Дожимать `room-work` до состояния настоящего редактора: стабильный fullscreen workspace, быстрый pointer UX, масштабируемость под новые сценарии разметки.
+3. Дожимать `room-work` до состояния настоящего редактора: стабильный fullscreen workspace, быстрый pointer UX, единый stage для annotate/edit/review и масштабируемость под новые сценарии разметки.
 4. Удерживать grouped cross-validation и `owner_is_annotator` согласованными между backend, selectors, tests и UI payload-ами.
 5. Не ломать Django/React bootstrap split при любых UI-экспериментах.
 
@@ -25,13 +25,14 @@
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
 - В `text_detect_text` финальным считается transcription stage, а не все task rows подряд.
 - `room-work` должен оставаться fullscreen shell без desktop page scroll; auxiliary chrome должен уходить во внутренний scroll, а не перекрывать media.
+- `room-work` теперь считается общей рабочей поверхностью для трёх режимов: `queue`, `submitted`, `review`. Новые review/edit сценарии нужно встраивать сюда, а не возвращать обратно на room detail page.
 - Workspace editor-а задаётся layout-ом, а не размером текущего изображения/видео.
 - Границы media должны быть привязаны к реальному media/overlay и клиппиться вместе с ним.
 
 ## Active Tasks
 
 - [tasks/fullscreen-room-work-editor.md](tasks/fullscreen-room-work-editor.md)
-  Главная UI-тема: превратить `room-work` в быстрый редактор под bbox today и расширяемый scenario shell tomorrow.
+  Главная UI-тема: превратить `room-work` в быстрый редактор под bbox today и расширяемый scenario shell tomorrow, включая review и post-submit edit flow.
 - [tasks/grouped-cross-validation-stabilization.md](tasks/grouped-cross-validation-stabilization.md)
   Backend-тема: удерживать новую grouped distribution согласованной с owner-role semantics, review flow и тестами.
 

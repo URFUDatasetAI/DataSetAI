@@ -9,7 +9,12 @@ from apps.labeling.distribution import (
     get_task_designated_annotator_ids,
 )
 from apps.labeling.models import Annotation, Task, TaskAssignment
-from apps.labeling.workflows import is_text_detection_workflow
+from apps.labeling.workflows import (
+    build_task_input_payload_with_revision_target,
+    get_task_is_final_stage,
+    get_task_revision_target_annotator_id,
+    is_text_detection_workflow,
+)
 from apps.rooms.models import Room, RoomMembership
 from apps.rooms.policies import can_annotate_room, can_review_room
 from apps.users.models import User
@@ -80,6 +85,14 @@ def _delete_rejected_round_history(*, task: Task) -> None:
     TaskAssignment.objects.filter(task=task).exclude(round_number=task.current_round).delete()
 
 
+def get_submission_editability(*, task: Task, assignment: TaskAssignment) -> tuple[bool, str | None]:
+    if assignment.status != TaskAssignment.Status.SUBMITTED or assignment.round_number != task.current_round:
+        return False, "Эта версия разметки уже ушла в другой раунд и больше не редактируется."
+    if task.status == Task.Status.SUBMITTED:
+        return False, "Задача уже финализирована и не может быть изменена без возврата на исправление."
+    return True, None
+
+
 def get_next_task_for_annotator(*, room: Room, annotator: User):
     """
     Finds and assigns the next available Task to the Annotator.
@@ -97,7 +110,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
     with transaction.atomic():
         # Reuse an unfinished assignment first so refreshes do not hand out a
         # second task to the same annotator while the current one is open.
-        current_assignment = (
+        current_assignments = (
             TaskAssignment.objects.select_related("task")
             .select_for_update()
             .filter(
@@ -105,9 +118,14 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                 annotator=annotator,
                 status=TaskAssignment.Status.IN_PROGRESS,
             )
+        )
+        current_assignment = (
+            current_assignments.filter(task__input_payload__revision_target_annotator_id=annotator.id)
             .order_by("task_id")
             .first()
         )
+        if current_assignment is None:
+            current_assignment = current_assignments.order_by("task_id").first()
         if current_assignment:
             return current_assignment.task
 
@@ -236,6 +254,11 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
         assignment.submitted_at = annotation.submitted_at
         assignment.save(update_fields=["status", "submitted_at", "updated_at"])
 
+        revision_target_annotator_id = get_task_revision_target_annotator_id(task=locked_task)
+        revision_gate_cleared = revision_target_annotator_id == annotator.id
+        if revision_gate_cleared:
+            locked_task.input_payload = build_task_input_payload_with_revision_target(task=locked_task, annotator_id=None)
+
         round_assignments = list(
             locked_task.assignments.filter(round_number=locked_task.current_round).order_by("id")
         )
@@ -263,15 +286,16 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
                 locked_task.current_round += 1
                 locked_task.consensus_payload = None
 
-            locked_task.save(
-                update_fields=[
-                    "status",
-                    "current_round",
-                    "validation_score",
-                    "consensus_payload",
-                    "updated_at",
-                ]
-            )
+            update_fields = [
+                "status",
+                "current_round",
+                "validation_score",
+                "consensus_payload",
+                "updated_at",
+            ]
+            if revision_gate_cleared:
+                update_fields.insert(4, "input_payload")
+            locked_task.save(update_fields=update_fields)
 
             if (
                 consensus["accepted"]
@@ -285,8 +309,47 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
                     submitted_assignments=submitted_assignments,
                 )
         else:
-            locked_task.save(update_fields=["updated_at"])
+            update_fields = ["updated_at"]
+            if revision_gate_cleared:
+                update_fields.insert(0, "input_payload")
+            locked_task.save(update_fields=update_fields)
 
+        return annotation
+
+
+def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        _assert_joined_membership(room=locked_task.room, annotator=annotator)
+
+        assignment = (
+            TaskAssignment.objects.select_for_update()
+            .select_related("annotation")
+            .filter(
+                task=locked_task,
+                annotator=annotator,
+                status=TaskAssignment.Status.SUBMITTED,
+                round_number=locked_task.current_round,
+            )
+            .order_by("-submitted_at", "-id")
+            .first()
+        )
+        if assignment is None or not hasattr(assignment, "annotation"):
+            raise AccessDeniedError("Submitted annotation not found for the current user.")
+
+        editable, reason = get_submission_editability(task=locked_task, assignment=assignment)
+        if not editable:
+            raise ConflictError(reason)
+
+        annotation = assignment.annotation
+        submitted_at = timezone.now()
+        annotation.result_payload = result_payload
+        annotation.submitted_at = submitted_at
+        annotation.save(update_fields=["result_payload", "submitted_at", "updated_at"])
+
+        assignment.submitted_at = submitted_at
+        assignment.save(update_fields=["submitted_at", "updated_at"])
+        locked_task.save(update_fields=["updated_at"])
         return annotation
 
 
@@ -316,5 +379,63 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
                 "consensus_payload",
                 "updated_at",
             ]
+        )
+        return locked_task
+
+
+def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator_id: int) -> Task:
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("You do not have permission to return annotations for revision in this room.")
+
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        if not can_review_room(room=locked_task.room, user=reviewer):
+            raise AccessDeniedError("You do not have permission to return annotations for revision in this room.")
+        if locked_task.status != Task.Status.SUBMITTED or not get_task_is_final_stage(task=locked_task):
+            raise ConflictError("Only final submitted tasks can be returned for revision.")
+
+        target_assignment = (
+            TaskAssignment.objects.select_for_update()
+            .select_related("annotator")
+            .filter(
+                task=locked_task,
+                annotator_id=annotator_id,
+                status=TaskAssignment.Status.SUBMITTED,
+                round_number=locked_task.current_round,
+            )
+            .order_by("-submitted_at", "-id")
+            .first()
+        )
+        if target_assignment is None:
+            raise ConflictError("Selected annotator does not have a submitted annotation for this task.")
+
+        _assert_joined_membership(room=locked_task.room, annotator=target_assignment.annotator)
+
+        next_round = locked_task.current_round + 1
+        locked_task.status = Task.Status.IN_PROGRESS
+        locked_task.current_round = next_round
+        locked_task.validation_score = None
+        locked_task.consensus_payload = None
+        locked_task.input_payload = build_task_input_payload_with_revision_target(
+            task=locked_task,
+            annotator_id=annotator_id,
+        )
+        locked_task.save(
+            update_fields=[
+                "status",
+                "current_round",
+                "validation_score",
+                "consensus_payload",
+                "input_payload",
+                "updated_at",
+            ]
+        )
+
+        TaskAssignment.objects.create(
+            task=locked_task,
+            annotator=target_assignment.annotator,
+            round_number=next_round,
+            status=TaskAssignment.Status.IN_PROGRESS,
+            assigned_at=timezone.now(),
         )
         return locked_task

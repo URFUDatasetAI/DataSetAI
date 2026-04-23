@@ -1,6 +1,7 @@
 import random
 
 from apps.labeling.models import Task, TaskAssignment
+from apps.labeling.workflows import get_task_revision_target_annotator_id
 from apps.rooms.models import Room, RoomMembership
 
 
@@ -106,15 +107,21 @@ def get_task_designated_annotator_ids(
     current_round_annotator_ids: set[int] | None = None,
     assignment_pool_ids: list[int] | None = None,
 ) -> list[int]:
+    current_round_annotator_ids = current_round_annotator_ids or set()
+    revision_target_annotator_id = get_task_revision_target_annotator_id(task=task)
+    if revision_target_annotator_id is not None:
+        if revision_target_annotator_id in current_round_annotator_ids:
+            return []
+        return [revision_target_annotator_id]
+
     assignment_pool_ids = assignment_pool_ids if assignment_pool_ids is not None else get_task_assignment_pool_ids(task=task)
     reviews_per_round = get_effective_reviews_for_task(task=task, assignment_pool_ids=assignment_pool_ids)
     if not assignment_pool_ids or reviews_per_round <= 0:
         return []
 
     if reviews_per_round == 1:
-        return [annotator_id for annotator_id in assignment_pool_ids if annotator_id not in (current_round_annotator_ids or set())]
+        return [annotator_id for annotator_id in assignment_pool_ids if annotator_id not in current_round_annotator_ids]
 
-    current_round_annotator_ids = current_round_annotator_ids or set()
     designated_annotator_ids: list[int] = []
 
     if task.current_round > 1:

@@ -653,6 +653,62 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(task.current_round, 2)
         self.assertIsNone(task.consensus_payload)
 
+    def test_return_for_revision_removes_task_from_final_export_state(self):
+        room = make_room(customer=self.customer, title="Revision export room", dataset_type="image")
+        label = room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = Task.objects.create(
+            room=room,
+            status=Task.Status.SUBMITTED,
+            source_type=Task.SourceType.IMAGE,
+            source_name="revision-export.jpg",
+            input_payload={"width": 640, "height": 480, "source_name": "revision-export.jpg"},
+            consensus_payload={
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": label.id,
+                        "points": [10, 10, 100, 100],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            },
+            validation_score=92.0,
+        )
+        assignment = TaskAssignment.objects.create(
+            task=task,
+            annotator=self.annotator,
+            round_number=1,
+            status=TaskAssignment.Status.SUBMITTED,
+            assigned_at=timezone.now(),
+            submitted_at=timezone.now(),
+        )
+        Annotation.objects.create(
+            task=task,
+            assignment=assignment,
+            annotator=self.annotator,
+            result_payload=task.consensus_payload,
+            submitted_at=timezone.now(),
+        )
+
+        return_response = self.client.post(
+            reverse("task-return-for-revision", kwargs={"task_id": task.id}),
+            {"annotator_id": self.annotator.id},
+            format="json",
+            **self.auth(self.customer),
+        )
+        export_response = self.client.get(
+            reverse("room-export", kwargs={"room_id": room.id}),
+            {"export_format": "native_json"},
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(return_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(export_response.status_code, status.HTTP_200_OK)
+        payload = json.loads(export_response.content.decode("utf-8"))
+        self.assertEqual(payload["tasks"], [])
+
     def test_detect_text_room_progress_uses_only_final_stage_tasks(self):
         room = make_room(
             customer=self.customer,

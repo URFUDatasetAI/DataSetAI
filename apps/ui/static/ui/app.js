@@ -22276,13 +22276,35 @@
     }
     return [];
   }
-  function getPayloadAnnotations(payload) {
-    if (!payload || !Array.isArray(payload.annotations)) {
-      return [];
+  function normalizeEditorWorkspaceMode(requestedMode, options) {
+    if (requestedMode === "review" && options.canReview) {
+      return "review";
     }
-    return payload.annotations.filter(
-      (annotation) => annotation && Array.isArray(annotation.points) && annotation.points.length === 4 && typeof annotation.label_id === "number"
-    );
+    if (requestedMode === "submitted" && options.canAnnotate) {
+      return "submitted";
+    }
+    if (requestedMode === "queue" && options.canAnnotate) {
+      return "queue";
+    }
+    if (options.canAnnotate) {
+      return "queue";
+    }
+    return "review";
+  }
+  function replaceEditorUrlQuery(params) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("mode", params.mode);
+    if (params.taskId) {
+      url.searchParams.set("task", String(params.taskId));
+    } else {
+      url.searchParams.delete("task");
+    }
+    if (params.annotatorId) {
+      url.searchParams.set("annotator", String(params.annotatorId));
+    } else {
+      url.searchParams.delete("annotator");
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
   function ToastCard({
     toast,
@@ -22428,63 +22450,6 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: remainingTasks })
         ] })
       ] })
-    ] });
-  }
-  function ReviewGraphicPreview({
-    task,
-    payload,
-    labels
-  }) {
-    if (!task?.source_file_url) {
-      return null;
-    }
-    const annotations = getPayloadAnnotations(payload);
-    if (!annotations.length) {
-      return null;
-    }
-    const sourceWidth = Number(task.input_payload?.width || task.input_payload?.source_width || 1);
-    const sourceHeight = Number(task.input_payload?.height || task.input_payload?.source_height || 1);
-    const isImage = task.source_type === "image";
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-media-stage media-stage", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-media-canvas media-canvas", children: [
-      isImage ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { className: "media-stage__asset", src: task.source_file_url, alt: task.source_name || `task-${task.id}` }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", { className: "media-stage__asset", src: task.source_file_url, controls: true, preload: "metadata" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-media-overlay media-overlay", children: annotations.map((annotation, index) => {
-        const label = labels.find((item) => item.id === annotation.label_id);
-        const [xMin, yMin, xMax, yMax] = annotation.points;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "div",
-          {
-            className: "review-media-bbox",
-            style: {
-              left: `${xMin / sourceWidth * 100}%`,
-              top: `${yMin / sourceHeight * 100}%`,
-              width: `${(xMax - xMin) / sourceWidth * 100}%`,
-              height: `${(yMax - yMin) / sourceHeight * 100}%`,
-              ["--bbox-color"]: label?.color || "#B8B8B8"
-            },
-            children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "review-media-bbox__label", children: label?.name || `Label #${annotation.label_id}` })
-          },
-          `${annotation.label_id}-${annotation.points.join("-")}-${index}`
-        );
-      }) })
-    ] }) });
-  }
-  function ReviewTextSummary({
-    payload,
-    labels
-  }) {
-    const annotations = getPayloadAnnotations(payload).filter((annotation) => typeof annotation.text === "string");
-    if (!annotations.length) {
-      return null;
-    }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-text-summary", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-text-summary__title", children: "\u0422\u0435\u043A\u0441\u0442" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-text-summary__list", children: annotations.map((annotation, index) => {
-        const label = labels.find((item) => item.id === annotation.label_id);
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-text-summary__item", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "review-text-summary__label", children: label?.name || `\u041E\u0431\u043B\u0430\u0441\u0442\u044C ${index + 1}` }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "review-text-summary__value", children: annotation.text && annotation.text.length ? annotation.text : "\u041F\u0443\u0441\u0442\u043E\u0439 \u0442\u0435\u043A\u0441\u0442" })
-        ] }, `${annotation.label_id}-${index}`);
-      }) })
     ] });
   }
   function App() {
@@ -24338,8 +24303,11 @@
           ) : null,
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-work", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "action-strip", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: () => window.location.href = `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041D\u0430 \u044D\u0442\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0431\u0437\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B. \u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447 \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0430 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u0430 \u043D\u0430\u0445\u043E\u0434\u044F\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u043C \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u044D\u043A\u0440\u0430\u043D\u0435." })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "action-strip", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }),
+              dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041D\u0430 \u044D\u0442\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0431\u0437\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B. \u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0441\u0432\u043E\u0438\u0445 submit-\u043E\u0432 \u0438 review \u0438\u0442\u043E\u0433\u043E\u0432\u044B\u0445 \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A \u043D\u0430\u0445\u043E\u0434\u044F\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u043C \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u044D\u043A\u0440\u0430\u043D\u0435." })
           ] }) })
         ] })
       ] }) : null,
@@ -24508,35 +24476,10 @@
                   ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0441\u043B\u0435\u0432\u0430." })
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: `panel-card review-comparison-section ${reviewDetail ? "" : "hidden"}`, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-comparison-grid", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-comparison-column", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0418\u0442\u043E\u0433\u043E\u0432\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }) }),
-                    reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "review-comparison-stack", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReviewGraphicPreview, { task: reviewDetail.task, payload: reviewDetail.consensus_payload, labels: dashboard.labels }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReviewTextSummary, { payload: reviewDetail.consensus_payload, labels: dashboard.labels }),
-                      bootstrap2.app_debug_mode && reviewDetail.consensus_payload ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "payload-preview", children: JSON.stringify(reviewDetail.consensus_payload, null, 2) }) : null,
-                      !reviewDetail.consensus_payload ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0439 payload \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442." }) : null
-                    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0432\u044B\u0448\u0435." })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-comparison-column", children: reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-comparison-stack", children: reviewDetail.annotations.length ? reviewDetail.annotations.map((annotation) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "review-annotation-entry", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "review-annotation-entry__head", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: annotation.annotator_display_name || `#${annotation.annotator_id}` }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `review-annotation-entry__status review-annotation-entry__status--${annotation.review_outcome}`, children: translateReviewOutcome(annotation.review_outcome) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-                        "\u0420\u0430\u0443\u043D\u0434 ",
-                        annotation.round_number,
-                        " \xB7 ",
-                        formatDate(annotation.submitted_at)
-                      ] })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReviewGraphicPreview, { task: reviewDetail.task, payload: annotation.result_payload, labels: dashboard.labels }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReviewTextSummary, { payload: annotation.result_payload, labels: dashboard.labels }),
-                    bootstrap2.app_debug_mode ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "payload-preview", children: JSON.stringify(annotation.result_payload, null, 2) }) : null
-                  ] }, annotation.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0410\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0438 \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u043F\u043E\u043A\u0430 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u044E\u0442." }) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0432\u044B\u0448\u0435." }) })
-                ] }),
-                reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "review-comparison-actions", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleRejectTask, children: "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" }) }) : null
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "panel-card review-comparison-section", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Editor Review" }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0414\u0435\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u0441\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0445 \u0432\u0435\u0440\u0441\u0438\u0439 \u0442\u0435\u043F\u0435\u0440\u044C \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0432\u043D\u0443\u0442\u0440\u0438 fullscreen editor-\u0430. \u041D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0431\u0437\u043E\u0440 \u0438 \u0431\u044B\u0441\u0442\u0440\u044B\u0439 \u043F\u0435\u0440\u0435\u0445\u043E\u0434 \u0432 review-\u0440\u0435\u0436\u0438\u043C." }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "action-strip", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0432 editor-\u0435" }) })
               ] })
             ] })
           ]
@@ -24602,7 +24545,8 @@
       zoomStep: 0.25,
       baseCanvasWidth: 0,
       baseCanvasHeight: 0,
-      isPanKeyActive: false
+      isPanKeyActive: false,
+      readOnly: false
     };
     function getLabels() {
       return options.getLabels() || [];
@@ -24612,6 +24556,9 @@
     }
     function isTextTranscriptionTask() {
       return getTask()?.workflow_stage === "text_transcription";
+    }
+    function isReadOnly() {
+      return editor.readOnly;
     }
     function getLabelById(labelId) {
       return getLabels().find((label) => label.id === labelId) || null;
@@ -24795,6 +24742,23 @@
       const naturalHeight = metrics?.naturalHeight || getNaturalSize().height || 0;
       annotation.points = normalizePoints(annotation.points, naturalWidth, naturalHeight);
     }
+    function buildLoadedAnnotations(task, payload) {
+      const sourceAnnotations = payload && Array.isArray(payload.annotations) ? payload.annotations : isTextTranscriptionTask() ? task.input_payload?.detected_annotations || [] : [];
+      return sourceAnnotations.map((annotation, index) => ({
+        local_id: `${task.id}-${index}-${annotation?.frame || 0}`,
+        type: annotation?.type || "bbox",
+        label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
+        points: Array.isArray(annotation?.points) ? normalizePoints(
+          annotation.points.map((point) => Number(point) || 0),
+          Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
+          Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
+        ) : [0, 0, 0, 0],
+        frame: Number(annotation?.frame || 0),
+        attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
+        occluded: Boolean(annotation?.occluded),
+        text: typeof annotation?.text === "string" ? annotation.text : ""
+      }));
+    }
     function buildPayload() {
       return {
         annotations: editor.annotations.filter((annotation) => annotation.label_id).map((annotation) => ({
@@ -24969,7 +24933,7 @@
       render();
     }
     function updateClearButtonVisibility() {
-      options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask());
+      options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask() || isReadOnly());
     }
     function renderPalette() {
       const labels = getLabels();
@@ -24978,7 +24942,7 @@
         setActiveLabel(null);
         return;
       }
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         options.labelPalette.innerHTML = labels.map(
           (label) => `
             <div class="label-chip label-chip--static" style="--label-color: ${label.color}">
@@ -24987,7 +24951,9 @@
             </div>
           `
         ).join("");
-        setActiveLabel(null);
+        if (isTextTranscriptionTask() || isReadOnly()) {
+          setActiveLabel(null);
+        }
         return;
       }
       options.labelPalette.innerHTML = labels.map(
@@ -25030,21 +24996,23 @@
                 <small>frame ${annotation.frame}</small>
               </div>
               <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
-              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0441\u0442 \u0434\u043B\u044F \u043E\u0431\u043B\u0430\u0441\u0442\u0438">${annotation.text || ""}</textarea>
+              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="\u0412\u0432\u0435\u0434\u0438 \u0442\u0435\u043A\u0441\u0442 \u0434\u043B\u044F \u043E\u0431\u043B\u0430\u0441\u0442\u0438" ${isReadOnly() ? "readonly" : ""}>${annotation.text || ""}</textarea>
             </div>
           `;
         }).join("");
-        options.annotationList.querySelectorAll("[data-text-id]").forEach((textarea) => {
-          textarea.addEventListener("input", (event) => {
-            const target = event.currentTarget;
-            const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
-            if (!annotation) {
-              return;
-            }
-            annotation.text = target.value;
-            updateResultPreview();
+        if (!isReadOnly()) {
+          options.annotationList.querySelectorAll("[data-text-id]").forEach((textarea) => {
+            textarea.addEventListener("input", (event) => {
+              const target = event.currentTarget;
+              const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
+              if (!annotation) {
+                return;
+              }
+              annotation.text = target.value;
+              updateResultPreview();
+            });
           });
-        });
+        }
         return;
       }
       options.annotationList.className = "annotation-list";
@@ -25058,15 +25026,17 @@
               <small>frame ${annotation.frame}</small>
             </div>
             <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
-            <button class="btn btn--muted btn--compact" type="button" data-remove-id="${annotation.local_id}">\u0423\u0434\u0430\u043B\u0438\u0442\u044C</button>
+            ${isReadOnly() ? "" : `<button class="btn btn--muted btn--compact" type="button" data-remove-id="${annotation.local_id}">\u0423\u0434\u0430\u043B\u0438\u0442\u044C</button>`}
           </div>
         `;
       }).join("");
-      options.annotationList.querySelectorAll("[data-remove-id]").forEach((button) => {
-        button.addEventListener("click", () => {
-          removeAnnotation(button.dataset.removeId);
+      if (!isReadOnly()) {
+        options.annotationList.querySelectorAll("[data-remove-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            removeAnnotation(button.dataset.removeId);
+          });
         });
-      });
+      }
     }
     function removeBoxElement(localId) {
       const element = editor.boxElements.get(localId);
@@ -25109,12 +25079,12 @@
     function createBoxElement(annotation) {
       const element = document.createElement("button");
       element.type = "button";
-      element.className = `media-bbox${isTextTranscriptionTask() ? " media-bbox--readonly" : ""}`;
+      element.className = `media-bbox${isTextTranscriptionTask() || isReadOnly() ? " media-bbox--readonly" : ""}`;
       element.innerHTML = `
       <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         element.tabIndex = -1;
         element.setAttribute("aria-disabled", "true");
         editor.boxElements.set(annotation.local_id, element);
@@ -25222,7 +25192,7 @@
       editor.draftElement.style.height = `${height}px`;
     }
     function startDragging(event, annotation) {
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -25244,7 +25214,7 @@
       };
     }
     function startResizing(event, annotation) {
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -25270,7 +25240,7 @@
       };
     }
     function startDrawing(event) {
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
       if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
@@ -25505,7 +25475,7 @@
       overlay.removeEventListener("pointercancel", cancelPointerInteraction);
     }
     function handleClearAnnotations() {
-      if (isTextTranscriptionTask()) {
+      if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
       editor.annotations = [];
@@ -25607,6 +25577,7 @@
       editor.baseCanvasWidth = 0;
       editor.baseCanvasHeight = 0;
       editor.isPanKeyActive = false;
+      editor.readOnly = false;
       endPointerInteraction();
       options.mediaTool.classList.add("hidden");
       options.zoomToolbar?.classList.add("hidden");
@@ -25621,31 +25592,22 @@
       render();
     }
     function loadTask(task) {
+      loadTaskWithPayload(task, null, { readOnly: false });
+    }
+    function loadTaskWithPayload(task, payload, loadOptions = {}) {
       if (!task || !["image", "video"].includes(task.source_type) || !task.source_file_url) {
-        reset();
+        reset(loadOptions.placeholderText);
         return;
       }
       finishPanning();
       detachOverlayEvents(editor.overlayElement);
       clearDraft();
       endPointerInteraction();
+      editor.readOnly = Boolean(loadOptions.readOnly);
       options.mediaTool.classList.remove("hidden");
       options.resultLabel.textContent = isTextTranscriptionTask() ? "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 OCR-\u0442\u0440\u0430\u043D\u0441\u043A\u0440\u0438\u0431\u0430\u0446\u0438\u0438" : "\u0420\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442 bbox-\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438";
       options.resultJson.readOnly = true;
-      editor.annotations = isTextTranscriptionTask() ? (task.input_payload?.detected_annotations || []).map((annotation, index) => ({
-        local_id: `detected-${task.id}-${index}`,
-        type: annotation?.type || "bbox",
-        label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
-        points: Array.isArray(annotation?.points) ? normalizePoints(
-          annotation.points.map((point) => Number(point) || 0),
-          Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
-          Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
-        ) : [0, 0, 0, 0],
-        frame: Number(annotation?.frame || 0),
-        attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
-        occluded: Boolean(annotation?.occluded),
-        text: typeof annotation?.text === "string" ? annotation.text : ""
-      })) : [];
+      editor.annotations = buildLoadedAnnotations(task, payload);
       editor.zoomLevel = 1;
       editor.baseCanvasWidth = 0;
       editor.baseCanvasHeight = 0;
@@ -25700,6 +25662,7 @@
     return {
       reset,
       loadTask,
+      loadTaskWithPayload,
       hasUnlabeledAnnotations() {
         return editor.annotations.some((annotation) => !annotation.label_id);
       },
@@ -25726,27 +25689,63 @@
     const mediaEditorRef = (0, import_react.useRef)(null);
     const currentTaskRef = (0, import_react.useRef)(null);
     const labelsRef = (0, import_react.useRef)([]);
+    const initialSearchParamsRef = (0, import_react.useRef)(new URLSearchParams(window.location.search));
     const [dashboard, setDashboard] = (0, import_react.useState)(null);
+    const [workspaceMode, setWorkspaceMode] = (0, import_react.useState)("queue");
     const [currentTask, setCurrentTask] = (0, import_react.useState)(null);
     const [payloadText, setPayloadText] = (0, import_react.useState)(JSON.stringify(createDefaultGenericPayload(), null, 2));
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     const [loading, setLoading] = (0, import_react.useState)(true);
     const [activeInspector, setActiveInspector] = (0, import_react.useState)(null);
+    const [submittedTasks, setSubmittedTasks] = (0, import_react.useState)([]);
+    const [submittedTasksLoading, setSubmittedTasksLoading] = (0, import_react.useState)(false);
+    const [selectedSubmittedTaskId, setSelectedSubmittedTaskId] = (0, import_react.useState)(null);
+    const [submittedDetail, setSubmittedDetail] = (0, import_react.useState)(null);
+    const [reviewTasks, setReviewTasks] = (0, import_react.useState)([]);
+    const [reviewTasksLoading, setReviewTasksLoading] = (0, import_react.useState)(false);
+    const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
+    const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
+    const [selectedReviewSource, setSelectedReviewSource] = (0, import_react.useState)("consensus");
+    const [reviewActionBusy, setReviewActionBusy] = (0, import_react.useState)(null);
     const [editorState, setEditorState] = (0, import_react.useState)({
       annotationCount: 0,
       hasUnlabeledAnnotations: false
     });
+    function parsePositiveInt(value) {
+      const parsed = Number(value || "");
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    function syncPayloadPreview(payload, fallback = createDefaultGenericPayload()) {
+      setPayloadText(JSON.stringify(payload ?? fallback, null, 2));
+    }
+    function getSelectedReviewPayload(detail, source) {
+      if (!detail) {
+        return null;
+      }
+      if (source === "consensus") {
+        return detail.consensus_payload;
+      }
+      return detail.annotations.find((annotation) => annotation.id === source)?.result_payload || null;
+    }
     currentTaskRef.current = currentTask;
     labelsRef.current = dashboard?.labels || [];
+    const canAnnotate = Boolean(dashboard?.actor.can_annotate);
+    const canReview = Boolean(dashboard?.actor.can_review);
+    const selectedReviewAnnotation = selectedReviewSource === "consensus" ? null : reviewDetail?.annotations.find((annotation) => annotation.id === selectedReviewSource) || null;
+    const selectedReviewPayload = workspaceMode === "review" ? selectedReviewAnnotation?.result_payload || reviewDetail?.consensus_payload || null : null;
+    const submittedPayload = submittedDetail?.annotation.result_payload || null;
+    const activeMediaPayload = workspaceMode === "queue" ? null : workspaceMode === "submitted" ? submittedPayload : selectedReviewPayload;
+    const isReadOnlyStage = workspaceMode === "review" || workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable);
     const scenario = getWorkEditorScenario(currentTask);
     const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
-    const stagePlaceholderText = loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0438 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : currentTask ? scenario.emptyStageMessage : "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443.";
-    const submitDisabled = submitting || !currentTask || isMediaTask && editorState.hasUnlabeledAnnotations;
+    const stagePlaceholderText = loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0438 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : currentTask ? scenario.emptyStageMessage : workspaceMode === "queue" ? "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : workspaceMode === "submitted" ? "\u0412\u044B\u0431\u0435\u0440\u0438 \u0441\u0432\u043E\u044E \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u0441\u043B\u0435\u0432\u0430." : "\u0412\u044B\u0431\u0435\u0440\u0438 \u043E\u0431\u044A\u0435\u043A\u0442 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0441\u043B\u0435\u0432\u0430.";
+    const submitDisabled = submitting || workspaceMode === "review" || !currentTask || workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable) || isMediaTask && !isReadOnlyStage && editorState.hasUnlabeledAnnotations;
     const roomTitle = dashboard?.room.title || (roomId ? `\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${roomId}` : "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430");
-    const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430";
+    const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : workspaceMode === "queue" ? "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430" : workspaceMode === "submitted" ? "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" : "\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438";
     const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
     const totalTasks = dashboard?.overview.total_tasks ?? 0;
     const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
+    const submitButtonLabel = workspaceMode === "queue" ? submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : currentTask ? "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C" : "\u041D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" : submitting ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : submittedDetail?.editable ? "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F" : "\u0422\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u0435\u043D\u0438\u0435";
     function toggleInspector(nextInspector) {
       setActiveInspector((current) => current === nextInspector ? null : nextInspector);
     }
@@ -25783,30 +25782,33 @@
         return;
       }
       if (currentTask && ["image", "video"].includes(currentTask.source_type)) {
-        mediaEditorRef.current.loadTask(currentTask);
+        mediaEditorRef.current.loadTaskWithPayload(currentTask, activeMediaPayload, {
+          readOnly: isReadOnlyStage,
+          placeholderText: stagePlaceholderText
+        });
         return;
       }
       mediaEditorRef.current.reset(stagePlaceholderText);
-    }, [currentTask, stagePlaceholderText]);
+    }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText]);
     async function loadDashboard() {
       if (!roomId) {
         addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438\u0437 URL.", "error");
-        return false;
+        return null;
       }
       try {
         const nextDashboard = await api(`/api/v1/rooms/${roomId}/dashboard/`);
         setDashboard(nextDashboard);
-        if (!nextDashboard.actor.can_annotate) {
-          addToast("\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043C\u043E\u0433\u0443\u0442 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438.", "error");
+        if (!nextDashboard.actor.can_annotate && !nextDashboard.actor.can_review) {
+          addToast("\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0441 \u043F\u0440\u0430\u0432\u0430\u043C\u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0438\u043B\u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438.", "error");
           window.setTimeout(() => {
             window.location.href = `/rooms/${roomId}/`;
           }, 900);
-          return false;
+          return null;
         }
-        return true;
+        return nextDashboard;
       } catch (error) {
         addToast(getErrorMessage(error), "error");
-        return false;
+        return null;
       }
     }
     async function loadNextTask(emptyMessage) {
@@ -25820,10 +25822,11 @@
           if (emptyMessage) {
             addToast(emptyMessage, "success");
           }
+          syncPayloadPreview(createDefaultGenericPayload());
           return null;
         }
         if (!["image", "video"].includes(task.source_type)) {
-          setPayloadText(JSON.stringify(createDefaultGenericPayload(), null, 2));
+          syncPayloadPreview(createDefaultGenericPayload());
         }
         return task;
       } catch (error) {
@@ -25831,19 +25834,188 @@
         return null;
       }
     }
+    async function loadSubmittedTasksList() {
+      if (!roomId) {
+        return [];
+      }
+      setSubmittedTasksLoading(true);
+      try {
+        const nextTasks = await api(`/api/v1/rooms/${roomId}/tasks/submitted/mine/`);
+        setSubmittedTasks(nextTasks || []);
+        return nextTasks || [];
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setSubmittedTasks([]);
+        return [];
+      } finally {
+        setSubmittedTasksLoading(false);
+      }
+    }
+    async function loadSubmittedDetail(taskId) {
+      try {
+        const detail = await api(`/api/v1/tasks/${taskId}/my-submission/`);
+        setSubmittedDetail(detail);
+        setCurrentTask(detail.task);
+        syncPayloadPreview(detail.annotation.result_payload);
+        return detail;
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setSubmittedDetail(null);
+        setCurrentTask(null);
+        syncPayloadPreview(createDefaultGenericPayload());
+        return null;
+      }
+    }
+    async function loadReviewTasksList() {
+      if (!roomId) {
+        return [];
+      }
+      setReviewTasksLoading(true);
+      try {
+        const nextTasks = await api(`/api/v1/rooms/${roomId}/review/tasks/`);
+        setReviewTasks(nextTasks || []);
+        return nextTasks || [];
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setReviewTasks([]);
+        return [];
+      } finally {
+        setReviewTasksLoading(false);
+      }
+    }
+    async function loadReviewDetail(taskId, requestedAnnotatorId) {
+      try {
+        const detail = await api(`/api/v1/tasks/${taskId}/review/`);
+        const initialSource = requestedAnnotatorId && detail.annotations.some((annotation) => annotation.annotator_id === requestedAnnotatorId) ? detail.annotations.find((annotation) => annotation.annotator_id === requestedAnnotatorId)?.id || "consensus" : "consensus";
+        setReviewDetail(detail);
+        setSelectedReviewSource(initialSource);
+        setCurrentTask(detail.task);
+        syncPayloadPreview(getSelectedReviewPayload(detail, initialSource), null);
+        return detail;
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setReviewDetail(null);
+        setSelectedReviewSource("consensus");
+        setCurrentTask(null);
+        syncPayloadPreview(createDefaultGenericPayload());
+        return null;
+      }
+    }
+    async function activateWorkspaceMode(nextMode, options) {
+      setWorkspaceMode(nextMode);
+      setActiveInspector(null);
+      setSubmitting(false);
+      setCurrentTask(null);
+      setLoading(true);
+      if (nextMode !== "submitted") {
+        setSubmittedDetail(null);
+        setSelectedSubmittedTaskId(null);
+      }
+      if (nextMode !== "review") {
+        setReviewDetail(null);
+        setSelectedReviewTaskId(null);
+        setSelectedReviewSource("consensus");
+      }
+      try {
+        if (nextMode === "queue") {
+          await loadNextTask("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442.");
+          replaceEditorUrlQuery({ mode: "queue" });
+          return;
+        }
+        if (nextMode === "submitted") {
+          const nextTasks2 = await loadSubmittedTasksList();
+          const fallbackTaskId2 = nextTasks2[0]?.id || null;
+          const nextTaskId2 = options?.taskId && nextTasks2.some((task) => task.id === options.taskId) ? options.taskId : fallbackTaskId2;
+          setSelectedSubmittedTaskId(nextTaskId2 || null);
+          if (nextTaskId2) {
+            await loadSubmittedDetail(nextTaskId2);
+          } else {
+            setCurrentTask(null);
+            syncPayloadPreview(createDefaultGenericPayload());
+          }
+          replaceEditorUrlQuery({ mode: "submitted", taskId: nextTaskId2 || null });
+          return;
+        }
+        const nextTasks = await loadReviewTasksList();
+        const fallbackTaskId = nextTasks[0]?.id || null;
+        const nextTaskId = options?.taskId && nextTasks.some((task) => task.id === options.taskId) ? options.taskId : fallbackTaskId;
+        setSelectedReviewTaskId(nextTaskId || null);
+        if (nextTaskId) {
+          await loadReviewDetail(nextTaskId, options?.annotatorId || null);
+          replaceEditorUrlQuery({ mode: "review", taskId: nextTaskId, annotatorId: options?.annotatorId || null });
+        } else {
+          setCurrentTask(null);
+          syncPayloadPreview(createDefaultGenericPayload());
+          replaceEditorUrlQuery({ mode: "review" });
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
     (0, import_react.useEffect)(() => {
       async function initialize() {
-        setLoading(true);
-        const canAnnotate = await loadDashboard();
-        if (canAnnotate) {
-          await loadNextTask("\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442.");
+        const nextDashboard = await loadDashboard();
+        if (!nextDashboard) {
+          setLoading(false);
+          return;
         }
-        setLoading(false);
+        const nextMode = normalizeEditorWorkspaceMode(initialSearchParamsRef.current.get("mode"), {
+          canAnnotate: nextDashboard.actor.can_annotate,
+          canReview: nextDashboard.actor.can_review
+        });
+        await activateWorkspaceMode(nextMode, {
+          taskId: parsePositiveInt(initialSearchParamsRef.current.get("task")),
+          annotatorId: parsePositiveInt(initialSearchParamsRef.current.get("annotator"))
+        });
       }
       initialize();
     }, []);
+    async function refreshDashboardSnapshot() {
+      return loadDashboard();
+    }
+    async function handleModeSwitch(nextMode) {
+      if ((nextMode === "queue" || nextMode === "submitted") && !canAnnotate) {
+        return;
+      }
+      if (nextMode === "review" && !canReview) {
+        return;
+      }
+      await activateWorkspaceMode(nextMode);
+    }
+    async function handleSelectSubmittedTask(taskId) {
+      setSelectedSubmittedTaskId(taskId);
+      setLoading(true);
+      try {
+        await loadSubmittedDetail(taskId);
+        replaceEditorUrlQuery({ mode: "submitted", taskId });
+      } finally {
+        setLoading(false);
+      }
+    }
+    async function handleSelectReviewTask(taskId) {
+      setSelectedReviewTaskId(taskId);
+      setLoading(true);
+      try {
+        await loadReviewDetail(taskId);
+        replaceEditorUrlQuery({ mode: "review", taskId });
+      } finally {
+        setLoading(false);
+      }
+    }
+    function handleSelectReviewSource(nextSource) {
+      setSelectedReviewSource(nextSource);
+      syncPayloadPreview(getSelectedReviewPayload(reviewDetail, nextSource), null);
+      replaceEditorUrlQuery({
+        mode: "review",
+        taskId: selectedReviewTaskId,
+        annotatorId: nextSource === "consensus" ? null : reviewDetail?.annotations.find((annotation) => annotation.id === nextSource)?.annotator_id || null
+      });
+    }
     async function handleSubmit(event) {
       event.preventDefault();
+      if (workspaceMode === "review") {
+        return;
+      }
       if (!currentTask) {
         addToast("\u041F\u043E\u0434\u043E\u0436\u0434\u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0437\u0430\u0434\u0430\u0447\u0438.", "error");
         return;
@@ -25853,32 +26025,98 @@
       try {
         let payload;
         if (["image", "video"].includes(currentTask.source_type)) {
-          if (mediaEditorRef.current?.hasUnlabeledAnnotations()) {
+          if (!isReadOnlyStage && mediaEditorRef.current?.hasUnlabeledAnnotations()) {
             throw new Error("\u041D\u0430\u0437\u043D\u0430\u0447\u044C \u043B\u0435\u0439\u0431\u043B\u044B \u0432\u0441\u0435\u043C \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u043D\u044B\u043C \u043E\u0431\u043B\u0430\u0441\u0442\u044F\u043C \u043F\u0435\u0440\u0435\u0434 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u043E\u0439.");
           }
           payload = mediaEditorRef.current?.getPayload() || { annotations: [] };
         } else {
           payload = JSON.parse(payloadText);
         }
-        const completedTaskId = currentTask.id;
-        await api(`/api/v1/tasks/${currentTask.id}/submit/`, {
-          method: "POST",
-          body: { result_payload: payload }
-        });
-        setCurrentTask(null);
-        const canAnnotate = await loadDashboard();
-        if (canAnnotate) {
+        if (workspaceMode === "queue") {
+          const completedTaskId = currentTask.id;
+          await api(`/api/v1/tasks/${currentTask.id}/submit/`, {
+            method: "POST",
+            body: { result_payload: payload }
+          });
+          setCurrentTask(null);
+          await refreshDashboardSnapshot();
           const nextTask = await loadNextTask();
           if (!nextTask) {
             addToast(`\u0417\u0430\u0434\u0430\u0447\u0430 #${completedTaskId} \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u0430. \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442.`, "success");
           } else {
             addToast(`\u0417\u0430\u0434\u0430\u0447\u0430 #${completedTaskId} \u0443\u0441\u043F\u0435\u0448\u043D\u043E \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u0430. \u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u0443\u0436\u0435 \u0433\u043E\u0442\u043E\u0432\u0430.`, "success");
           }
+        } else {
+          await api(`/api/v1/tasks/${currentTask.id}/my-submission/`, {
+            method: "PUT",
+            body: { result_payload: payload }
+          });
+          await refreshDashboardSnapshot();
+          const nextTasks = await loadSubmittedTasksList();
+          const activeTaskId = selectedSubmittedTaskId && nextTasks.some((task) => task.id === selectedSubmittedTaskId) ? selectedSubmittedTaskId : nextTasks[0]?.id || null;
+          setSelectedSubmittedTaskId(activeTaskId);
+          if (activeTaskId) {
+            await loadSubmittedDetail(activeTaskId);
+            replaceEditorUrlQuery({ mode: "submitted", taskId: activeTaskId });
+          }
+          addToast(`\u0418\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u043F\u043E \u0437\u0430\u0434\u0430\u0447\u0435 #${currentTask.id} \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u044B.`, "success");
         }
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       } finally {
         setSubmitting(false);
+      }
+    }
+    async function handleReturnForRevision() {
+      if (!reviewDetail?.task.id || !selectedReviewAnnotation) {
+        return;
+      }
+      const shouldReturn = window.confirm(
+        `\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u0430\u0432\u0442\u043E\u0440\u0443 ${selectedReviewAnnotation.annotator_display_name} \u043D\u0430 \u0438\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435?`
+      );
+      if (!shouldReturn) {
+        return;
+      }
+      clearToasts();
+      setReviewActionBusy(`return-${selectedReviewAnnotation.annotator_id}`);
+      try {
+        await api(`/api/v1/tasks/${reviewDetail.task.id}/return-for-revision/`, {
+          method: "POST",
+          body: { annotator_id: selectedReviewAnnotation.annotator_id }
+        });
+        await refreshDashboardSnapshot();
+        addToast(`\u0417\u0430\u0434\u0430\u0447\u0430 #${reviewDetail.task.id} \u0432\u043E\u0437\u0432\u0440\u0430\u0449\u0435\u043D\u0430 \u0430\u0432\u0442\u043E\u0440\u0443 \u043D\u0430 \u0438\u0441\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435.`, "success");
+        await activateWorkspaceMode("review");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setReviewActionBusy(null);
+      }
+    }
+    async function handleRejectTask() {
+      if (!reviewDetail?.task.id) {
+        return;
+      }
+      const shouldReject = window.confirm(
+        "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C \u044D\u0442\u0443 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443? \u0417\u0430\u0434\u0430\u0447\u0430 \u0431\u0443\u0434\u0435\u0442 \u0438\u0441\u043A\u043B\u044E\u0447\u0435\u043D\u0430 \u0438\u0437 \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0439 \u0432\u044B\u0431\u043E\u0440\u043A\u0438 \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430 \u043D\u0430 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443."
+      );
+      if (!shouldReject) {
+        return;
+      }
+      clearToasts();
+      setReviewActionBusy("reject");
+      try {
+        await api(`/api/v1/tasks/${reviewDetail.task.id}/reject/`, {
+          method: "POST",
+          body: {}
+        });
+        await refreshDashboardSnapshot();
+        addToast(`\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043F\u043E \u0437\u0430\u0434\u0430\u0447\u0435 #${reviewDetail.task.id} \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0430.`, "success");
+        await activateWorkspaceMode("review");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setReviewActionBusy(null);
       }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { ref: formRef, className: "room-editor", onSubmit: handleSubmit, children: [
@@ -25891,6 +26129,35 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: summaryMeta })
           ] })
         ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__tabs", children: [
+          canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              className: `btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`,
+              type: "button",
+              onClick: () => handleModeSwitch("queue"),
+              children: "\u041D\u043E\u0432\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430"
+            }
+          ) : null,
+          canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              className: `btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`,
+              type: "button",
+              onClick: () => handleModeSwitch("submitted"),
+              children: "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435"
+            }
+          ) : null,
+          canReview ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              className: `btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`,
+              type: "button",
+              onClick: () => handleModeSwitch("review"),
+              children: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
+            }
+          ) : null
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__actions", children: [
           totalTasks ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
             completedTasks,
@@ -25902,10 +26169,106 @@
             editorState.annotationCount ? ` ${editorState.annotationCount}` : ""
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: `btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("payload"), children: "JSON" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : currentTask ? "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C" : "\u041D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" })
+          workspaceMode === "review" ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitButtonLabel })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__body", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "room-editor__taskrail", children: [
+          workspaceMode === "queue" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041E\u0447\u0435\u0440\u0435\u0434\u044C" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__note", children: currentTask ? `\u0410\u043A\u0442\u0438\u0432\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}. \u041F\u043E\u0441\u043B\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 editor \u0441\u0440\u0430\u0437\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 item \u0438\u0437 \u043E\u0447\u0435\u0440\u0435\u0434\u0438.` : "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u044D\u043A\u0440\u0430\u043D." })
+          ] }) : null,
+          workspaceMode === "submitted" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-chip editor-chip--ghost", children: submittedTasks.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__tasklist", children: submittedTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0442\u0432\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438." }) : submittedTasks.length ? submittedTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                className: `room-editor__taskitem ${task.id === selectedSubmittedTaskId ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => handleSelectSubmittedTask(task.id),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    "\u0420\u0430\u0443\u043D\u0434 ",
+                    task.current_round
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: task.editable ? "\u041C\u043E\u0436\u043D\u043E \u043F\u0440\u0430\u0432\u0438\u0442\u044C" : task.editable_reason || "\u0422\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u0435\u043D\u0438\u0435" })
+                ]
+              },
+              task.id
+            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0442\u0435\u0431\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 submitted-\u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 editor-\u0435." }) }),
+            submittedDetail && !submittedDetail.editable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__note", children: submittedDetail.editable_reason || "\u042D\u0442\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0443\u0436\u0435 \u0437\u0430\u0444\u0438\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u0430." }) : null
+          ] }) : null,
+          workspaceMode === "review" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-chip editor-chip--ghost", children: reviewTasks.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__tasklist", children: reviewTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438." }) : reviewTasks.length ? reviewTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                className: `room-editor__taskitem ${task.id === selectedReviewTaskId ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => handleSelectReviewTask(task.id),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateReviewOutcome(task.review_outcome) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("small", { children: [
+                    task.annotations_count,
+                    " \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0439"
+                  ] })
+                ]
+              },
+              task.id
+            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442 \u0438\u0442\u0435\u043C\u043E\u0432, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043D\u0443\u0436\u043D\u043E \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u0432 review-\u0440\u0435\u0436\u0438\u043C\u0435." }) }),
+            reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__section", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__label", children: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__source-switcher", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: `room-editor__source-chip ${selectedReviewSource === "consensus" ? "is-active" : ""}`,
+                      type: "button",
+                      onClick: () => handleSelectReviewSource("consensus"),
+                      children: "\u0418\u0442\u043E\u0433\u043E\u0432\u0430\u044F"
+                    }
+                  ),
+                  reviewDetail.annotations.map((annotation) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "button",
+                    {
+                      className: `room-editor__source-chip ${selectedReviewSource === annotation.id ? "is-active" : ""}`,
+                      type: "button",
+                      onClick: () => handleSelectReviewSource(annotation.id),
+                      children: [
+                        annotation.annotator_display_name,
+                        " \xB7 R",
+                        annotation.round_number
+                      ]
+                    },
+                    annotation.id
+                  ))
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__actions", children: [
+                selectedReviewAnnotation ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: "btn btn--secondary btn--compact",
+                    type: "button",
+                    disabled: Boolean(reviewActionBusy),
+                    onClick: handleReturnForRevision,
+                    children: reviewActionBusy === `return-${selectedReviewAnnotation.annotator_id}` ? "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u043C..." : "\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u0430\u0432\u0442\u043E\u0440\u0443"
+                  }
+                ) : null,
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: Boolean(reviewActionBusy), onClick: handleRejectTask, children: reviewActionBusy === "reject" ? "\u041E\u0442\u043A\u043B\u043E\u043D\u044F\u0435\u043C..." : "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C \u0438\u0442\u043E\u0433" })
+              ] })
+            ] }) : null
+          ] }) : null
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "room-editor__stage", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__canvas-shell", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__stage-surface", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: stagePlaceholderText }) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: isMediaTask ? "editor-toolbar" : "editor-toolbar hidden", children: [
@@ -25945,7 +26308,7 @@
                   ref: resultJsonRef,
                   rows: 16,
                   value: payloadText,
-                  readOnly: Boolean(currentTask && isMediaTask),
+                  readOnly: Boolean(currentTask && isMediaTask) || isReadOnlyStage,
                   onChange: (event) => setPayloadText(event.currentTarget.value)
                 }
               )
