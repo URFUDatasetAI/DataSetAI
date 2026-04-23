@@ -1,0 +1,40 @@
+# Labeling Pipeline And Workflows
+
+## Why This Area Is Sensitive
+
+Главная ценность продукта - не просто показать данные в UI, а корректно провести задачу через assignment, annotation, consensus, review и export. Ошибки здесь бьют по данным, а не только по интерфейсу.
+
+## Core Goals
+
+- Не допускать двойных assignment-ов и гонок между annotator-ами.
+- Корректно закрывать или переоткрывать задачи по результатам review/cross-validation.
+- Считать прогресс и экспорт по правильной стадии workflow, особенно в `text_detect_text`.
+- Держать новую grouped cross-validation модель детерминированной и объяснимой.
+
+## Why Services And Distribution Matter
+
+- `apps/labeling/services.py` владеет write-side жизненным циклом задач и аннотаций.
+- `apps/labeling/distribution.py` теперь является отдельной смысловой точкой: здесь живёт логика reviewer pool, grouped assignment и fallback на legacy distribution.
+- `apps/labeling/consensus.py` нельзя рассматривать как изолированный helper: его поведение влияет на reopen semantics и итоговый export.
+
+## Decisions Already Embedded In The Project
+
+- `select_for_update(skip_locked=True)` в assignment flow - часть модели конкурентной безопасности, а не случайная оптимизация.
+- Grouped cross-validation сознательно выбрана как deterministic room-level strategy: одинаковый набор annotator-ов должен давать предсказуемые reviewer groups.
+- Если пул annotator-ов нельзя разбить на полные группы нужного размера, система должна fallback-нуться на старую balanced strategy, а не вести себя “почти правильно”.
+- В `text_detect_text` final-stage semantics важнее сырой структуры task rows: detection может порождать transcription children, но именно transcription stage определяет прогресс готовности комнаты.
+
+## What Refactors Must Preserve
+
+- Любая “упрощающая” правка в assignment flow должна перепроверяться на concurrency, round semantics и review consequences.
+- Review/reject logic нельзя оценивать отдельно от export и room progress.
+- Новые сценарии разметки должны либо вписываться в существующую pipeline semantics, либо явно расширять её, а не обходить.
+
+## First Files To Read
+
+- `apps/labeling/services.py`
+- `apps/labeling/distribution.py`
+- `apps/labeling/consensus.py`
+- `apps/labeling/workflows.py`
+- `tests/test_labeling_api.py`
+- `apps/labeling/tests.py`

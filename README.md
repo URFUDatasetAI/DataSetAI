@@ -48,6 +48,17 @@ Frontend больше не рендерится как набор независ
 - Архитектура и устройство приложения: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Production, CI/CD и эксплуатация сервера: [DEPLOY.md](DEPLOY.md)
 
+## AGENTS handoff-layer
+
+В репозитории есть отдельный operational/context слой для ИИ-агентов:
+
+1. Начать с [AGENTS/AGENTS.md](AGENTS/AGENTS.md)
+2. Затем открыть [AGENTS/current-state.md](AGENTS/current-state.md)
+3. Потом прочитать релевантные файлы из [AGENTS/context/](AGENTS/context/README.md)
+4. После этого при необходимости перейти в [AGENTS/tasks/](AGENTS/tasks/README.md), [AGENTS/ideas/](AGENTS/ideas/index.md) и только затем в глубину `docs/*` и кода
+
+`README.md` и `docs/*` остаются каноническими документами про факты. `AGENTS/*` - это живой handoff-слой: текущие приоритеты, причины архитектурных решений, незавершённые темы и backlog-идеи.
+
 ## Как быстро найти нужный код
 
 Если нужно быстро сориентироваться в репозитории, начните с этих точек входа:
