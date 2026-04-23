@@ -43,6 +43,7 @@ Workflow [ci.yml](.github/workflows/ci.yml) запускается на кажд
 ## Что делает production deploy
 
 Workflow [deploy.yml](.github/workflows/deploy.yml) запускается только после `push` в `main`.
+Также его можно запустить вручную из GitHub Actions через `Deploy To Production` -> `Run workflow`.
 
 Он:
 
@@ -241,6 +242,17 @@ sudo -u datasetai /srv/datasetai/venv/bin/python scripts/check_db.py
 sudo systemctl status datasetai --no-pager -l
 sudo journalctl -u datasetai -n 100 --no-pager
 ```
+
+## Что делать, если deploy не запустился после merge
+
+Если CI зелёный, PR смержен в `main`, но workflow `Deploy To Production` не появился в Actions:
+
+1. открыть `Actions` -> `Deploy To Production`
+2. нажать `Run workflow`
+3. выбрать ветку `main`
+4. запустить workflow
+
+Ручной запуск вызывает тот же серверный `/srv/datasetai/deploy.sh`, поэтому он подтягивает актуальный `main` через `git pull origin main`.
 
 ## Что делать, если CI упал
 
