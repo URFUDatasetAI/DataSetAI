@@ -26,7 +26,7 @@ def get_room_actor_role(*, room: Room, user: User, membership: RoomMembership | 
 
 def can_annotate_room(*, room: Room, user: User, membership: RoomMembership | None = None) -> bool:
     if is_room_owner(room=room, user=user):
-        return True
+        return room.owner_is_annotator
     membership = membership if membership is not None else get_room_membership(room=room, user=user)
     return bool(
         membership

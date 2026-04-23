@@ -108,9 +108,6 @@ class Annotation(TimeStampedModel):
 
     class Meta:
         ordering = ("-submitted_at", "-id")
-        constraints = [
-            models.UniqueConstraint(fields=("task", "annotator"), name="unique_task_annotator_annotation"),
-        ]
 
     def __str__(self) -> str:
         return f"Annotation {self.id} for task {self.task_id}"
@@ -141,7 +138,7 @@ class TaskAssignment(TimeStampedModel):
     class Meta:
         ordering = ("task_id", "round_number", "annotator_id")
         constraints = [
-            models.UniqueConstraint(fields=("task", "annotator"), name="unique_task_assignment_annotator"),
+            models.UniqueConstraint(fields=("task", "annotator", "round_number"), name="unique_task_assignment_round_annotator"),
         ]
         indexes = [
             models.Index(fields=("task", "status"), name="labeling_ta_task_st_4f3f33_idx"),

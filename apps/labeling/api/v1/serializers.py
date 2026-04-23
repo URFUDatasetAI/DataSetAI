@@ -118,7 +118,7 @@ class AnnotationSerializer(serializers.ModelSerializer):
     task_id = serializers.IntegerField(read_only=True)
     annotator_id = serializers.IntegerField(read_only=True)
     assignment_id = serializers.IntegerField(read_only=True)
-    annotator_display_name = serializers.CharField(source="annotator.display_name", read_only=True)
+    annotator_display_name = serializers.SerializerMethodField()
     round_number = serializers.IntegerField(source="assignment.round_number", read_only=True)
 
     class Meta:
@@ -136,11 +136,17 @@ class AnnotationSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
+    def get_annotator_display_name(self, obj):
+        if isinstance(obj, dict):
+            return obj.get("annotator_display_name") or f"#{obj.get('annotator_id')}"
+        return obj.annotator.display_name
+
 
 class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     source_file_url = serializers.SerializerMethodField()
     annotations_count = serializers.SerializerMethodField()
     annotator_ids = serializers.SerializerMethodField()
+    review_outcome = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -155,6 +161,7 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "source_file_url",
             "annotations_count",
             "annotator_ids",
+            "review_outcome",
             "updated_at",
         )
 
@@ -172,8 +179,23 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     def get_annotator_ids(self, obj):
         return list(obj.annotations.order_by().values_list("annotator_id", flat=True).distinct())
 
+    def get_review_outcome(self, obj):
+        if obj.status == Task.Status.SUBMITTED and obj.consensus_payload is not None:
+            return "accepted"
+        if obj.annotations.exists():
+            return "rejected"
+        return "pending"
+
+
+class ReviewAnnotationSerializer(AnnotationSerializer):
+    review_outcome = serializers.CharField()
+
+    class Meta(AnnotationSerializer.Meta):
+        fields = AnnotationSerializer.Meta.fields + ("review_outcome",)
+
 
 class ReviewTaskDetailSerializer(serializers.Serializer):
     task = TaskSerializer()
     consensus_payload = serializers.JSONField(allow_null=True)
-    annotations = AnnotationSerializer(many=True)
+    annotations = ReviewAnnotationSerializer(many=True)
+    review_outcome = serializers.CharField()

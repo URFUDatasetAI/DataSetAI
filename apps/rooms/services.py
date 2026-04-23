@@ -1,5 +1,6 @@
 import io
 import json
+import mimetypes
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from itertools import cycle
 from pathlib import Path
 
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.utils import timezone
 
@@ -66,6 +68,7 @@ DEFAULT_LABEL_COLORS = [
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
 JSON_EXTENSIONS = {".json"}
+ARCHIVE_EXTENSIONS = {".zip"}
 UNSET = object()
 MAX_PINNED_ROOMS = 5
 
@@ -103,6 +106,7 @@ def create_room(
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
+    owner_is_annotator: bool = True,
     annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     annotator_ids: list[int] | None = None,
     dataset_mode: str = "demo",
@@ -141,6 +145,7 @@ def create_room(
             cross_validation_enabled=cross_validation_enabled,
             cross_validation_annotators_count=cross_validation_annotators_count,
             cross_validation_similarity_threshold=cross_validation_similarity_threshold,
+            owner_is_annotator=owner_is_annotator,
         )
         room.set_access_password(password)
         room.save()
@@ -463,6 +468,7 @@ def update_room(
     cross_validation_enabled=UNSET,
     cross_validation_annotators_count=UNSET,
     cross_validation_similarity_threshold=UNSET,
+    owner_is_annotator=UNSET,
 ) -> Room:
     if not can_edit_room(room=room, user=owner):
         raise AccessDeniedError("Only the room owner can edit room settings.")
@@ -504,6 +510,10 @@ def update_room(
     ):
         room.cross_validation_similarity_threshold = cross_validation_similarity_threshold
         update_fields.append("cross_validation_similarity_threshold")
+
+    if owner_is_annotator is not UNSET and room.owner_is_annotator != owner_is_annotator:
+        room.owner_is_annotator = owner_is_annotator
+        update_fields.append("owner_is_annotator")
 
     if has_password is not UNSET:
         if not has_password:
@@ -585,6 +595,7 @@ def _load_json_dataset_items(dataset_file) -> list:
 
 
 def _create_json_tasks(*, room: Room, dataset_label: str, dataset_files: list) -> None:
+    dataset_files = _expand_dataset_files(dataset_mode=Room.DatasetType.JSON, dataset_files=dataset_files)
     if len(dataset_files) != 1:
         raise ConflictError("JSON dataset upload expects exactly one .json file.")
 
@@ -612,6 +623,10 @@ def _create_media_tasks(
     media_manifest: list[dict],
     source_type: str,
 ) -> None:
+    dataset_files = _expand_dataset_files(
+        dataset_mode=Room.DatasetType.IMAGE if source_type == Task.SourceType.IMAGE else Room.DatasetType.VIDEO,
+        dataset_files=dataset_files,
+    )
     # For image datasets we create one Task per uploaded file.
     # For video datasets we fan out one uploaded video into many image tasks
     # (frames), because the rest of the labeling pipeline operates on Task rows.
@@ -762,13 +777,74 @@ def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
     suffixes = {Path(file.name).suffix.lower() for file in dataset_files}
 
     if dataset_mode == Room.DatasetType.JSON:
-        if suffixes - JSON_EXTENSIONS:
-            raise ConflictError("JSON mode accepts only .json files.")
+        if suffixes - (JSON_EXTENSIONS | ARCHIVE_EXTENSIONS):
+            raise ConflictError("JSON mode accepts .json files or .zip archives with JSON datasets.")
         return
 
     allowed_extensions = IMAGE_EXTENSIONS if dataset_mode == Room.DatasetType.IMAGE else VIDEO_EXTENSIONS
-    if suffixes - allowed_extensions:
-        raise ConflictError("Uploaded files do not match the selected dataset type.")
+    if suffixes - (allowed_extensions | ARCHIVE_EXTENSIONS):
+        raise ConflictError("Uploaded files do not match the selected dataset type. You can also upload a .zip archive.")
+
+
+def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
+    if dataset_mode == Room.DatasetType.JSON:
+        allowed_extensions = JSON_EXTENSIONS
+    elif dataset_mode == Room.DatasetType.IMAGE:
+        allowed_extensions = IMAGE_EXTENSIONS
+    else:
+        allowed_extensions = VIDEO_EXTENSIONS
+
+    expanded_files = []
+    for dataset_file in dataset_files:
+        suffix = Path(dataset_file.name).suffix.lower()
+        if suffix in ARCHIVE_EXTENSIONS:
+            expanded_files.extend(
+                _extract_archive_dataset_files(
+                    dataset_file=dataset_file,
+                    allowed_extensions=allowed_extensions,
+                )
+            )
+        elif suffix in allowed_extensions:
+            expanded_files.append(dataset_file)
+
+    if not expanded_files:
+        raise ConflictError("Archive does not contain supported dataset files.")
+
+    if dataset_mode == Room.DatasetType.JSON and len(expanded_files) != 1:
+        raise ConflictError("JSON dataset upload expects exactly one .json file.")
+
+    return expanded_files
+
+
+def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]) -> list:
+    archive_members = []
+
+    if hasattr(dataset_file, "seek"):
+        dataset_file.seek(0)
+
+    try:
+        with zipfile.ZipFile(dataset_file) as archive:
+            for archive_info in archive.infolist():
+                if archive_info.is_dir():
+                    continue
+                if archive_info.filename.startswith("__MACOSX/"):
+                    continue
+
+                inner_name = Path(archive_info.filename).name
+                inner_suffix = Path(inner_name).suffix.lower()
+                if not inner_name or inner_name.startswith(".") or inner_suffix not in allowed_extensions:
+                    continue
+
+                content = archive.read(archive_info)
+                content_type = mimetypes.guess_type(inner_name)[0] or "application/octet-stream"
+                archive_members.append(SimpleUploadedFile(inner_name, content, content_type=content_type))
+    except zipfile.BadZipFile as exc:
+        raise ConflictError("Uploaded archive is not a valid ZIP file.") from exc
+    finally:
+        if hasattr(dataset_file, "seek"):
+            dataset_file.seek(0)
+
+    return archive_members
 
 
 def _build_native_export(*, room: Room, tasks, labels, base_url: str | None) -> ExportArtifact:

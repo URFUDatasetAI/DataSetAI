@@ -1,5 +1,7 @@
 import json
 import tempfile
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
@@ -10,6 +12,7 @@ from rest_framework.test import APIClient
 
 from apps.labeling.models import Task
 from apps.rooms.models import Room, RoomMembership, RoomPin, RoomVisit
+from apps.rooms.policies import can_annotate_room, can_review_room
 from apps.users.models import User
 
 
@@ -71,6 +74,57 @@ class RoomListCreateViewTests(TestCase):
         membership = RoomMembership.objects.get(room=room, user=annotator)
         self.assertEqual(membership.status, RoomMembership.Status.INVITED)
 
+    def test_create_room_can_disable_owner_as_annotator(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Owner reviewer room",
+                "dataset_mode": Room.DatasetType.DEMO,
+                "owner_is_annotator": False,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        room = Room.objects.get(title="Owner reviewer room")
+        self.assertFalse(room.owner_is_annotator)
+        self.assertFalse(can_annotate_room(room=room, user=self.user))
+        self.assertTrue(can_review_room(room=room, user=self.user))
+
+    def test_zip_archive_request_creates_image_room(self):
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Archive vision room",
+                "dataset_mode": Room.DatasetType.IMAGE,
+                "labels": json.dumps([{"name": "Car", "color": "#FF0000"}]),
+                "dataset_files": [self._uploaded_zip_file("images.zip", {"nested/sample.png": b"fake-image-bytes"})],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        room = Room.objects.get(title="Archive vision room")
+        self.assertEqual(room.tasks.count(), 1)
+        task = Task.objects.get(room=room)
+        self.assertEqual(task.source_name, "sample.png")
+
+    def test_zip_archive_request_creates_json_room(self):
+        payload = json.dumps([{"text": "hello"}, {"text": "world"}], ensure_ascii=False).encode("utf-8")
+        response = self.client.post(
+            "/api/v1/rooms/",
+            data={
+                "title": "Archive json room",
+                "dataset_mode": Room.DatasetType.JSON,
+                "dataset_files": [self._uploaded_zip_file("dataset.zip", {"items.json": payload})],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        room = Room.objects.get(title="Archive json room")
+        self.assertEqual(room.tasks.count(), 2)
+
     def test_owner_can_delete_room(self):
         room = Room.objects.create(title="Delete me", created_by=self.user)
 
@@ -117,6 +171,7 @@ class RoomListCreateViewTests(TestCase):
                 "cross_validation_enabled": True,
                 "cross_validation_annotators_count": 2,
                 "cross_validation_similarity_threshold": 91,
+                "owner_is_annotator": False,
             },
             format="json",
         )
@@ -129,7 +184,10 @@ class RoomListCreateViewTests(TestCase):
         self.assertTrue(room.cross_validation_enabled)
         self.assertEqual(room.cross_validation_annotators_count, 2)
         self.assertEqual(room.cross_validation_similarity_threshold, 91)
+        self.assertFalse(room.owner_is_annotator)
         self.assertTrue(room.check_access_password("new-secret"))
+        self.assertFalse(can_annotate_room(room=room, user=self.user))
+        self.assertTrue(can_review_room(room=room, user=self.user))
 
     def test_owner_can_disable_room_password(self):
         room = Room.objects.create(title="Protected room", created_by=self.user)
@@ -146,6 +204,21 @@ class RoomListCreateViewTests(TestCase):
         room.refresh_from_db()
         self.assertFalse(room.has_password)
         self.assertTrue(room.check_access_password(""))
+
+    def test_owner_is_listed_in_review_participants_when_owner_is_annotator(self):
+        room = Room.objects.create(
+            title="Owner listed room",
+            created_by=self.user,
+            owner_is_annotator=True,
+        )
+
+        response = self.client.get(f"/api/v1/rooms/{room.id}/dashboard/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        annotators_by_id = {item["user_id"]: item for item in response.data["annotators"]}
+        self.assertIn(self.user.id, annotators_by_id)
+        self.assertEqual(annotators_by_id[self.user.id]["status"], "owner")
+        self.assertEqual(annotators_by_id[self.user.id]["role"], "owner")
 
     def test_owner_can_remove_room_member(self):
         room = Room.objects.create(title="Review room", created_by=self.user)
@@ -308,3 +381,14 @@ class RoomListCreateViewTests(TestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
 
         return SimpleUploadedFile(name, b"fake-image-bytes", content_type="image/png")
+
+    @staticmethod
+    def _uploaded_zip_file(name: str, members: dict[str, bytes]):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for member_name, content in members.items():
+                archive.writestr(member_name, content)
+
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type="application/zip")
