@@ -83,13 +83,12 @@ def _get_grouped_round_designated_annotator_ids(
         return []
     if len(assignment_pool_ids) < reviews_per_round:
         return []
-    full_group_capacity = (len(assignment_pool_ids) // reviews_per_round) * reviews_per_round
-    if full_group_capacity < reviews_per_round:
+    if len(assignment_pool_ids) % reviews_per_round != 0:
         return []
 
     groups = [
         assignment_pool_ids[index : index + reviews_per_round]
-        for index in range(0, full_group_capacity, reviews_per_round)
+        for index in range(0, len(assignment_pool_ids), reviews_per_round)
     ]
     if not groups:
         return []

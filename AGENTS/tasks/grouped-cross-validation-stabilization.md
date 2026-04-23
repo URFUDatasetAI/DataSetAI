@@ -36,6 +36,7 @@
 
 - Reviewer groups должны быть deterministic на уровне room/task ordering.
 - Неполный annotator pool не должен ронять систему и не должен притворяться полными группами; для таких случаев нужен fallback.
+- Fallback должен включаться для всего пула, если `len(assignment_pool) % required_reviews_per_item != 0`; нельзя формировать partial grouped split и молча оставлять “лишних” annotator-ов без задач.
 - `owner_is_annotator` входит в assignment pool только если это явно разрешено room settings.
 
 ## Open Edges / Risks

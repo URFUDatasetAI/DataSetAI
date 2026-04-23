@@ -363,6 +363,54 @@ class LabelingConsensusAndDistributionTests(TestCase):
         self.assertEqual(len(set(designated_groups)), 2)
         self.assertEqual(sorted(task_counts.values()), [2, 2, 2, 2])
 
+    def test_cross_validation_falls_back_when_pool_cannot_form_full_groups(self):
+        room = Room.objects.create(
+            title="Uneven grouped room",
+            created_by=self.owner,
+            owner_is_annotator=True,
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+        )
+        annotators = [
+            User.objects.create_user(
+                email=f"uneven-grouped-{index}@example.com",
+                full_name=f"Uneven Grouped {index}",
+                password="secret123",
+            )
+            for index in range(1, 3)
+        ]
+        for annotator in annotators:
+            RoomMembership.objects.create(
+                room=room,
+                user=annotator,
+                invited_by=self.owner,
+                status=RoomMembership.Status.JOINED,
+                role=RoomMembership.Role.ANNOTATOR,
+            )
+
+        tasks = [
+            Task.objects.create(
+                room=room,
+                source_type=Task.SourceType.IMAGE,
+                input_payload={"dataset": "Vision", "item_number": index + 1, "width": 400, "height": 400},
+            )
+            for index in range(6)
+        ]
+
+        task_counts = {self.owner.id: 0, **{annotator.id: 0 for annotator in annotators}}
+        designated_groups = []
+        for task in tasks:
+            designated_annotator_ids = get_task_designated_annotator_ids(task=task)
+            self.assertEqual(len(designated_annotator_ids), 2)
+            self.assertEqual(len(set(designated_annotator_ids)), 2)
+            designated_groups.append(tuple(sorted(designated_annotator_ids)))
+            for annotator_id in designated_annotator_ids:
+                task_counts[annotator_id] += 1
+
+        self.assertEqual(set(task_counts), {self.owner.id, *(annotator.id for annotator in annotators)})
+        self.assertEqual(sorted(task_counts.values()), [4, 4, 4])
+        self.assertIn(self.owner.id, {annotator_id for group in designated_groups for annotator_id in group})
+
     def test_repeat_round_reuses_annotators_when_pool_is_exhausted(self):
         room = Room.objects.create(
             title="Consensus room",
