@@ -4,6 +4,10 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.labeling.consensus import evaluate_annotation_consensus
+from apps.labeling.distribution import (
+    get_effective_reviews_for_task,
+    get_task_designated_annotator_ids,
+)
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.labeling.workflows import is_text_detection_workflow
 from apps.rooms.models import Room, RoomMembership
@@ -34,10 +38,9 @@ def _get_room_eligible_annotators_count(*, room: Room) -> int:
             status=RoomMembership.Status.JOINED,
             role__in=(RoomMembership.Role.ANNOTATOR, RoomMembership.Role.ADMIN),
         )
-        .exclude(user_id=room.created_by_id)
         .count()
     )
-    return 1 + joined_annotators_count
+    return joined_annotators_count + (1 if room.owner_is_annotator else 0)
 
 
 def _build_stage_two_payload(*, task: Task, consensus_payload: dict, submitted_assignments: list[TaskAssignment]) -> dict:
@@ -71,6 +74,10 @@ def _create_followup_transcription_task(*, task: Task, consensus_payload: dict, 
         validation_score=100.0 if not annotations else None,
         consensus_payload={"annotations": []} if not annotations else None,
     )
+
+
+def _delete_rejected_round_history(*, task: Task) -> None:
+    TaskAssignment.objects.filter(task=task).exclude(round_number=task.current_round).delete()
 
 
 def get_next_task_for_annotator(*, room: Room, annotator: User):
@@ -107,6 +114,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         annotator_assignments = TaskAssignment.objects.filter(
             task_id=OuterRef("pk"),
             annotator=annotator,
+            round_number=OuterRef("current_round"),
         )
         round_assignments = (
             TaskAssignment.objects.filter(
@@ -146,7 +154,25 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         else:
             queryset = queryset.select_for_update()
 
-        next_task = queryset.first()
+        next_task = None
+        for candidate_task in queryset.prefetch_related("assignments"):
+            current_round_annotator_ids = {
+                assignment.annotator_id
+                for assignment in candidate_task.assignments.all()
+                if assignment.round_number == candidate_task.current_round
+            }
+            effective_reviews = get_effective_reviews_for_task(task=candidate_task)
+            if effective_reviews <= 0 or candidate_task.round_assignments_count >= effective_reviews:
+                continue
+
+            designated_annotator_ids = get_task_designated_annotator_ids(
+                task=candidate_task,
+                current_round_annotator_ids=current_round_annotator_ids,
+            )
+            if annotator.id in designated_annotator_ids:
+                next_task = candidate_task
+                break
+
         if next_task:
             TaskAssignment.objects.create(
                 task=next_task,
@@ -215,7 +241,7 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
         )
         submitted_assignments = [item for item in round_assignments if item.status == TaskAssignment.Status.SUBMITTED]
 
-        required_reviews = locked_task.room.required_reviews_per_item
+        required_reviews = get_effective_reviews_for_task(task=locked_task)
         if len(submitted_assignments) >= required_reviews:
             # Once the round has enough reviews we either accept consensus and
             # close the task, or reopen it for the next round.
@@ -231,6 +257,7 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
             if consensus["accepted"]:
                 locked_task.status = Task.Status.SUBMITTED
                 locked_task.consensus_payload = consensus["consensus_payload"]
+                _delete_rejected_round_history(task=locked_task)
             else:
                 locked_task.status = Task.Status.PENDING
                 locked_task.current_round += 1
@@ -273,6 +300,9 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
             raise AccessDeniedError("You do not have permission to reject annotations in this room.")
         if locked_task.status != Task.Status.SUBMITTED:
             raise ConflictError("Only submitted tasks can be rejected.")
+
+        rejected_round = locked_task.current_round
+        TaskAssignment.objects.filter(task=locked_task, round_number=rejected_round).delete()
 
         locked_task.status = Task.Status.PENDING
         locked_task.current_round += 1

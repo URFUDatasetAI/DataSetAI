@@ -3263,6 +3263,46 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text);
 }
 
+.review-annotation-entry__status {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    border: 1px solid var(--line);
+    background: var(--soft-panel-background);
+}
+
+.review-annotation-entry__status--accepted {
+    border-color: rgba(96, 196, 122, 0.38);
+    color: #2f8f4b;
+    background: rgba(96, 196, 122, 0.12);
+}
+
+.review-annotation-entry__status--rejected {
+    border-color: rgba(224, 85, 54, 0.38);
+    color: #c7482e;
+    background: rgba(224, 85, 54, 0.12);
+}
+
+.review-annotation-entry__status--pending {
+    border-color: rgba(255, 201, 25, 0.34);
+    color: var(--text);
+    background: rgba(255, 201, 25, 0.12);
+}
+
+[data-theme="dark"] .review-annotation-entry__status--accepted {
+    color: #96efae;
+    background: rgba(96, 196, 122, 0.16);
+}
+
+[data-theme="dark"] .review-annotation-entry__status--rejected {
+    color: #ff9a87;
+    background: rgba(224, 85, 54, 0.18);
+}
+
 .review-text-summary {
     display: flex;
     flex-direction: column;

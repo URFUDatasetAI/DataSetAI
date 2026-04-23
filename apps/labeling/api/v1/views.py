@@ -10,6 +10,7 @@ from apps.labeling.api.v1.serializers import (
     ReviewTaskListItemSerializer,
     TaskSerializer,
 )
+from apps.labeling.consensus import evaluate_annotation_against_consensus
 from apps.labeling.selectors import get_task_for_review, get_task_or_404
 from apps.labeling.services import get_next_task_for_annotator, reject_task_annotation, submit_annotation
 from apps.labeling.workflows import get_room_final_tasks_queryset
@@ -57,7 +58,13 @@ class RoomReviewTaskListView(APIView):
         room = get_visible_room(room_id=room_id, user=request.user)
         if not can_review_room(room=room, user=request.user):
             raise AccessDeniedError("You do not have permission to review tasks in this room.")
-        tasks = get_room_final_tasks_queryset(room=room).filter(status="submitted").prefetch_related("annotations").order_by("-updated_at", "-id")
+        tasks = (
+            get_room_final_tasks_queryset(room=room)
+            .filter(annotations__isnull=False)
+            .prefetch_related("annotations")
+            .distinct()
+            .order_by("-updated_at", "-id")
+        )
         serializer = ReviewTaskListItemSerializer(tasks, many=True, context={"request": request})
         return Response(serializer.data)
 
@@ -70,10 +77,28 @@ class TaskReviewDetailView(APIView):
         task = task.__class__.objects.select_related("room").prefetch_related("annotations__annotator", "annotations__assignment").get(
             id=task.id
         )
+        review_outcome = "accepted" if task.status == task.Status.SUBMITTED and task.consensus_payload is not None else "rejected"
+        serialized_annotations = []
+        for annotation in task.annotations.order_by("-submitted_at", "-id"):
+            annotation_outcome = "rejected"
+            if review_outcome == "accepted" and task.consensus_payload is not None:
+                annotation_consensus = evaluate_annotation_against_consensus(
+                    annotation_payload=annotation.result_payload,
+                    consensus_payload=task.consensus_payload,
+                    similarity_threshold=task.room.cross_validation_similarity_threshold,
+                )
+                annotation_outcome = "accepted" if annotation_consensus["accepted"] else "rejected"
+            serialized_annotations.append(
+                {
+                    **AnnotationSerializer(annotation).data,
+                    "review_outcome": annotation_outcome,
+                }
+            )
         payload = {
             "task": task,
             "consensus_payload": task.consensus_payload,
-            "annotations": task.annotations.order_by("-submitted_at", "-id"),
+            "annotations": serialized_annotations,
+            "review_outcome": review_outcome,
         }
         return Response(ReviewTaskDetailSerializer(payload, context={"request": request}).data)
 

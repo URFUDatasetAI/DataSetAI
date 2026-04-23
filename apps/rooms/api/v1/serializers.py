@@ -56,6 +56,7 @@ class RoomCreateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False, default=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100, default=80)
+    owner_is_annotator = serializers.BooleanField(required=False, default=True)
     annotation_workflow = serializers.ChoiceField(
         choices=Room.AnnotationWorkflow.values,
         required=False,
@@ -158,6 +159,7 @@ class RoomUpdateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
+    owner_is_annotator = serializers.BooleanField(required=False)
 
     def validate_deadline(self, value):
         if value is None:
@@ -254,6 +256,7 @@ class RoomSerializer(serializers.ModelSerializer):
             "cross_validation_enabled",
             "cross_validation_annotators_count",
             "cross_validation_similarity_threshold",
+            "owner_is_annotator",
             "deadline",
             "created_by_id",
             "membership_status",
