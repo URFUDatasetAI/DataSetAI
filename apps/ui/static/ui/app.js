@@ -21752,11 +21752,6 @@
     approved: "\u041E\u0434\u043E\u0431\u0440\u0435\u043D\u043E",
     rejected: "\u041E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E"
   };
-  var taskStatusLabels = {
-    pending: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-    in_progress: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435",
-    submitted: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430"
-  };
   var datasetModeLabels = {
     demo: "Demo JSON",
     json: "JSON",
@@ -22064,12 +22059,6 @@
       return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E";
     }
     return membershipLabels[status] || status;
-  }
-  function translateTaskStatus(status) {
-    if (!status) {
-      return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E";
-    }
-    return taskStatusLabels[status] || status;
   }
   function translateReviewOutcome(outcome) {
     if (outcome === "accepted") {
