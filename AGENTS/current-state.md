@@ -23,6 +23,7 @@
 - Изменения в assignment/submit/reopen flow обязаны уважать `transaction.atomic()` и схему `select_for_update()`.
 - `get_next_task_for_annotator` нельзя случайно лишить `select_for_update(skip_locked=True)` там, где это поддерживается СУБД.
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
+- Ручной reject на review должен возвращать задачу тем же annotator-ам, которые сдавали отклонённый раунд; не удаляй rejected-round assignments до успешного принятия нового раунда.
 - В `text_detect_text` финальным считается transcription stage, а не все task rows подряд.
 - `room-work` должен оставаться fullscreen shell без desktop page scroll; auxiliary chrome должен уходить во внутренний scroll, а не перекрывать media.
 - `room-work` теперь считается общей рабочей поверхностью для трёх режимов: `queue`, `submitted`, `review`. Новые review/edit сценарии нужно встраивать сюда, а не возвращать обратно на room detail page.

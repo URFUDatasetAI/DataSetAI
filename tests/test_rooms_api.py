@@ -1,8 +1,11 @@
+import io
 import json
 import shutil
 import subprocess
 import tempfile
+import zipfile
 from pathlib import Path
+from xml.etree import ElementTree
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -509,6 +512,98 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(payload["room"]["id"], room.id)
         self.assertEqual(payload["labels"][0]["name"], "car")
         self.assertEqual(payload["tasks"][0]["annotation"]["annotations"][0]["label_id"], label.id)
+
+    def test_room_dashboard_lists_new_export_formats(self):
+        room = make_room(customer=self.customer, title="Export formats room", dataset_type="image")
+
+        response = self.client.get(
+            reverse("room-dashboard", kwargs={"room_id": room.id}),
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            [item["value"] for item in response.data["export_formats"]],
+            ["native_json", "jsonl", "coco_json", "yolo_zip", "pascal_voc_zip"],
+        )
+
+    def test_customer_can_export_room_dataset_as_jsonl(self):
+        room = make_room(customer=self.customer, title="Export JSONL room", dataset_type="image")
+        label = room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = Task.objects.create(
+            room=room,
+            status=Task.Status.SUBMITTED,
+            source_type=Task.SourceType.IMAGE,
+            source_name="car-1.jpg",
+            input_payload={"width": 640, "height": 480, "source_name": "car-1.jpg"},
+            consensus_payload={
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": label.id,
+                        "points": [10, 12, 110, 112],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            },
+            validation_score=100.0,
+        )
+
+        response = self.client.get(
+            f'{reverse("room-export", kwargs={"room_id": room.id})}?export_format=jsonl',
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/x-ndjson; charset=utf-8")
+        lines = response.content.decode("utf-8").strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        payload = json.loads(lines[0])
+        self.assertEqual(payload["task_id"], task.id)
+        self.assertEqual(payload["annotations"][0]["label"]["name"], "car")
+
+    def test_customer_can_export_room_dataset_as_pascal_voc_zip(self):
+        room = make_room(customer=self.customer, title="Export VOC room", dataset_type="image")
+        label = room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        Task.objects.create(
+            room=room,
+            status=Task.Status.SUBMITTED,
+            source_type=Task.SourceType.IMAGE,
+            source_name="car-1.jpg",
+            input_payload={"width": 640, "height": 480, "source_name": "car-1.jpg"},
+            consensus_payload={
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": label.id,
+                        "points": [10, 12, 110, 112],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            },
+            validation_score=100.0,
+        )
+
+        response = self.client.get(
+            f'{reverse("room-export", kwargs={"room_id": room.id})}?export_format=pascal_voc_zip',
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/zip")
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            self.assertIn("Annotations/car-1.xml", archive.namelist())
+            xml_payload = archive.read("Annotations/car-1.xml")
+
+        root = ElementTree.fromstring(xml_payload)
+        self.assertEqual(root.findtext("filename"), "car-1.jpg")
+        self.assertEqual(root.findtext("object/name"), "car")
+        self.assertEqual(root.findtext("object/bndbox/xmin"), "10")
+        self.assertEqual(root.findtext("object/bndbox/ymax"), "112")
 
     def test_export_ignores_non_validated_annotations(self):
         room = make_room(customer=self.customer, title="Export filtered room", dataset_type="image")

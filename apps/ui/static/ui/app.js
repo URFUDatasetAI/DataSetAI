@@ -23832,6 +23832,7 @@
     const [deleteRoomPassword, setDeleteRoomPassword] = (0, import_react.useState)("");
     const [deleteRoomBusy, setDeleteRoomBusy] = (0, import_react.useState)(false);
     const [inviteBusy, setInviteBusy] = (0, import_react.useState)(false);
+    const [selectedExportFormat, setSelectedExportFormat] = (0, import_react.useState)("native_json");
     const [joinRequestBusyId, setJoinRequestBusyId] = (0, import_react.useState)(null);
     const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
     const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
@@ -23844,6 +23845,16 @@
     (0, import_react.useEffect)(() => {
       writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
     }, [reviewSectionOpen, reviewSectionStorageKey]);
+    (0, import_react.useEffect)(() => {
+      const availableFormats = dashboard?.export_formats || [];
+      if (!availableFormats.length) {
+        setSelectedExportFormat("native_json");
+        return;
+      }
+      if (!availableFormats.some((item) => item.value === selectedExportFormat)) {
+        setSelectedExportFormat(availableFormats[0].value);
+      }
+    }, [dashboard?.export_formats, selectedExportFormat]);
     async function loadReviewTasks(nextRoomId = roomId) {
       if (!nextRoomId) {
         setReviewTasks([]);
@@ -24099,7 +24110,7 @@
       }
       clearToasts();
       try {
-        await downloadRoomExport(roomId, dashboard.export_formats[0]?.value || "native_json", authUser);
+        await downloadRoomExport(roomId, selectedExportFormat, authUser);
         addToast("\u0424\u0430\u0439\u043B \u0441 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u043C \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u043E\u043C \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043B\u0435\u043D.", "success");
       } catch (error) {
         addToast(getErrorMessage(error), "error");
@@ -24248,6 +24259,10 @@
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label.name })
                     ] }, label.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B." }) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--export-compact", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0424\u043E\u0440\u043C\u0430\u0442 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: selectedExportFormat, onChange: (event) => setSelectedExportFormat(event.target.value), children: dashboard.export_formats.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: item.value, children: item.label }, item.value)) })
+                    ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
                   ] }) : null,
                   dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--invite", children: [

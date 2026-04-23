@@ -2102,6 +2102,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     white-space: nowrap;
 }
 
+.manage-card-legacy--export .field {
+    margin-top: 16px;
+}
+
 .manage-card-legacy--export .btn {
     width: 100%;
 }

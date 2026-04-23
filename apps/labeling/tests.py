@@ -524,7 +524,7 @@ class LabelingConsensusAndDistributionTests(TestCase):
 
         self.assertEqual(sorted(second_round_annotator_ids), sorted(first_round_annotator_ids))
 
-    def test_reject_task_annotation_deletes_rejected_round_annotations(self):
+    def test_reject_task_annotation_reassigns_next_round_to_same_annotators(self):
         room = Room.objects.create(
             title="Review room",
             created_by=self.owner,
@@ -543,7 +543,12 @@ class LabelingConsensusAndDistributionTests(TestCase):
             full_name="Review Annotator 2",
             password="secret123",
         )
-        for annotator in (first_annotator, second_annotator):
+        third_annotator = User.objects.create_user(
+            email="review-annotator3@example.com",
+            full_name="Review Annotator 3",
+            password="secret123",
+        )
+        for annotator in (first_annotator, second_annotator, third_annotator):
             RoomMembership.objects.create(
                 room=room,
                 user=annotator,
@@ -599,8 +604,12 @@ class LabelingConsensusAndDistributionTests(TestCase):
         task.refresh_from_db()
         self.assertEqual(task.status, Task.Status.PENDING)
         self.assertEqual(task.current_round, 2)
-        self.assertEqual(task.annotations.count(), 0)
-        self.assertEqual(TaskAssignment.objects.filter(task=task, round_number=1).count(), 0)
+        self.assertEqual(task.annotations.count(), 2)
+        self.assertEqual(TaskAssignment.objects.filter(task=task, round_number=1).count(), 2)
+
+        self.assertIsNone(get_next_task_for_annotator(room=room, annotator=third_annotator))
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=first_annotator).id, task.id)
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=second_annotator).id, task.id)
 
     def test_accepted_consensus_removes_old_rejected_round_annotations(self):
         room = Room.objects.create(
