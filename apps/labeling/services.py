@@ -324,7 +324,6 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
 
         assignment = (
             TaskAssignment.objects.select_for_update()
-            .select_related("annotation")
             .filter(
                 task=locked_task,
                 annotator=annotator,
@@ -334,14 +333,25 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
             .order_by("-submitted_at", "-id")
             .first()
         )
-        if assignment is None or not hasattr(assignment, "annotation"):
+        if assignment is None:
+            raise AccessDeniedError("Submitted annotation not found for the current user.")
+
+        # Reverse one-to-one joins to `annotation` are rendered as LEFT OUTER JOINs.
+        # PostgreSQL does not allow `FOR UPDATE` on the nullable side of such joins,
+        # so we lock the assignment row first and then lock the annotation separately.
+        annotation = (
+            Annotation.objects.select_for_update()
+            .filter(assignment=assignment)
+            .order_by("-submitted_at", "-id")
+            .first()
+        )
+        if annotation is None:
             raise AccessDeniedError("Submitted annotation not found for the current user.")
 
         editable, reason = get_submission_editability(task=locked_task, assignment=assignment)
         if not editable:
             raise ConflictError(reason)
 
-        annotation = assignment.annotation
         submitted_at = timezone.now()
         annotation.result_payload = result_payload
         annotation.submitted_at = submitted_at
