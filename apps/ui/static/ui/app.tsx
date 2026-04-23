@@ -840,6 +840,54 @@ function formatWeeksLabel(count: number) {
   return "недель";
 }
 
+function createDefaultGenericPayload() {
+  return {
+    label: "positive",
+    confidence: 0.95,
+  };
+}
+
+type WorkEditorScenario = {
+  key: "bbox-media" | "text-transcription" | "json";
+  emptyStageMessage: string;
+  annotationsTitle: string;
+};
+
+function getWorkEditorScenario(task: TaskItem | null): WorkEditorScenario {
+  if (!task) {
+    return {
+      key: "bbox-media",
+      emptyStageMessage: "Следующая задача подгрузится автоматически.",
+      annotationsTitle: "Объекты на сцене",
+    };
+  }
+
+  if (task.workflow_stage === "text_transcription") {
+    return {
+      key: "text-transcription",
+      emptyStageMessage: "Рамки фиксируются детекцией. Введи текст для каждой области в панели справа.",
+      annotationsTitle: "Текстовые области",
+    };
+  }
+
+  if (task.source_type === "image" || task.source_type === "video") {
+    return {
+      key: "bbox-media",
+      emptyStageMessage:
+        task.source_type === "video"
+          ? "Поставь видео на паузу и работай по нужному кадру."
+          : "Выделяй объекты прямо на сцене и назначай им активный label.",
+      annotationsTitle: "Выделенные области",
+    };
+  }
+
+  return {
+    key: "json",
+    emptyStageMessage: "Для этой задачи визуальная сцена не требуется. Используй payload-editor справа.",
+    annotationsTitle: "Содержимое payload-а",
+  };
+}
+
 function buildActivityMonthLabels(series: ActivitySeriesItem[]) {
   const labels: Array<{ label: string; weekIndex: number }> = [];
   let previousMonthKey: string | null = null;
@@ -1296,17 +1344,23 @@ function App() {
     removeToast,
     api: (path, options) => apiRequest(path, authUser, options),
   };
+  const isEditorPage = bootstrap.page === "room-work";
 
   return (
     <AppContext.Provider value={contextValue}>
-      <div className="app-shell">
-        <Header />
-        <div id="toast-region" className="toast-region" aria-live="polite" aria-relevant="additions text">
+      <div className={`app-shell${isEditorPage ? " app-shell--editor" : ""}`}>
+        {isEditorPage ? null : <Header />}
+        <div
+          id="toast-region"
+          className={`toast-region${isEditorPage ? " toast-region--editor" : ""}`}
+          aria-live="polite"
+          aria-relevant="additions text"
+        >
           {toasts.map((toast) => (
             <ToastCard key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
           ))}
         </div>
-        <main className="page-layout">
+        <main className={isEditorPage ? "page-layout page-layout--editor" : "page-layout"}>
           <PageRouter />
         </main>
       </div>
@@ -1376,13 +1430,6 @@ function Header() {
               </a>
             </>
           )}
-          {dashboard?.actor.can_annotate ? (
-            <div className="room-header-cta">
-              <button className="btn btn--primary room-header-cta__button" type="button" onClick={() => (window.location.href = `/rooms/${dashboard.room.id}/work/`)}>
-                РџСЂРёСЃС‚СѓРїРёС‚СЊ Рє СЂР°Р±РѕС‚Рµ
-              </button>
-            </div>
-          ) : null}
         </div>
       </div>
     </header>
@@ -1808,22 +1855,22 @@ function RoomsPage() {
                           title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
                           onClick={(event) => handleTogglePin(event, room)}
                         >
-                          {room.is_pinned ? "?" : "?"}
+                          {room.is_pinned ? "★" : "☆"}
                         </button>
                       </div>
                     </div>
                     <div className="room-card__title">{room.title}</div>
-                    <div className="room-card__meta">{room.description || "???????? ???? ?? ?????????."}</div>
+                    <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
                   </div>
                   <div className="room-card__footer">
                     <div>ID: {room.id}</div>
-                    <div>??????: {translateMembership(room.membership_status || "owner")}</div>
-                    <div>???? ? ???????: {translateRole(room.membership_role || "owner")}</div>
-                    <div>????????: {formatPercent(room.progress_percent)}</div>
+                    <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
+                    <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
+                    <div>Прогресс: {formatPercent(room.progress_percent)}</div>
                     <div>
-                      ??????: {room.completed_tasks}/{room.total_tasks}
+                      Задачи: {room.completed_tasks}/{room.total_tasks}
                     </div>
-                    <div>????????????: {room.has_password ? "????????" : "???? ??????????"}</div>
+                    <div>Защита: {room.has_password ? "С паролем" : "Без пароля"}</div>
                   </div>
                 </article>
               );
@@ -3071,25 +3118,6 @@ function RoomDetailPage() {
     }
   }
 
-  async function handleReorderPin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem, direction: "up" | "down") {
-    event.preventDefault();
-    event.stopPropagation();
-    clearToasts();
-    setPinBusyRoomId(room.id);
-
-    try {
-      await api(`/api/v1/rooms/${room.id}/pin/reorder/`, {
-        method: "POST",
-        body: { direction },
-      });
-      await loadRooms();
-    } catch (error) {
-      addToast(getErrorMessage(error), "error");
-    } finally {
-      setPinBusyRoomId(null);
-    }
-  }
-
   async function handleRemoveAnnotator() {
     if (!roomId || !activeAnnotator) {
       return;
@@ -3112,8 +3140,6 @@ function RoomDetailPage() {
       await refresh();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
-    } finally {
-      setPinBusyRoomId(null);
     }
   }
 
@@ -3771,7 +3797,7 @@ function RoomDetailPage() {
 }
 
 type MediaEditorController = {
-  reset: () => void;
+  reset: (placeholderText?: string) => void;
   loadTask: (task: TaskItem | null) => void;
   hasUnlabeledAnnotations: () => boolean;
   getPayload: () => Record<string, any>;
@@ -3780,13 +3806,9 @@ type MediaEditorController = {
 
 function createMediaAnnotationEditor(options: {
   mediaTool: HTMLElement;
-  instructions: HTMLElement;
   labelPalette: HTMLElement;
-  activeLabelNote: HTMLElement;
   zoomToolbar: HTMLElement | null;
   zoomRange: HTMLInputElement | null;
-  zoomOutBtn: HTMLButtonElement | null;
-  zoomInBtn: HTMLButtonElement | null;
   zoomResetBtn: HTMLButtonElement | null;
   mediaStage: HTMLElement;
   annotationList: HTMLElement;
@@ -3798,6 +3820,7 @@ function createMediaAnnotationEditor(options: {
   getTask: () => TaskItem | null;
   showToast: (message: string, type?: ToastType) => void;
   onPayloadChange: (payload: Record<string, any>) => void;
+  onStateChange?: (state: { annotationCount: number; hasUnlabeledAnnotations: boolean }) => void;
 }): MediaEditorController {
   const editor = {
     annotations: [] as any[],
@@ -3807,7 +3830,17 @@ function createMediaAnnotationEditor(options: {
     overlayElement: null as HTMLDivElement | null,
     boxElements: new Map<string, HTMLButtonElement>(),
     draftElement: null as HTMLDivElement | null,
-    draftStart: null as { x: number; y: number } | null,
+    draftState: null as {
+      originX: number;
+      originY: number;
+      left: number;
+      top: number;
+      width: number;
+      height: number;
+      lastX: number;
+      lastY: number;
+      moved: boolean;
+    } | null,
     dragState: null as any,
     resizeState: null as any,
     panState: null as any,
@@ -3831,6 +3864,10 @@ function createMediaAnnotationEditor(options: {
 
   function getTask() {
     return options.getTask();
+  }
+
+  function isTextTranscriptionTask() {
+    return getTask()?.workflow_stage === "text_transcription";
   }
 
   function getLabelById(labelId: number | null) {
@@ -3946,9 +3983,33 @@ function createMediaAnnotationEditor(options: {
     return event.button === 1 || (event.button === 0 && editor.isPanKeyActive);
   }
 
+  function getScaledCanvasSize() {
+    if (!editor.wrapperElement) {
+      return { width: 0, height: 0 };
+    }
+
+    if (editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
+      return {
+        width: editor.baseCanvasWidth * editor.zoomLevel,
+        height: editor.baseCanvasHeight * editor.zoomLevel,
+      };
+    }
+
+    const bounds = editor.wrapperElement.getBoundingClientRect();
+    return {
+      width: bounds.width,
+      height: bounds.height,
+    };
+  }
+
   function updateStageInteractionState() {
-    const canPan = Boolean(editor.mediaElement && editor.zoomLevel > 1);
+    const scaledCanvas = getScaledCanvasSize();
+    const overflowX = Boolean(editor.mediaElement && scaledCanvas.width > options.mediaStage.clientWidth + 0.5);
+    const overflowY = Boolean(editor.mediaElement && scaledCanvas.height > options.mediaStage.clientHeight + 0.5);
+    const canPan = overflowX || overflowY;
     options.mediaStage.classList.toggle("media-stage--zoomed", canPan);
+    options.mediaStage.classList.toggle("media-stage--overflow-x", overflowX);
+    options.mediaStage.classList.toggle("media-stage--overflow-y", overflowY);
     options.mediaStage.classList.toggle("media-stage--pan-ready", canPan && editor.isPanKeyActive && !editor.panState);
     options.mediaStage.classList.toggle("media-stage--panning", Boolean(editor.panState));
   }
@@ -4032,6 +4093,7 @@ function createMediaAnnotationEditor(options: {
           frame: annotation.frame,
           attributes: annotation.attributes,
           occluded: annotation.occluded,
+          ...(isTextTranscriptionTask() ? { text: typeof annotation.text === "string" ? annotation.text : "" } : {}),
         })),
     };
   }
@@ -4052,12 +4114,6 @@ function createMediaAnnotationEditor(options: {
     if (options.zoomResetBtn) {
       options.zoomResetBtn.textContent = `${zoomPercent}%`;
       options.zoomResetBtn.disabled = !hasMedia || editor.zoomLevel === 1;
-    }
-    if (options.zoomOutBtn) {
-      options.zoomOutBtn.disabled = !hasMedia || editor.zoomLevel <= editor.minZoom;
-    }
-    if (options.zoomInBtn) {
-      options.zoomInBtn.disabled = !hasMedia || editor.zoomLevel >= editor.maxZoom;
     }
     updateStageInteractionState();
   }
@@ -4103,12 +4159,34 @@ function createMediaAnnotationEditor(options: {
     }
 
     const stageRect = options.mediaStage.getBoundingClientRect();
-    const anchorX =
-      typeof zoomOptions.anchorClientX === "number" ? zoomOptions.anchorClientX - stageRect.left : options.mediaStage.clientWidth / 2;
-    const anchorY =
-      typeof zoomOptions.anchorClientY === "number" ? zoomOptions.anchorClientY - stageRect.top : options.mediaStage.clientHeight / 2;
-    const contentX = options.mediaStage.scrollLeft + anchorX;
-    const contentY = options.mediaStage.scrollTop + anchorY;
+    const wrapperRect = editor.wrapperElement.getBoundingClientRect();
+    const anchorClientX = typeof zoomOptions.anchorClientX === "number" ? zoomOptions.anchorClientX : stageRect.left + options.mediaStage.clientWidth / 2;
+    const anchorClientY = typeof zoomOptions.anchorClientY === "number" ? zoomOptions.anchorClientY : stageRect.top + options.mediaStage.clientHeight / 2;
+    const anchorX = anchorClientX - stageRect.left;
+    const anchorY = anchorClientY - stageRect.top;
+    if (clampedZoom > 1 && (editor.baseCanvasWidth <= 0 || editor.baseCanvasHeight <= 0)) {
+      captureBaseCanvasSize();
+    }
+
+    const baseWidth = editor.baseCanvasWidth || editor.mediaElement.clientWidth || wrapperRect.width;
+    const baseHeight = editor.baseCanvasHeight || editor.mediaElement.clientHeight || wrapperRect.height;
+    if (!baseWidth || !baseHeight) {
+      return;
+    }
+
+    const currentWidth = previousZoom <= 1 ? baseWidth : baseWidth * previousZoom;
+    const currentHeight = previousZoom <= 1 ? baseHeight : baseHeight * previousZoom;
+    const currentOffsetX = currentWidth < options.mediaStage.clientWidth ? (options.mediaStage.clientWidth - currentWidth) / 2 : 0;
+    const currentOffsetY = currentHeight < options.mediaStage.clientHeight ? (options.mediaStage.clientHeight - currentHeight) / 2 : 0;
+    const nextWidth = clampedZoom <= 1 ? baseWidth : baseWidth * clampedZoom;
+    const nextHeight = clampedZoom <= 1 ? baseHeight : baseHeight * clampedZoom;
+    const nextOffsetX = nextWidth < options.mediaStage.clientWidth ? (options.mediaStage.clientWidth - nextWidth) / 2 : 0;
+    const nextOffsetY = nextHeight < options.mediaStage.clientHeight ? (options.mediaStage.clientHeight - nextHeight) / 2 : 0;
+    const contentAnchorX = clampValue(options.mediaStage.scrollLeft + anchorX - currentOffsetX, 0, currentWidth);
+    const contentAnchorY = clampValue(options.mediaStage.scrollTop + anchorY - currentOffsetY, 0, currentHeight);
+    const zoomRatio = previousZoom > 0 ? clampedZoom / previousZoom : 1;
+    const nextScrollLeft = Math.max(contentAnchorX * zoomRatio + nextOffsetX - anchorX, 0);
+    const nextScrollTop = Math.max(contentAnchorY * zoomRatio + nextOffsetY - anchorY, 0);
 
     if (clampedZoom <= 1) {
       finishPanning();
@@ -4119,30 +4197,22 @@ function createMediaAnnotationEditor(options: {
       updateZoomControls();
       window.requestAnimationFrame(() => {
         renderBoxes();
-        if (shouldPreserveViewport && previousZoom > 1) {
-          const zoomRatio = 1 / previousZoom;
-          options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
-          options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
-        }
+        options.mediaStage.scrollLeft = shouldPreserveViewport && previousZoom > 1 ? nextScrollLeft : 0;
+        options.mediaStage.scrollTop = shouldPreserveViewport && previousZoom > 1 ? nextScrollTop : 0;
       });
-      return;
-    }
-
-    if (!captureBaseCanvasSize()) {
       return;
     }
 
     editor.zoomLevel = clampedZoom;
     editor.wrapperElement.classList.add("media-canvas--zoom-ready");
-    editor.wrapperElement.style.width = `${Math.round(editor.baseCanvasWidth * clampedZoom)}px`;
-    editor.wrapperElement.style.height = `${Math.round(editor.baseCanvasHeight * clampedZoom)}px`;
+    editor.wrapperElement.style.width = `${Math.round(nextWidth)}px`;
+    editor.wrapperElement.style.height = `${Math.round(nextHeight)}px`;
     updateZoomControls();
     window.requestAnimationFrame(() => {
       renderBoxes();
       if (shouldPreserveViewport) {
-        const zoomRatio = clampedZoom / previousZoom;
-        options.mediaStage.scrollLeft = Math.max(contentX * zoomRatio - anchorX, 0);
-        options.mediaStage.scrollTop = Math.max(contentY * zoomRatio - anchorY, 0);
+        options.mediaStage.scrollLeft = nextScrollLeft;
+        options.mediaStage.scrollTop = nextScrollTop;
       }
     });
   }
@@ -4183,10 +4253,16 @@ function createMediaAnnotationEditor(options: {
   }
 
   function updateSubmitState() {
+    const hasUnlabeledAnnotations = editor.annotations.some((annotation) => !annotation.label_id);
+    options.onStateChange?.({
+      annotationCount: editor.annotations.length,
+      hasUnlabeledAnnotations,
+    });
+
     if (!options.submitBtn) {
       return;
     }
-    options.submitBtn.disabled = !getTask() || editor.annotations.some((annotation) => !annotation.label_id);
+    options.submitBtn.disabled = !getTask() || hasUnlabeledAnnotations;
   }
 
   function updateResultPreview() {
@@ -4198,11 +4274,6 @@ function createMediaAnnotationEditor(options: {
 
   function setActiveLabel(labelId: number | null) {
     editor.activeLabelId = labelId;
-    const label = getLabelById(labelId);
-    options.activeLabelNote.textContent = label
-      ? `Активный label: ${label.name}. Новые выделения получат его сразу, зажатие перемещает область, нижний правый угол меняет размер, а одиночный клик меняет ее label на активный.`
-      : "Активный label пока не выбран.";
-
     options.labelPalette.querySelectorAll<HTMLButtonElement>("[data-label-id]").forEach((button) => {
       button.classList.toggle("is-active", Number(button.dataset.labelId) === labelId);
     });
@@ -4218,14 +4289,28 @@ function createMediaAnnotationEditor(options: {
   }
 
   function updateClearButtonVisibility() {
-    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length);
+    options.clearBtn?.classList.toggle("hidden", !editor.annotations.length || isTextTranscriptionTask());
   }
 
   function renderPalette() {
     const labels = getLabels();
-    options.activeLabelNote.classList.toggle("hidden", !labels.length);
     if (!labels.length) {
       options.labelPalette.innerHTML = '<div class="empty-card">Лейблы для этой комнаты не заданы.</div>';
+      setActiveLabel(null);
+      return;
+    }
+
+    if (isTextTranscriptionTask()) {
+      options.labelPalette.innerHTML = labels
+        .map(
+          (label) => `
+            <div class="label-chip label-chip--static" style="--label-color: ${label.color}">
+              <i></i>
+              <span>${label.name}</span>
+            </div>
+          `
+        )
+        .join("");
       setActiveLabel(null);
       return;
     }
@@ -4260,7 +4345,42 @@ function createMediaAnnotationEditor(options: {
   function renderAnnotationList() {
     if (!editor.annotations.length) {
       options.annotationList.className = "annotation-list empty-card";
-      options.annotationList.textContent = "Разметка пока отсутствует.";
+      options.annotationList.textContent = isTextTranscriptionTask()
+        ? "Детекция пока не передала ни одной текстовой области."
+        : "Разметка пока отсутствует.";
+      return;
+    }
+
+    if (isTextTranscriptionTask()) {
+      options.annotationList.className = "annotation-list annotation-list--transcription";
+      options.annotationList.innerHTML = editor.annotations
+        .map((annotation, index) => {
+          const label = getLabelById(annotation.label_id);
+          return `
+            <div class="annotation-row annotation-row--transcription ${isVisibleOnCurrentFrame(annotation) ? "is-current" : ""}">
+              <div class="annotation-row__meta">
+                <strong>#${index + 1}</strong>
+                <span>${label ? label.name : "Без лейбла"}</span>
+                <small>frame ${annotation.frame}</small>
+              </div>
+              <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
+              <textarea data-text-id="${annotation.local_id}" rows="3" placeholder="Введи текст для области">${annotation.text || ""}</textarea>
+            </div>
+          `;
+        })
+        .join("");
+
+      options.annotationList.querySelectorAll<HTMLTextAreaElement>("[data-text-id]").forEach((textarea) => {
+        textarea.addEventListener("input", (event) => {
+          const target = event.currentTarget as HTMLTextAreaElement;
+          const annotation = editor.annotations.find((item) => item.local_id === target.dataset.textId);
+          if (!annotation) {
+            return;
+          }
+          annotation.text = target.value;
+          updateResultPreview();
+        });
+      });
       return;
     }
 
@@ -4335,11 +4455,18 @@ function createMediaAnnotationEditor(options: {
   function createBoxElement(annotation: any) {
     const element = document.createElement("button");
     element.type = "button";
-    element.className = "media-bbox";
+    element.className = `media-bbox${isTextTranscriptionTask() ? " media-bbox--readonly" : ""}`;
     element.innerHTML = `
       <span class="media-bbox__label"></span>
       <i class="media-bbox__resize-handle" aria-hidden="true"></i>
     `;
+    if (isTextTranscriptionTask()) {
+      element.tabIndex = -1;
+      element.setAttribute("aria-disabled", "true");
+      editor.boxElements.set(annotation.local_id, element);
+      return element;
+    }
+
     element.addEventListener("pointerdown", (event) => {
       startDragging(event, annotation);
     });
@@ -4399,10 +4526,70 @@ function createMediaAnnotationEditor(options: {
   function clearDraft() {
     editor.draftElement?.remove();
     editor.draftElement = null;
-    editor.draftStart = null;
+    editor.draftState = null;
+  }
+
+  function restoreAnnotationFromPoints(annotation: any, points: number[] | null | undefined, metrics = editor.interactionMetrics) {
+    if (!annotation || !Array.isArray(points)) {
+      return;
+    }
+    annotation.points = [...points];
+    renderActiveBox(annotation, metrics);
+  }
+
+  function cancelActiveInteraction() {
+    let didCancel = false;
+
+    if (editor.dragState) {
+      restoreAnnotationFromPoints(editor.dragState.annotation, editor.dragState.originalPoints);
+      editor.dragState = null;
+      didCancel = true;
+    }
+
+    if (editor.resizeState) {
+      restoreAnnotationFromPoints(editor.resizeState.annotation, editor.resizeState.originalPoints);
+      editor.resizeState = null;
+      didCancel = true;
+    }
+
+    if (editor.draftState) {
+      clearDraft();
+      didCancel = true;
+    }
+
+    if (didCancel) {
+      endPointerInteraction();
+      renderAnnotationList();
+      updateResultPreview();
+    }
+
+    if (editor.panState) {
+      finishPanning();
+      didCancel = true;
+    }
+
+    return didCancel;
+  }
+
+  function updateDraftElement(left: number, top: number, width: number, height: number) {
+    if (!editor.draftElement || !editor.draftState) {
+      return;
+    }
+
+    editor.draftState.left = left;
+    editor.draftState.top = top;
+    editor.draftState.width = width;
+    editor.draftState.height = height;
+    editor.draftElement.style.left = `${left}px`;
+    editor.draftElement.style.top = `${top}px`;
+    editor.draftElement.style.width = `${width}px`;
+    editor.draftElement.style.height = `${height}px`;
   }
 
   function startDragging(event: PointerEvent, annotation: any) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4425,6 +4612,9 @@ function createMediaAnnotationEditor(options: {
   }
 
   function startResizing(event: PointerEvent, annotation: any) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4442,11 +4632,18 @@ function createMediaAnnotationEditor(options: {
       startClientX: event.clientX,
       startClientY: event.clientY,
       originalPoints: [...annotation.points],
+      referencePoints: [...annotation.points],
+      referenceClientX: event.clientX,
+      referenceClientY: event.clientY,
+      mode: "resize",
       moved: false,
     };
   }
 
   function startDrawing(event: PointerEvent) {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     if (editor.panState || startPanning(event) || event.button !== 0 || !editor.overlayElement) {
       return;
     }
@@ -4462,13 +4659,22 @@ function createMediaAnnotationEditor(options: {
     if (!metrics) {
       return;
     }
-    editor.draftStart = {
-      x: Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width),
-      y: Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height),
-    };
+    const startX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
+    const startY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
     editor.draftElement = document.createElement("div");
     editor.draftElement.className = "media-bbox media-bbox--draft";
     editor.overlayElement.appendChild(editor.draftElement);
+    editor.draftState = {
+      originX: startX,
+      originY: startY,
+      left: startX,
+      top: startY,
+      width: 0,
+      height: 0,
+      lastX: startX,
+      lastY: startY,
+      moved: false,
+    };
   }
 
   function updateDraft(event: PointerEvent) {
@@ -4485,25 +4691,54 @@ function createMediaAnnotationEditor(options: {
     const clientY = sample.clientY;
 
     if (editor.resizeState && editor.overlayElement) {
-      const deltaX = (clientX - editor.resizeState.startClientX) * metrics.scaleToNaturalX;
-      const deltaY = (clientY - editor.resizeState.startClientY) * metrics.scaleToNaturalY;
-      const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.originalPoints;
-      const minWidth = 8;
-      const minHeight = 8;
+      const nextMode = event.ctrlKey ? "move" : event.shiftKey ? "square" : "resize";
+      if (editor.resizeState.mode !== nextMode) {
+        editor.resizeState.mode = nextMode;
+        editor.resizeState.referencePoints = [...editor.resizeState.annotation.points];
+        editor.resizeState.referenceClientX = clientX;
+        editor.resizeState.referenceClientY = clientY;
+      }
+
+      const deltaX = (clientX - editor.resizeState.referenceClientX) * metrics.scaleToNaturalX;
+      const deltaY = (clientY - editor.resizeState.referenceClientY) * metrics.scaleToNaturalY;
+      const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.referencePoints;
+      const startWidth = startXMax - startXMin;
+      const startHeight = startYMax - startYMin;
+      const minWidth = 1;
+      const minHeight = 1;
       const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
       const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
-      const nextWidth = clampValue((startXMax - startXMin) + deltaX, minWidth, maxWidth);
-      const nextHeight = clampValue((startYMax - startYMin) + deltaY, minHeight, maxHeight);
+      let nextXMin = startXMin;
+      let nextYMin = startYMin;
+      let nextWidth = clampValue(startWidth + deltaX, minWidth, maxWidth);
+      let nextHeight = clampValue(startHeight + deltaY, minHeight, maxHeight);
+
+      if (nextMode === "move") {
+        const maxX = Math.max((metrics.naturalWidth || 0) - startWidth, 0);
+        const maxY = Math.max((metrics.naturalHeight || 0) - startHeight, 0);
+        nextXMin = clampValue(startXMin + deltaX, 0, maxX);
+        nextYMin = clampValue(startYMin + deltaY, 0, maxY);
+        nextWidth = startWidth;
+        nextHeight = startHeight;
+      } else if (nextMode === "square") {
+        const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
+        const useX = Math.abs(deltaX) >= Math.abs(deltaY);
+        const sizeFromX = clampValue(startWidth + deltaX, minWidth, maxSquare);
+        const sizeFromY = clampValue(startHeight + deltaY, minHeight, maxSquare);
+        const nextSize = clampValue(useX ? sizeFromX : sizeFromY, minWidth, maxSquare);
+        nextWidth = nextSize;
+        nextHeight = nextSize;
+      }
 
       editor.resizeState.moved =
         editor.resizeState.moved ||
         Math.abs(clientX - editor.resizeState.startClientX) > 3 ||
         Math.abs(clientY - editor.resizeState.startClientY) > 3;
       editor.resizeState.annotation.points = [
-        startXMin,
-        startYMin,
-        startXMin + nextWidth,
-        startYMin + nextHeight,
+        nextXMin,
+        nextYMin,
+        nextXMin + nextWidth,
+        nextYMin + nextHeight,
       ];
       renderActiveBox(editor.resizeState.annotation, metrics);
       return;
@@ -4534,28 +4769,54 @@ function createMediaAnnotationEditor(options: {
       return;
     }
 
-    if (!editor.draftStart || !editor.draftElement || !editor.overlayElement) {
+    if (!editor.draftState || !editor.draftElement || !editor.overlayElement) {
       return;
     }
 
     const currentX = Math.min(Math.max(clientX - metrics.left, 0), metrics.width);
     const currentY = Math.min(Math.max(clientY - metrics.top, 0), metrics.height);
-    const left = Math.min(editor.draftStart.x, currentX);
-    const top = Math.min(editor.draftStart.y, currentY);
-    const width = Math.abs(currentX - editor.draftStart.x);
-    const height = Math.abs(currentY - editor.draftStart.y);
+    const draft = editor.draftState;
 
-    editor.draftElement.style.left = `${left}px`;
-    editor.draftElement.style.top = `${top}px`;
-    editor.draftElement.style.width = `${width}px`;
-    editor.draftElement.style.height = `${height}px`;
+    if (event.ctrlKey && (draft.width > 0 || draft.height > 0)) {
+      const deltaX = currentX - draft.lastX;
+      const deltaY = currentY - draft.lastY;
+      const nextLeft = clampValue(draft.left + deltaX, 0, Math.max(metrics.width - draft.width, 0));
+      const nextTop = clampValue(draft.top + deltaY, 0, Math.max(metrics.height - draft.height, 0));
+      draft.originX += nextLeft - draft.left;
+      draft.originY += nextTop - draft.top;
+      updateDraftElement(nextLeft, nextTop, draft.width, draft.height);
+    } else {
+      const deltaX = currentX - draft.originX;
+      const deltaY = currentY - draft.originY;
+      let left = Math.min(draft.originX, currentX);
+      let top = Math.min(draft.originY, currentY);
+      let width = Math.abs(deltaX);
+      let height = Math.abs(deltaY);
+
+      if (event.shiftKey) {
+        const maxHorizontal = deltaX >= 0 ? metrics.width - draft.originX : draft.originX;
+        const maxVertical = deltaY >= 0 ? metrics.height - draft.originY : draft.originY;
+        const size = Math.min(Math.max(Math.abs(deltaX), Math.abs(deltaY)), maxHorizontal, maxVertical);
+        const nextX = draft.originX + (deltaX >= 0 ? size : -size);
+        const nextY = draft.originY + (deltaY >= 0 ? size : -size);
+        left = Math.min(draft.originX, nextX);
+        top = Math.min(draft.originY, nextY);
+        width = size;
+        height = size;
+      }
+
+      updateDraftElement(left, top, width, height);
+    }
+
+    draft.lastX = currentX;
+    draft.lastY = currentY;
+    draft.moved = draft.moved || Math.abs(currentX - draft.originX) > 3 || Math.abs(currentY - draft.originY) > 3;
   }
 
   function finishDrawing(event: PointerEvent) {
     if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
       return;
     }
-    const sample = getLatestPointerSample(event);
 
     if (editor.resizeState) {
       if (editor.resizeState.moved) {
@@ -4582,18 +4843,13 @@ function createMediaAnnotationEditor(options: {
     }
 
     const metrics = editor.interactionMetrics;
-    if (!editor.draftStart || !editor.overlayElement || !metrics) {
+    if (!editor.draftState || !editor.overlayElement || !metrics) {
       clearDraft();
       endPointerInteraction(event.pointerId);
       return;
     }
 
-    const currentX = Math.min(Math.max(sample.clientX - metrics.left, 0), metrics.width);
-    const currentY = Math.min(Math.max(sample.clientY - metrics.top, 0), metrics.height);
-    const left = Math.min(editor.draftStart.x, currentX);
-    const top = Math.min(editor.draftStart.y, currentY);
-    const width = Math.abs(currentX - editor.draftStart.x);
-    const height = Math.abs(currentY - editor.draftStart.y);
+    const { left, top, width, height } = editor.draftState;
 
     if (width >= 8 && height >= 8) {
       editor.annotations.push({
@@ -4621,13 +4877,7 @@ function createMediaAnnotationEditor(options: {
     if (editor.activePointerId !== null && event.pointerId !== editor.activePointerId) {
       return;
     }
-
-    editor.dragState = null;
-    editor.resizeState = null;
-    clearDraft();
-    endPointerInteraction(event.pointerId);
-    renderAnnotationList();
-    updateResultPreview();
+    cancelActiveInteraction();
   }
 
   function handleOverlayPointerDown(event: PointerEvent) {
@@ -4662,16 +4912,11 @@ function createMediaAnnotationEditor(options: {
   }
 
   function handleClearAnnotations() {
+    if (isTextTranscriptionTask()) {
+      return;
+    }
     editor.annotations = [];
     render();
-  }
-
-  function handleZoomOut() {
-    applyZoom(editor.zoomLevel - editor.zoomStep);
-  }
-
-  function handleZoomIn() {
-    applyZoom(editor.zoomLevel + editor.zoomStep);
   }
 
   function handleZoomReset() {
@@ -4691,6 +4936,13 @@ function createMediaAnnotationEditor(options: {
   }
 
   function handleKeyDown(event: KeyboardEvent) {
+    if (event.code === "Escape" && !isEditableTarget(event.target)) {
+      if (cancelActiveInteraction()) {
+        event.preventDefault();
+      }
+      return;
+    }
+
     if (event.code !== "Space" || isEditableTarget(event.target)) {
       return;
     }
@@ -4725,8 +4977,6 @@ function createMediaAnnotationEditor(options: {
     }
 
     options.clearBtn?.addEventListener("click", handleClearAnnotations);
-    options.zoomOutBtn?.addEventListener("click", handleZoomOut);
-    options.zoomInBtn?.addEventListener("click", handleZoomIn);
     options.zoomResetBtn?.addEventListener("click", handleZoomReset);
     options.zoomRange?.addEventListener("input", handleZoomRangeInput);
     options.mediaStage.addEventListener("pointerdown", handleStagePointerDown, true);
@@ -4747,8 +4997,6 @@ function createMediaAnnotationEditor(options: {
     }
 
     options.clearBtn?.removeEventListener("click", handleClearAnnotations);
-    options.zoomOutBtn?.removeEventListener("click", handleZoomOut);
-    options.zoomInBtn?.removeEventListener("click", handleZoomIn);
     options.zoomResetBtn?.removeEventListener("click", handleZoomReset);
     options.zoomRange?.removeEventListener("input", handleZoomRangeInput);
     options.mediaStage.removeEventListener("pointerdown", handleStagePointerDown, true);
@@ -4763,7 +5011,7 @@ function createMediaAnnotationEditor(options: {
     editor.eventsAttached = false;
   }
 
-  function reset() {
+  function reset(placeholderText?: string) {
     finishPanning();
     detachOverlayEvents(editor.overlayElement);
     editor.boxElements.forEach((element) => element.remove());
@@ -4784,11 +5032,7 @@ function createMediaAnnotationEditor(options: {
     options.mediaTool.classList.add("hidden");
     options.zoomToolbar?.classList.add("hidden");
     options.mediaStage.className = "media-stage empty-card";
-    options.mediaStage.textContent = "Файл задачи загрузится после выбора задания.";
-    options.instructions.classList.add("hidden");
-    options.instructions.textContent = "";
-    options.activeLabelNote.classList.add("hidden");
-    options.activeLabelNote.textContent = "";
+    options.mediaStage.textContent = placeholderText || "Файл задачи загрузится после выбора задания.";
     options.labelPalette.innerHTML = "";
     options.resultLabel.textContent = "Результат разметки";
     options.resultJson.readOnly = false;
@@ -4809,15 +5053,26 @@ function createMediaAnnotationEditor(options: {
     clearDraft();
     endPointerInteraction();
     options.mediaTool.classList.remove("hidden");
-    options.instructions.classList.remove("hidden");
-    options.activeLabelNote.classList.remove("hidden");
-    options.instructions.textContent =
-      task.source_type === "video"
-        ? "Поставь видео на паузу на нужном кадре, зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label."
-        : "Зажми левую кнопку мыши и выдели область. Новое выделение сразу получит активный label. Зажми существующую область, чтобы переместить ее, потяни за правый нижний угол, чтобы изменить размер, или выбери другой label и кликни по области один раз, чтобы поменять label.";
-    options.resultLabel.textContent = "Результат bbox-разметки";
+    options.resultLabel.textContent = isTextTranscriptionTask() ? "Результат OCR-транскрибации" : "Результат bbox-разметки";
     options.resultJson.readOnly = true;
-    editor.annotations = [];
+    editor.annotations = isTextTranscriptionTask()
+      ? (task.input_payload?.detected_annotations || []).map((annotation: any, index: number) => ({
+          local_id: `detected-${task.id}-${index}`,
+          type: annotation?.type || "bbox",
+          label_id: typeof annotation?.label_id === "number" ? annotation.label_id : null,
+          points: Array.isArray(annotation?.points)
+            ? normalizePoints(
+                annotation.points.map((point: any) => Number(point) || 0),
+                Number(task.input_payload?.width || 0) || Number(annotation?.points?.[2] || 0),
+                Number(task.input_payload?.height || 0) || Number(annotation?.points?.[3] || 0)
+              )
+            : [0, 0, 0, 0],
+          frame: Number(annotation?.frame || 0),
+          attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
+          occluded: Boolean(annotation?.occluded),
+          text: typeof annotation?.text === "string" ? annotation.text : "",
+        }))
+      : [];
     editor.zoomLevel = 1;
     editor.baseCanvasWidth = 0;
     editor.baseCanvasHeight = 0;
@@ -4893,15 +5148,10 @@ function RoomWorkPage() {
   const { bootstrap, api, addToast, clearToasts } = useApp();
   const roomId = bootstrap.room_id;
   const formRef = useRef<HTMLFormElement | null>(null);
-  const submitBtnRef = useRef<HTMLButtonElement | null>(null);
   const mediaToolRef = useRef<HTMLDivElement | null>(null);
-  const instructionsRef = useRef<HTMLDivElement | null>(null);
   const labelPaletteRef = useRef<HTMLDivElement | null>(null);
-  const activeLabelNoteRef = useRef<HTMLDivElement | null>(null);
   const zoomToolbarRef = useRef<HTMLDivElement | null>(null);
   const zoomRangeRef = useRef<HTMLInputElement | null>(null);
-  const zoomOutBtnRef = useRef<HTMLButtonElement | null>(null);
-  const zoomInBtnRef = useRef<HTMLButtonElement | null>(null);
   const zoomResetBtnRef = useRef<HTMLButtonElement | null>(null);
   const mediaStageRef = useRef<HTMLDivElement | null>(null);
   const annotationListRef = useRef<HTMLDivElement | null>(null);
@@ -4914,53 +5164,45 @@ function RoomWorkPage() {
 
   const [dashboard, setDashboard] = useState<RoomDashboard | null>(null);
   const [currentTask, setCurrentTask] = useState<TaskItem | null>(null);
-  const [payloadText, setPayloadText] = useState(
-    JSON.stringify(
-      {
-        label: "positive",
-        confidence: 0.95,
-      },
-      null,
-      2
-    )
-  );
+  const [payloadText, setPayloadText] = useState(JSON.stringify(createDefaultGenericPayload(), null, 2));
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const isGraphicTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
-  const splitPayloadAnnotations = useMemo(() => {
-    if (!isGraphicTask) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(payloadText);
-      const annotations = Array.isArray(parsed?.annotations) ? parsed.annotations : [];
-      return annotations.map((annotation: any, index: number) => {
-        const label = labelsRef.current.find((item) => item.id === annotation.label_id);
-        return {
-          key: `${annotation.label_id || "no-label"}-${annotation.frame ?? 0}-${index}`,
-          title: `Бокс #${index + 1}`,
-          labelName: label?.name || `Label #${annotation.label_id ?? "?"}`,
-          frame: annotation.frame ?? 0,
-          json: JSON.stringify(annotation, null, 2),
-        };
-      });
-    } catch (error) {
-      return [];
-    }
-  }, [isGraphicTask, payloadText]);
+  const [activeInspector, setActiveInspector] = useState<"annotations" | "payload" | null>(null);
+  const [editorState, setEditorState] = useState({
+    annotationCount: 0,
+    hasUnlabeledAnnotations: false,
+  });
 
   // The editor callbacks outlive individual renders, so refs expose the latest
   // task and labels without recreating the imperative editor on every update.
   currentTaskRef.current = currentTask;
   labelsRef.current = dashboard?.labels || [];
+  const scenario = getWorkEditorScenario(currentTask);
+  const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
+  const stagePlaceholderText = loading
+    ? "Загружаем редактор и следующую задачу."
+    : currentTask
+      ? scenario.emptyStageMessage
+      : "Доступных задач больше нет. Можно вернуться в комнату или позже запросить новую задачу.";
+  const submitDisabled = submitting || !currentTask || (isMediaTask && editorState.hasUnlabeledAnnotations);
+  const roomTitle = dashboard?.room.title || (roomId ? `Комната #${roomId}` : "Рабочая среда");
+  const stageTitle = currentTask
+    ? currentTask.source_name || `Задача #${currentTask.id}`
+    : loading
+      ? "Загружаем рабочую область"
+      : "Очередь задач пуста";
+  const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
+  const totalTasks = dashboard?.overview.total_tasks ?? 0;
+  const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
+
+  function toggleInspector(nextInspector: "annotations" | "payload") {
+    setActiveInspector((current) => (current === nextInspector ? null : nextInspector));
+  }
 
   useEffect(() => {
     if (
       !mediaToolRef.current ||
-      !instructionsRef.current ||
       !labelPaletteRef.current ||
-      !activeLabelNoteRef.current ||
       !mediaStageRef.current ||
       !annotationListRef.current ||
       !resultJsonRef.current ||
@@ -4971,24 +5213,21 @@ function RoomWorkPage() {
 
     const controller = createMediaAnnotationEditor({
       mediaTool: mediaToolRef.current,
-      instructions: instructionsRef.current,
       labelPalette: labelPaletteRef.current,
-      activeLabelNote: activeLabelNoteRef.current,
       zoomToolbar: zoomToolbarRef.current,
       zoomRange: zoomRangeRef.current,
-      zoomOutBtn: zoomOutBtnRef.current,
-      zoomInBtn: zoomInBtnRef.current,
       zoomResetBtn: zoomResetBtnRef.current,
       mediaStage: mediaStageRef.current,
       annotationList: annotationListRef.current,
       clearBtn: clearAnnotationsBtnRef.current,
       resultJson: resultJsonRef.current,
       resultLabel: resultLabelRef.current,
-      submitBtn: submitBtnRef.current,
+      submitBtn: null,
       getLabels: () => labelsRef.current,
       getTask: () => currentTaskRef.current,
       showToast: (message, type) => addToast(message, type || "info"),
       onPayloadChange: (payload) => setPayloadText(JSON.stringify(payload, null, 2)),
+      onStateChange: setEditorState,
     });
     mediaEditorRef.current = controller;
 
@@ -5008,8 +5247,8 @@ function RoomWorkPage() {
       return;
     }
 
-    mediaEditorRef.current.reset();
-  }, [currentTask]);
+    mediaEditorRef.current.reset(stagePlaceholderText);
+  }, [currentTask, stagePlaceholderText]);
 
   async function loadDashboard() {
     if (!roomId) {
@@ -5052,16 +5291,7 @@ function RoomWorkPage() {
       }
 
       if (!["image", "video"].includes(task.source_type)) {
-        setPayloadText(
-          JSON.stringify(
-            {
-              label: "positive",
-              confidence: 0.95,
-            },
-            null,
-            2
-          )
-        );
+        setPayloadText(JSON.stringify(createDefaultGenericPayload(), null, 2));
       }
 
       return task;
@@ -5128,121 +5358,103 @@ function RoomWorkPage() {
   }
 
   return (
-    <section className="workspace-grid workspace-grid--single">
-      <div className="workspace-grid__main">
-        <div className="panel-card panel-card--workscreen">
-          <span className="eyebrow hero-card__eyebrow">Рабочая среда</span>
-          <div className="action-strip">
-            <a className="btn btn--muted btn--workscreen-back" href={`/rooms/${roomId}/`}>
-              Назад в комнату
-            </a>
-            <button
-              className={`btn btn--primary btn--workscreen-submit ${currentTask ? "" : "hidden"}`}
-              type="button"
-              disabled={submitting || !currentTask}
-              onClick={() => formRef.current?.requestSubmit()}
-            >
-              {submitting ? "Отправляем..." : "Отправить результат"}
-            </button>
+    <form ref={formRef} className="room-editor" onSubmit={handleSubmit}>
+      <header className="room-editor__topbar">
+        <div className="room-editor__identity">
+          <a className="room-editor__home-link" href="/" aria-label="Вернуться на сайт">
+            DS
+          </a>
+          <a className="btn btn--muted btn--compact" href={roomId ? `/rooms/${roomId}/` : "/rooms/"}>
+            Назад
+          </a>
+          <div className="room-editor__summary">
+            <strong>{stageTitle}</strong>
+            <small>{summaryMeta}</small>
           </div>
+        </div>
 
-          {bootstrap.app_debug_mode ? (
-            <div className={currentTask ? "task-box" : "empty-card"}>
-              {currentTask ? (
-                <>
-                  <strong>Задача #{currentTask.id}</strong>
-                  <div>Статус: {translateTaskStatus(currentTask.status)}</div>
-                  <div>Тип: {translateSourceType(currentTask.source_type)}</div>
-                  {currentTask.source_name ? <div>Файл: {currentTask.source_name}</div> : null}
-                  {currentTask.input_payload?.width && currentTask.input_payload?.height ? (
-                    <div>
-                      Размер: {currentTask.input_payload.width} × {currentTask.input_payload.height}
-                    </div>
-                  ) : null}
-                  <pre className="payload-preview">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
-                </>
-              ) : (
-                "Задача пока не выбрана."
-              )}
-            </div>
-          ) : null}
+        <div className="room-editor__actions">
+          {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
+          <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
+            Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
+          </button>
+          <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
+            JSON
+          </button>
+          <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+            {submitting ? "Отправляем..." : currentTask ? "Отправить" : "Нет задачи"}
+          </button>
+        </div>
+      </header>
 
-          {loading ? <div className="empty-card">Загрузка рабочей среды.</div> : null}
-
-          <form ref={formRef} className={currentTask ? "stack-form" : "stack-form hidden"} onSubmit={handleSubmit}>
-            <div ref={mediaToolRef} className="media-tool hidden">
-              <div ref={instructionsRef} className="panel-note hidden"></div>
-              <div ref={labelPaletteRef} className="label-chip-list"></div>
-              <div ref={activeLabelNoteRef} className="panel-note hidden"></div>
-              <div className="media-tool__layout">
-                <div className="media-tool__canvas">
-                  <div ref={zoomToolbarRef} className="media-tool__toolbar hidden">
-                    <div className="media-zoom" aria-label="Управление масштабом">
-                      <button ref={zoomOutBtnRef} className="media-zoom__btn" type="button" aria-label="Уменьшить масштаб">
-                        -
-                      </button>
-                      <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" aria-label="Масштаб" />
-                      <button ref={zoomResetBtnRef} className="media-zoom__btn media-zoom__btn--value" type="button" aria-label="Сбросить масштаб">
-                        100%
-                      </button>
-                      <button ref={zoomInBtnRef} className="media-zoom__btn" type="button" aria-label="Увеличить масштаб">
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  <div ref={mediaStageRef} className="media-stage empty-card">
-                    Файл задачи загрузится автоматически.
-                  </div>
-                </div>
-                <div className="media-tool__sidebar">
-                  <div ref={annotationListRef} className="annotation-list empty-card">
-                    Разметка пока отсутствует.
-                  </div>
-                  <button ref={clearAnnotationsBtnRef} className="btn btn--muted hidden" type="button">
-                    Очистить разметку
-                  </button>
-                </div>
+      <div className="room-editor__body">
+        <section className="room-editor__stage">
+          <div className="room-editor__canvas-shell">
+            <div className="room-editor__stage-surface">
+              <div ref={mediaStageRef} className="media-stage empty-card">
+                {stagePlaceholderText}
               </div>
             </div>
 
-            <label className="field">
-              <span ref={resultLabelRef}>Результат разметки</span>
-              {isGraphicTask ? (
-                <div className="bbox-result-list">
-                  {splitPayloadAnnotations.length ? (
-                    splitPayloadAnnotations.map((item) => (
-                      <article key={item.key} className="bbox-result-card">
-                        <div className="bbox-result-card__head">
-                          <strong>{item.title}</strong>
-                          <span>
-                            {item.labelName} · frame {item.frame}
-                          </span>
-                        </div>
-                        <pre className="bbox-result-card__json">{item.json}</pre>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="empty-card">Добавь хотя бы один bbox, и здесь появится JSON по каждому боксу отдельно.</div>
-                  )}
-                  <textarea ref={resultJsonRef} rows={10} value={payloadText} readOnly className="hidden"></textarea>
+            <div ref={mediaToolRef} className={isMediaTask ? "editor-toolbar" : "editor-toolbar hidden"}>
+              <div className="editor-toolbar__frame">
+                <div ref={labelPaletteRef} className="label-chip-list editor-label-palette"></div>
+              </div>
+              <div ref={zoomToolbarRef} className={isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden"}>
+                <div className="media-zoom">
+                  <button ref={zoomResetBtnRef} className="editor-zoom-btn editor-zoom-btn--value" type="button">
+                    100%
+                  </button>
+                  <input ref={zoomRangeRef} className="media-zoom__range" type="range" min="100" max="400" step="25" defaultValue="100" />
                 </div>
-              ) : (
-                <textarea
-                  ref={resultJsonRef}
-                  rows={10}
-                  value={payloadText}
-                  readOnly={false}
-                  onChange={(event) => setPayloadText(event.currentTarget.value)}
-                ></textarea>
-              )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside className={`room-editor__inspector ${activeInspector ? "is-open" : ""}`}>
+          <section className={activeInspector === "annotations" ? "editor-panel" : "editor-panel hidden"}>
+            <div className="editor-panel__head">
+              <span className="editor-panel__title">
+                {scenario.annotationsTitle}
+                {editorState.annotationCount ? ` (${editorState.annotationCount})` : ""}
+              </span>
+              <div className="editor-panel__actions">
+                <button
+                  ref={clearAnnotationsBtnRef}
+                  className={`btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`}
+                  type="button"
+                >
+                  Очистить
+                </button>
+              </div>
+            </div>
+            <div ref={annotationListRef} className="annotation-list empty-card">
+              Разметка пока отсутствует.
+            </div>
+          </section>
+
+          <section className={activeInspector === "payload" ? "editor-panel" : "editor-panel hidden"}>
+            <div className="editor-panel__head">
+              <span className="editor-panel__title">Результат</span>
+            </div>
+            <label className="field editor-field editor-field--payload">
+              <span ref={resultLabelRef}>Результат разметки</span>
+              <textarea
+                ref={resultJsonRef}
+                rows={16}
+                value={payloadText}
+                readOnly={Boolean(currentTask && isMediaTask)}
+                onChange={(event) => setPayloadText(event.currentTarget.value)}
+              ></textarea>
             </label>
-            <button ref={submitBtnRef} className="btn btn--primary hidden" type="submit" disabled={submitting}>
-              Отправить результат
-            </button>
-          </form>
-        </div>
+            {bootstrap.app_debug_mode && currentTask ? (
+              <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
+            ) : null}
+          </section>
+        </aside>
       </div>
-    </section>
+    </form>
   );
 }
 
