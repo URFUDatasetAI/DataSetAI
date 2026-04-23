@@ -655,6 +655,7 @@ class RoomsApiTests(APITestCase):
 
     def test_return_for_revision_removes_task_from_final_export_state(self):
         room = make_room(customer=self.customer, title="Revision export room", dataset_type="image")
+        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer, joined=True)
         label = room.labels.create(name="car", color="#FF6B6B", sort_order=0)
         task = Task.objects.create(
             room=room,
