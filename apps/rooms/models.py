@@ -176,6 +176,32 @@ class RoomMembership(TimeStampedModel):
         return f"{self.room_id}:{self.user_id}:{self.status}"
 
 
+class RoomAssignmentQuota(TimeStampedModel):
+    """
+    Optional per-room cap for how many active task attempts a user may hold.
+
+    A missing row means unlimited work. Submitted and in-progress assignments in
+    the current task round consume quota; skipped or rejected rounds do not.
+    """
+
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="assignment_quotas")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="room_assignment_quotas",
+    )
+    task_quota = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ("room_id", "user_id")
+        constraints = [
+            models.UniqueConstraint(fields=("room", "user"), name="unique_room_assignment_quota"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.room_id}:{self.user_id}:{self.task_quota}"
+
+
 class RoomPin(TimeStampedModel):
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="pins")
     user = models.ForeignKey(

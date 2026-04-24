@@ -15,7 +15,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
-from apps.rooms.models import RoomMembership, RoomPin
+from apps.rooms.models import RoomAssignmentQuota, RoomMembership, RoomPin
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
 
@@ -174,6 +174,36 @@ class RoomsApiTests(APITestCase):
 
         self.assertEqual(invite_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(role_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_can_set_annotator_assignment_quota(self):
+        room = make_room(customer=self.customer, title="Quota room")
+        invite_annotator(
+            room=room,
+            annotator=self.admin_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.ADMIN,
+        )
+        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer, joined=True)
+
+        response = self.client.post(
+            reverse("room-assignment-quota", kwargs={"room_id": room.id, "user_id": self.annotator.id}),
+            {"task_quota": 3},
+            format="json",
+            **self.auth(self.admin_user),
+        )
+        dashboard_response = self.client.get(
+            reverse("room-dashboard", kwargs={"room_id": room.id}),
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["task_quota"], 3)
+        self.assertTrue(RoomAssignmentQuota.objects.filter(room=room, user=self.annotator, task_quota=3).exists())
+        self.assertEqual(dashboard_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(dashboard_response.data["actor"]["can_assign_quotas"])
+        annotator_payload = next(item for item in dashboard_response.data["annotators"] if item["user_id"] == self.annotator.id)
+        self.assertEqual(annotator_payload["task_quota"], 3)
 
     def test_annotator_sees_only_invited_rooms(self):
         visible_room = make_room(customer=self.customer, title="Visible room")

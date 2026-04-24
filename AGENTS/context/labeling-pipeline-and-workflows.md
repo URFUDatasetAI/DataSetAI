@@ -24,6 +24,8 @@
 - Если пул annotator-ов нельзя разбить на полные группы нужного размера, система должна fallback-нуться на старую balanced strategy, а не вести себя “почти правильно”.
 - В `text_detect_text` final-stage semantics важнее сырой структуры task rows: detection может порождать transcription children, но именно transcription stage определяет прогресс готовности комнаты.
 - Ручное отклонение на review не должно выбрасывать задачу в общий пул: следующий раунд должен вернуться тем же annotator-ам, которые сдавали отклонённый раунд.
+- Assignment quota - это лимит на активную работу пользователя в текущем раунде комнаты. Отклонённые раунды возвращают квоту, потому что перестают быть current round; skipped work квоту не расходует.
+- Неполный cross-validation review - это не проваленный consensus. Пока нужного числа submissions нет, reviewer смотрит только разметки конкретных annotator-ов и может вернуть на исправление только одну выбранную submission.
 
 ## What Refactors Must Preserve
 

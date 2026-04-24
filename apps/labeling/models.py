@@ -123,6 +123,7 @@ class TaskAssignment(TimeStampedModel):
     class Status(models.TextChoices):
         IN_PROGRESS = "in_progress", "In progress"
         SUBMITTED = "submitted", "Submitted"
+        SKIPPED = "skipped", "Skipped"
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="assignments")
     annotator = models.ForeignKey(

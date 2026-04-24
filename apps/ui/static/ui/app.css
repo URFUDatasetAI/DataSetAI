@@ -922,14 +922,14 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .room-header-cta {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
-    margin-top: 10px;
+    margin-top: 14px;
 }
 
 .room-header-cta__button {
-    min-width: min(100%, 320px);
+    min-width: min(100%, 220px);
 }
 
 .room-progress-panel {
@@ -1789,6 +1789,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     align-items: stretch;
 }
 
+.workspace-grid--room-top.workspace-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .workspace-grid--room-top .workspace-grid__main,
 .workspace-grid--room-top .workspace-grid__side {
     width: 100%;
@@ -1816,17 +1820,6 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .workspace-grid__side--stack.workspace-grid__side--stack-single {
     grid-template-columns: minmax(0, 1fr);
-}
-
-.workspace-grid__side--room-work {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    min-height: 0;
-}
-
-.workspace-grid__side--room-work .panel-card {
-    flex: 1 1 auto;
 }
 
 .section-disclosure {
@@ -2356,17 +2349,30 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .room-editor__actions {
     flex-wrap: nowrap;
-    gap: 5px;
+    gap: 12px;
     justify-content: flex-end;
     align-items: center;
     flex: 0 0 auto;
 }
 
-.room-editor__tabs {
+.room-editor__action-group {
+    display: inline-flex;
     align-items: center;
     gap: 5px;
-    flex: 0 1 auto;
     min-width: 0;
+    padding: 3px;
+    border: 1px solid var(--editor-border);
+    background: var(--editor-surface-muted);
+}
+
+.room-editor__action-group--submit {
+    border-color: rgba(255, 201, 25, 0.28);
+    background: rgba(255, 201, 25, 0.08);
+}
+
+.room-editor__tabs {
+    align-items: center;
+    flex: 0 1 auto;
 }
 
 .room-editor .btn--compact {
@@ -2509,6 +2515,45 @@ input[type="file"]::-webkit-file-upload-button:hover {
     color: var(--text-soft);
 }
 
+.room-editor__meta-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--editor-border);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.room-editor__meta-stack--task {
+    background: transparent;
+}
+
+.room-editor__metric-row,
+.room-editor__meta-row {
+    display: grid;
+    grid-template-columns: minmax(72px, 0.72fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-width: 0;
+}
+
+.room-editor__metric-row span,
+.room-editor__meta-row span {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    line-height: 1.35;
+}
+
+.room-editor__metric-row strong,
+.room-editor__meta-row strong {
+    min-width: 0;
+    color: var(--text);
+    font-size: 0.84rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 .room-editor__tasklist {
     display: flex;
     flex-direction: column;
@@ -2575,6 +2620,32 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .room-editor__source-chip.is-active {
     border-color: rgba(255, 201, 25, 0.34);
     background: rgba(255, 201, 25, 0.1);
+}
+
+.room-editor__review-filters {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+}
+
+.room-editor__filter-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    padding: 7px 12px;
+    border: 1px solid var(--editor-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.room-editor__filter-chip.is-active {
+    border-color: rgba(255, 201, 25, 0.42);
+    background: rgba(255, 201, 25, 0.14);
 }
 
 .room-editor__stage-surface {
@@ -2948,13 +3019,6 @@ input[type="file"]::-webkit-file-upload-button:hover {
         flex-wrap: wrap;
     }
 
-    .room-editor__tabs {
-        order: 3;
-        width: 100%;
-        justify-content: flex-start;
-        flex-wrap: wrap;
-    }
-
     .room-editor__actions {
         justify-content: flex-start;
     }
@@ -3029,6 +3093,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
     .room-editor__actions {
         width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .room-editor__action-group {
         flex-wrap: wrap;
     }
 

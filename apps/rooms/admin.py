@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.rooms.models import Room, RoomJoinRequest, RoomMembership, RoomPin
+from apps.rooms.models import Room, RoomAssignmentQuota, RoomJoinRequest, RoomMembership, RoomPin
 
 
 @admin.register(Room)
@@ -14,6 +14,12 @@ class RoomMembershipAdmin(admin.ModelAdmin):
     list_display = ("id", "room", "user", "status", "role", "invited_by", "joined_at")
     list_filter = ("status", "role")
     search_fields = ("room__title", "user__email", "user__full_name", "invited_by__email", "invited_by__full_name")
+
+
+@admin.register(RoomAssignmentQuota)
+class RoomAssignmentQuotaAdmin(admin.ModelAdmin):
+    list_display = ("id", "room", "user", "task_quota", "created_at")
+    search_fields = ("room__title", "user__email", "user__full_name")
 
 
 @admin.register(RoomPin)

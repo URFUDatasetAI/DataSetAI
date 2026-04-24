@@ -19,6 +19,7 @@ from apps.labeling.models import Task
 from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.models import (
     Room,
+    RoomAssignmentQuota,
     RoomJoinRequest,
     RoomLabel,
     RoomMembership,
@@ -26,7 +27,7 @@ from apps.rooms.models import (
     RoomVisit,
     generate_room_invite_token,
 )
-from apps.rooms.policies import can_edit_room, can_invite_members
+from apps.rooms.policies import can_annotate_room, can_edit_room, can_invite_members, can_manage_room
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
 
@@ -192,15 +193,15 @@ def create_room(
 
 def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> RoomMembership:
     if not can_invite_members(room=room, user=inviter):
-        raise AccessDeniedError("You do not have permission to invite participants to this room.")
+        raise AccessDeniedError("У тебя нет прав приглашать участников в эту комнату.")
 
     try:
         invited_user = User.objects.get(id=invited_user_id)
     except User.DoesNotExist as exc:
-        raise NotFoundError("Invited user not found.") from exc
+        raise NotFoundError("Приглашаемый пользователь не найден.") from exc
 
     if invited_user.id == room.created_by_id:
-        raise ConflictError("Room owner already has access to this room.")
+        raise ConflictError("У владельца уже есть доступ к этой комнате.")
 
     membership, created = RoomMembership.objects.get_or_create(
         room=room,
@@ -230,15 +231,15 @@ def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> R
 
 def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, role: str) -> RoomMembership:
     if room.created_by_id != owner.id:
-        raise AccessDeniedError("Only the room owner can assign room roles.")
+        raise AccessDeniedError("Только владелец комнаты может назначать роли.")
 
     if target_user_id == room.created_by_id:
-        raise ConflictError("Room owner role cannot be changed.")
+        raise ConflictError("Роль владельца комнаты нельзя изменить.")
 
     try:
         membership = RoomMembership.objects.get(room=room, user_id=target_user_id)
     except RoomMembership.DoesNotExist as exc:
-        raise NotFoundError("Room membership not found.") from exc
+        raise NotFoundError("Участник комнаты не найден.") from exc
 
     if membership.role != role:
         membership.role = role
@@ -247,26 +248,52 @@ def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, ro
     return membership
 
 
+def set_room_assignment_quota(*, room: Room, actor: User, target_user_id: int, task_quota: int | None) -> RoomAssignmentQuota | None:
+    if not can_manage_room(room=room, user=actor):
+        raise AccessDeniedError("У тебя нет прав управлять квотами задач в этой комнате.")
+
+    try:
+        target_user = User.objects.get(id=target_user_id)
+    except User.DoesNotExist as exc:
+        raise NotFoundError("Пользователь для квоты не найден.") from exc
+
+    membership = RoomMembership.objects.filter(room=room, user=target_user).only("status", "role").first()
+    if not can_annotate_room(room=room, user=target_user, membership=membership):
+        raise ConflictError("Квоты можно назначать только пользователям, которые могут размечать задачи в этой комнате.")
+
+    if task_quota is None:
+        RoomAssignmentQuota.objects.filter(room=room, user=target_user).delete()
+        return None
+
+    quota, _ = RoomAssignmentQuota.objects.update_or_create(
+        room=room,
+        user=target_user,
+        defaults={"task_quota": task_quota},
+    )
+    return quota
+
+
 def remove_room_membership(*, room: Room, owner: User, target_user_id: int) -> None:
     if room.created_by_id != owner.id:
-        raise AccessDeniedError("Only the room owner can remove participants from the room.")
+        raise AccessDeniedError("Только владелец комнаты может удалять участников.")
 
     if target_user_id == room.created_by_id:
-        raise ConflictError("Room owner cannot be removed from the room.")
+        raise ConflictError("Владельца комнаты нельзя удалить из комнаты.")
 
     deleted_count, _ = RoomMembership.objects.filter(room=room, user_id=target_user_id).delete()
     if not deleted_count:
-        raise NotFoundError("Room membership not found.")
+        raise NotFoundError("Участник комнаты не найден.")
+    RoomAssignmentQuota.objects.filter(room=room, user_id=target_user_id).delete()
 
 
 def validate_room_password(*, room: Room, password: str = "") -> None:
     if not room.check_access_password(password):
-        raise AccessDeniedError("Incorrect room password.")
+        raise AccessDeniedError("Неверный пароль комнаты.")
 
 
 def regenerate_room_invite(*, room: Room, actor: User) -> Room:
     if not can_invite_members(room=room, user=actor):
-        raise AccessDeniedError("You do not have permission to regenerate the invite link for this room.")
+        raise AccessDeniedError("У тебя нет прав обновлять invite-ссылку этой комнаты.")
 
     while True:
         candidate = generate_room_invite_token()
@@ -279,13 +306,13 @@ def regenerate_room_invite(*, room: Room, actor: User) -> Room:
 
 def submit_room_join_request(*, room: Room, applicant: User) -> RoomJoinRequest:
     if applicant.id == room.created_by_id:
-        raise ConflictError("Room owner already has access to this room.")
+        raise ConflictError("У владельца уже есть доступ к этой комнате.")
 
     membership = RoomMembership.objects.filter(room=room, user=applicant).first()
     if membership is not None:
         if membership.status == RoomMembership.Status.JOINED:
-            raise ConflictError("You already have access to this room.")
-        raise ConflictError("You have already been invited to this room.")
+            raise ConflictError("У тебя уже есть доступ к этой комнате.")
+        raise ConflictError("Тебя уже пригласили в эту комнату.")
 
     join_request, created = RoomJoinRequest.objects.get_or_create(
         room=room,
@@ -306,12 +333,12 @@ def submit_room_join_request(*, room: Room, applicant: User) -> RoomJoinRequest:
 
 def approve_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
     if not can_invite_members(room=room, user=approver):
-        raise AccessDeniedError("You do not have permission to approve join requests for this room.")
+        raise AccessDeniedError("У тебя нет прав принимать заявки в эту комнату.")
 
     try:
         join_request = RoomJoinRequest.objects.select_related("user").get(id=join_request_id, room=room)
     except RoomJoinRequest.DoesNotExist as exc:
-        raise NotFoundError("Join request not found.") from exc
+        raise NotFoundError("Заявка на вступление не найдена.") from exc
 
     approved_at = timezone.now()
     membership, _ = RoomMembership.objects.get_or_create(
@@ -353,15 +380,15 @@ def approve_room_join_request(*, room: Room, approver: User, join_request_id: in
 
 def reject_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
     if not can_invite_members(room=room, user=approver):
-        raise AccessDeniedError("You do not have permission to reject join requests for this room.")
+        raise AccessDeniedError("У тебя нет прав отклонять заявки в эту комнату.")
 
     try:
         join_request = RoomJoinRequest.objects.get(id=join_request_id, room=room)
     except RoomJoinRequest.DoesNotExist as exc:
-        raise NotFoundError("Join request not found.") from exc
+        raise NotFoundError("Заявка на вступление не найдена.") from exc
 
     if RoomMembership.objects.filter(room=room, user=join_request.user).exists():
-        raise ConflictError("This user already has access to the room.")
+        raise ConflictError("У этого пользователя уже есть доступ к комнате.")
 
     if (
         join_request.status != RoomJoinRequest.Status.REJECTED
@@ -383,7 +410,7 @@ def join_room(*, room: Room, annotator: User, password: str | None = None) -> Ro
     try:
         membership = RoomMembership.objects.get(room=room, user=annotator)
     except RoomMembership.DoesNotExist as exc:
-        raise AccessDeniedError("You do not have access to this room. Use the invite link and wait for approval.") from exc
+        raise AccessDeniedError("У тебя нет доступа к этой комнате. Используй invite-ссылку и дождись одобрения.") from exc
 
     if membership.status != RoomMembership.Status.JOINED or membership.joined_at is None:
         membership.status = RoomMembership.Status.JOINED
@@ -474,7 +501,7 @@ def update_room(
     owner_is_annotator=UNSET,
 ) -> Room:
     if not can_edit_room(room=room, user=owner):
-        raise AccessDeniedError("Only the room owner can edit room settings.")
+        raise AccessDeniedError("Только владелец комнаты может менять настройки.")
 
     update_fields: list[str] = []
 
@@ -583,7 +610,7 @@ def _load_json_dataset_items(dataset_file) -> list:
     try:
         payload = json.loads(dataset_file.read().decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConflictError("JSON dataset must be a valid UTF-8 JSON file.") from exc
+        raise ConflictError("JSON-датасет должен быть корректным UTF-8 JSON-файлом.") from exc
 
     if isinstance(payload, list):
         return payload
@@ -594,17 +621,17 @@ def _load_json_dataset_items(dataset_file) -> list:
                 return payload[key]
         return [payload]
 
-    raise ConflictError("JSON dataset must contain an array or an object.")
+    raise ConflictError("JSON-датасет должен содержать массив или объект.")
 
 
 def _create_json_tasks(*, room: Room, dataset_label: str, dataset_files: list) -> None:
     dataset_files = _expand_dataset_files(dataset_mode=Room.DatasetType.JSON, dataset_files=dataset_files)
     if len(dataset_files) != 1:
-        raise ConflictError("JSON dataset upload expects exactly one .json file.")
+        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
 
     items = _load_json_dataset_items(dataset_files[0])
     if not items:
-        raise ConflictError("JSON dataset file is empty.")
+        raise ConflictError("JSON-файл датасета пуст.")
 
     tasks = []
     for index, item in enumerate(items):
@@ -695,7 +722,7 @@ def _create_video_frame_tasks(
     # serving, otherwise video/image labeling breaks even if Django itself works.
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
-        raise ConflictError("FFmpeg is required to import video datasets.")
+        raise ConflictError("Для импорта видео-датасетов нужен FFmpeg.")
 
     video_name = Path(dataset_file.name).name
     frame_rate = int(metadata.get("frame_rate") or 25)
@@ -775,18 +802,18 @@ def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
         return
 
     if not dataset_files:
-        raise ConflictError("Upload at least one dataset file.")
+        raise ConflictError("Загрузи хотя бы один файл датасета.")
 
     suffixes = {Path(file.name).suffix.lower() for file in dataset_files}
 
     if dataset_mode == Room.DatasetType.JSON:
         if suffixes - (JSON_EXTENSIONS | ARCHIVE_EXTENSIONS):
-            raise ConflictError("JSON mode accepts .json files or .zip archives with JSON datasets.")
+            raise ConflictError("JSON-режим принимает .json-файлы или .zip-архивы с JSON-датасетами.")
         return
 
     allowed_extensions = IMAGE_EXTENSIONS if dataset_mode == Room.DatasetType.IMAGE else VIDEO_EXTENSIONS
     if suffixes - (allowed_extensions | ARCHIVE_EXTENSIONS):
-        raise ConflictError("Uploaded files do not match the selected dataset type. You can also upload a .zip archive.")
+        raise ConflictError("Загруженные файлы не соответствуют выбранному типу датасета. Также можно загрузить .zip-архив.")
 
 
 def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
@@ -811,10 +838,10 @@ def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
             expanded_files.append(dataset_file)
 
     if not expanded_files:
-        raise ConflictError("Archive does not contain supported dataset files.")
+        raise ConflictError("Архив не содержит поддерживаемых файлов датасета.")
 
     if dataset_mode == Room.DatasetType.JSON and len(expanded_files) != 1:
-        raise ConflictError("JSON dataset upload expects exactly one .json file.")
+        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
 
     return expanded_files
 
@@ -842,7 +869,7 @@ def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]
                 content_type = mimetypes.guess_type(inner_name)[0] or "application/octet-stream"
                 archive_members.append(SimpleUploadedFile(inner_name, content, content_type=content_type))
     except zipfile.BadZipFile as exc:
-        raise ConflictError("Uploaded archive is not a valid ZIP file.") from exc
+        raise ConflictError("Загруженный архив не является корректным ZIP-файлом.") from exc
     finally:
         if hasattr(dataset_file, "seek"):
             dataset_file.seek(0)
@@ -944,7 +971,7 @@ def _build_jsonl_export(*, room: Room, tasks, labels, base_url: str | None) -> E
 
 def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("COCO export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт COCO доступен только для датасетов с изображениями или кадрами видео.")
 
     annotations = []
     images = []
@@ -1007,7 +1034,7 @@ def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("YOLO export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт YOLO доступен только для датасетов с изображениями или кадрами видео.")
 
     label_order = {label.id: index for index, label in enumerate(labels)}
     buffer = io.BytesIO()
@@ -1063,7 +1090,7 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 def _build_pascal_voc_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("Pascal VOC export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт Pascal VOC доступен только для датасетов с изображениями или кадрами видео.")
 
     labels_by_id = {label.id: label for label in labels}
     buffer = io.BytesIO()
@@ -1127,7 +1154,7 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
     # Export only submitted tasks. Pending/in-progress tasks are intentionally
     # excluded so downstream datasets contain finalized results.
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":
-        raise ConflictError("Object detect + text rooms support only Native JSON export.")
+        raise ConflictError("Комнаты Object detect + text поддерживают только экспорт Native JSON.")
     tasks = list(get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).prefetch_related("annotations").all())
     labels = list(room.labels.all())
 
@@ -1142,7 +1169,7 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
     if export_format == "pascal_voc_zip":
         return _build_pascal_voc_export(room=room, tasks=tasks, labels=labels)
 
-    raise NotFoundError("Unsupported export format.")
+    raise NotFoundError("Неподдерживаемый формат экспорта.")
 
 
 def _get_export_annotation_payload(task: Task):

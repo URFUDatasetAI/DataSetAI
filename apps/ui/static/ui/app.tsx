@@ -136,6 +136,11 @@ type DashboardAnnotator = {
   in_progress_tasks: number;
   remaining_tasks: number;
   progress_percent: number;
+  task_quota: number | null;
+  quota_used: number;
+  quota_remaining: number | null;
+  quota_exhausted: boolean;
+  quota_progress_percent: number;
   activity: ActivitySeriesItem[];
 };
 
@@ -194,6 +199,7 @@ type RoomDashboard = {
     can_annotate: boolean;
     can_invite: boolean;
     can_assign_roles: boolean;
+    can_assign_quotas: boolean;
     can_edit_room: boolean;
     can_export: boolean;
     can_delete_room: boolean;
@@ -204,6 +210,11 @@ type RoomDashboard = {
     in_progress_tasks: number;
     remaining_tasks: number;
     progress_percent: number;
+    task_quota: number | null;
+    quota_used: number;
+    quota_remaining: number | null;
+    quota_exhausted: boolean;
+    quota_progress_percent: number;
     activity: ActivitySeriesItem[];
   };
   annotators?: DashboardAnnotator[];
@@ -236,6 +247,9 @@ type ReviewTaskListItem = {
   source_file_url: string | null;
   annotations_count: number;
   annotator_ids: number[];
+  review_state: string;
+  required_annotations_count: number;
+  submitted_annotations_count: number;
   review_outcome: string;
   updated_at: string;
 };
@@ -290,6 +304,11 @@ type RoomInvitePreview = {
 type ReviewTaskDetail = {
   task: TaskItem;
   consensus_payload: Record<string, any> | null;
+  consensus_available: boolean;
+  can_reject_all: boolean;
+  review_state: string;
+  required_annotations_count: number;
+  submitted_annotations_count: number;
   annotations: AnnotationItem[];
   review_outcome: string;
 };
@@ -763,6 +782,9 @@ function translateReviewOutcome(outcome: string | null | undefined) {
   if (outcome === "rejected") {
     return "Не принята";
   }
+  if (outcome === "incomplete") {
+    return "Неполная";
+  }
   return "Ожидает проверки";
 }
 
@@ -785,6 +807,16 @@ function translateAnnotationWorkflow(workflow: string | null | undefined) {
     return "Неизвестно";
   }
   return annotationWorkflowLabels[workflow] || workflow;
+}
+
+function translateWorkflowStage(stage: string | null | undefined) {
+  if (stage === "text_detection") {
+    return "Детекция";
+  }
+  if (stage === "text_transcription") {
+    return "Распознавание текста";
+  }
+  return "Разметка";
 }
 
 function pickRandomLabelColor() {
@@ -906,7 +938,7 @@ function getWorkEditorScenario(task: TaskItem | null): WorkEditorScenario {
 
   return {
     key: "json",
-    emptyStageMessage: "Для этой задачи визуальная сцена не требуется. Используй payload-editor справа.",
+    emptyStageMessage: "Для этой задачи визуальная сцена не требуется. Используй редактор данных справа.",
     annotationsTitle: "Содержимое payload-а",
   };
 }
@@ -2914,6 +2946,8 @@ function RoomDetailPage() {
   const [reviewSearch, setReviewSearch] = useState("");
   const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState("");
+  const [selectedQuota, setSelectedQuota] = useState("");
+  const [quotaBusy, setQuotaBusy] = useState(false);
   const [reviewTasks, setReviewTasks] = useState<ReviewTaskListItem[]>([]);
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
@@ -3062,10 +3096,19 @@ function RoomDetailPage() {
   });
 
   const activeAnnotator = (dashboard?.annotators || []).find((item) => item.user_id === selectedAnnotatorUserId) || null;
+  const activeAnnotatorCanReceiveQuota = Boolean(
+    activeAnnotator &&
+      (activeAnnotator.status === "joined" || activeAnnotator.status === "owner") &&
+      ["owner", "annotator", "admin"].includes(activeAnnotator.role)
+  );
 
   useEffect(() => {
     setSelectedRole(activeAnnotator?.role || "");
   }, [activeAnnotator?.user_id, activeAnnotator?.role]);
+
+  useEffect(() => {
+    setSelectedQuota(activeAnnotator?.task_quota == null ? "" : String(activeAnnotator.task_quota));
+  }, [activeAnnotator?.user_id, activeAnnotator?.task_quota]);
 
   const filteredReviewTasks = reviewTasks.filter((task) => {
     const matchesAnnotator = !selectedAnnotatorUserId || (task.annotator_ids || []).includes(selectedAnnotatorUserId);
@@ -3189,6 +3232,39 @@ function RoomDetailPage() {
     }
   }
 
+  async function handleQuotaSubmit() {
+    if (!roomId || !activeAnnotator) {
+      return;
+    }
+
+    const trimmedQuota = selectedQuota.trim();
+    const nextQuota = trimmedQuota === "" ? null : Number(trimmedQuota);
+    if (nextQuota !== null && (!Number.isFinite(nextQuota) || nextQuota < 0 || !Number.isInteger(nextQuota))) {
+      addToast("Квота должна быть целым числом 0 или больше.", "error");
+      return;
+    }
+
+    clearToasts();
+    setQuotaBusy(true);
+    try {
+      await api(`/api/v1/rooms/${roomId}/quotas/${activeAnnotator.user_id}/`, {
+        method: "POST",
+        body: { task_quota: nextQuota },
+      });
+      addToast(
+        nextQuota === null
+          ? `Квота пользователя #${activeAnnotator.user_id} снята.`
+          : `Квота пользователя #${activeAnnotator.user_id} обновлена.`,
+        "success"
+      );
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setQuotaBusy(false);
+    }
+  }
+
   async function handleRemoveAnnotator() {
     if (!roomId || !activeAnnotator) {
       return;
@@ -3264,7 +3340,7 @@ function RoomDetailPage() {
   }
 
   async function handleRejectTask() {
-    if (!reviewDetail?.task.id) {
+    if (!reviewDetail?.task.id || !reviewDetail.can_reject_all) {
       return;
     }
 
@@ -3289,6 +3365,11 @@ function RoomDetailPage() {
       addToast(getErrorMessage(error), "error");
     }
   }
+
+  const hasRoomManagementActions = Boolean(
+    dashboard &&
+      (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
+  );
 
   return (
     <>
@@ -3323,6 +3404,20 @@ function RoomDetailPage() {
           ) : (
             <div className="empty-card room-header-inline-meta__empty">Загрузка.</div>
           )}
+          {dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? (
+            <div className="room-header-cta" aria-label="Действия комнаты">
+              {dashboard.actor.can_annotate ? (
+                <a className="btn btn--primary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/`}>
+                  Приступить к работе
+                </a>
+              ) : null}
+              {dashboard.actor.can_review ? (
+                <a className="btn btn--secondary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
+                  Открыть проверку
+                </a>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <aside className="room-header-side">
           {dashboard ? (
@@ -3344,7 +3439,11 @@ function RoomDetailPage() {
       {loading ? <div className="empty-card">Загрузка комнаты.</div> : null}
 
       {dashboard?.actor.can_annotate ? (
-        <section className={`workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""}`}>
+        <section
+          className={`workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${
+            hasRoomManagementActions ? "" : "workspace-grid--single"
+          }`}
+        >
           <div className="workspace-grid__main workspace-grid__main--room-annotator">
             <div className="panel-card">
               <div className="panel-card__head">
@@ -3378,8 +3477,8 @@ function RoomDetailPage() {
             </div>
           </div>
 
-          <div className="workspace-grid__side workspace-grid__side--room-controls">
-            {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite) ? (
+          {hasRoomManagementActions ? (
+            <div className="workspace-grid__side workspace-grid__side--room-controls">
               <details
                 className="panel-card section-disclosure"
                 open={manageSectionOpen}
@@ -3541,30 +3640,8 @@ function RoomDetailPage() {
                   </div>
                 </div>
               </details>
-            ) : null}
-
-            <div className="workspace-grid__side workspace-grid__side--room-work">
-              <div className="panel-card">
-                <div className="panel-card__head">
-                  <h2>Рабочая среда</h2>
-                </div>
-                <div className="action-strip">
-                  <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/work/`}>
-                    Приступить к работе
-                  </a>
-                  {dashboard.actor.can_review ? (
-                    <a className="btn btn--secondary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
-                      Открыть проверку
-                    </a>
-                  ) : null}
-                </div>
-                <div className="panel-note">
-                  На этой странице доступен только обзор комнаты. Получение задач, редактирование своих submit-ов и review итоговых разметок
-                  находятся на отдельном рабочем экране.
-                </div>
-              </div>
             </div>
-          </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -3615,6 +3692,9 @@ function RoomDetailPage() {
                             <div>
                               {annotator.completed_tasks} из {dashboard.overview.total_tasks}
                             </div>
+                            <div>
+                              {annotator.task_quota == null ? "квота: без лимита" : `квота: ${annotator.quota_used}/${annotator.task_quota}`}
+                            </div>
                           </div>
                         </button>
                       ))}
@@ -3661,6 +3741,14 @@ function RoomDetailPage() {
                         <strong>{activeAnnotator.remaining_tasks}</strong>
                       </div>
                       <div className="summary-row">
+                        <span>Квота</span>
+                        <strong>
+                          {activeAnnotator.task_quota == null
+                            ? "Без лимита"
+                            : `${activeAnnotator.quota_used} из ${activeAnnotator.task_quota}`}
+                        </strong>
+                      </div>
+                      <div className="summary-row">
                         <span>Прогресс</span>
                         <strong>{formatPercent(activeAnnotator.progress_percent)}</strong>
                       </div>
@@ -3678,6 +3766,19 @@ function RoomDetailPage() {
                           </select>
                         </label>
                       ) : null}
+                      {dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? (
+                        <label className="field field--compact">
+                          <span>Квота задач</span>
+                          <input
+                            value={selectedQuota}
+                            type="number"
+                            min="0"
+                            step="1"
+                            placeholder="Без лимита"
+                            onChange={(event) => setSelectedQuota(event.currentTarget.value)}
+                          />
+                        </label>
+                      ) : null}
                       <div className="role-assignment-box__actions">
                         <a className="btn btn--muted btn--compact" href={`/users/${activeAnnotator.user_id}/profile/`}>
                           Открыть профиль
@@ -3685,6 +3786,11 @@ function RoomDetailPage() {
                         {dashboard.actor.can_assign_roles ? (
                           <button className="btn btn--secondary btn--compact" type="button" onClick={handleRoleSubmit}>
                             Сохранить роль
+                          </button>
+                        ) : null}
+                        {dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? (
+                          <button className="btn btn--secondary btn--compact" type="button" disabled={quotaBusy} onClick={handleQuotaSubmit}>
+                            {quotaBusy ? "Сохраняем..." : "Сохранить квоту"}
                           </button>
                         ) : null}
                         {dashboard.actor.can_assign_roles ? (
@@ -3782,7 +3888,7 @@ function RoomDetailPage() {
 
             <section className="panel-card review-comparison-section">
               <div className="panel-card__head">
-                <h2>Editor Review</h2>
+                <h2>Ревью в редакторе</h2>
               </div>
               <div className="panel-note">
                 Детальное сравнение итоговой разметки и пользовательских версий теперь открывается внутри fullscreen editor-а.
@@ -3790,7 +3896,7 @@ function RoomDetailPage() {
               </div>
               <div className="action-strip">
                 <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
-                  Открыть проверку в editor-е
+                  Открыть проверку в редакторе
                 </a>
               </div>
             </section>
@@ -5259,7 +5365,9 @@ function RoomWorkPage() {
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
   const [selectedReviewSource, setSelectedReviewSource] = useState<"consensus" | number>("consensus");
+  const [reviewFilter, setReviewFilter] = useState<"final" | "incomplete">("final");
   const [reviewActionBusy, setReviewActionBusy] = useState<string | null>(null);
+  const [skipping, setSkipping] = useState(false);
   const [editorState, setEditorState] = useState({
     annotationCount: 0,
     hasUnlabeledAnnotations: false,
@@ -5279,7 +5387,7 @@ function RoomWorkPage() {
       return null;
     }
     if (source === "consensus") {
-      return detail.consensus_payload;
+      return detail.consensus_available ? detail.consensus_payload : null;
     }
     return detail.annotations.find((annotation) => annotation.id === source)?.result_payload || null;
   }
@@ -5294,7 +5402,7 @@ function RoomWorkPage() {
     selectedReviewSource === "consensus" ? null : reviewDetail?.annotations.find((annotation) => annotation.id === selectedReviewSource) || null;
   const selectedReviewPayload =
     workspaceMode === "review"
-      ? selectedReviewAnnotation?.result_payload || reviewDetail?.consensus_payload || null
+      ? getSelectedReviewPayload(reviewDetail, selectedReviewSource)
       : null;
   const submittedPayload = submittedDetail?.annotation.result_payload || null;
   const activeMediaPayload =
@@ -5314,6 +5422,7 @@ function RoomWorkPage() {
           : "Выбери объект для проверки слева.";
   const submitDisabled =
     submitting ||
+    skipping ||
     workspaceMode === "review" ||
     !currentTask ||
     (workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable)) ||
@@ -5321,15 +5430,25 @@ function RoomWorkPage() {
   const roomTitle = dashboard?.room.title || (roomId ? `Комната #${roomId}` : "Рабочая среда");
   const stageTitle = currentTask
     ? currentTask.source_name || `Задача #${currentTask.id}`
-    : loading
-      ? "Загружаем рабочую область"
-      : workspaceMode === "queue"
-        ? "Очередь задач пуста"
+      : loading
+        ? "Загружаем рабочую область"
+        : workspaceMode === "queue"
+          ? "Очередь задач пуста"
         : workspaceMode === "submitted"
-          ? "Мои отправленные разметки"
-          : "Режим проверки";
+          ? "Отправленные разметки"
+          : "Режим ревью";
   const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
   const totalTasks = dashboard?.overview.total_tasks ?? 0;
+  const remainingTasks = dashboard?.annotator_stats?.remaining_tasks ?? dashboard?.overview.remaining_tasks ?? null;
+  const quotaLabel =
+    dashboard?.annotator_stats?.task_quota == null
+      ? "Без лимита"
+      : `${dashboard.annotator_stats.quota_used}/${dashboard.annotator_stats.task_quota}`;
+  const taskWidth = Number(currentTask?.input_payload?.width || currentTask?.input_payload?.source_width || 0);
+  const taskHeight = Number(currentTask?.input_payload?.height || currentTask?.input_payload?.source_height || 0);
+  const taskDimensionsLabel = taskWidth > 0 && taskHeight > 0 ? `${taskWidth}×${taskHeight}` : null;
+  const taskFrameValue =
+    currentTask?.input_payload?.frame_number ?? currentTask?.input_payload?.frame_index ?? currentTask?.input_payload?.frame ?? null;
   const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
   const submitButtonLabel =
     workspaceMode === "queue"
@@ -5400,7 +5519,10 @@ function RoomWorkPage() {
     }
 
     mediaEditorRef.current.reset(stagePlaceholderText);
-  }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText]);
+    if (workspaceMode === "review" && mediaToolRef.current) {
+      mediaToolRef.current.classList.remove("hidden");
+    }
+  }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText, workspaceMode]);
 
   async function loadDashboard() {
     if (!roomId) {
@@ -5487,14 +5609,14 @@ function RoomWorkPage() {
     }
   }
 
-  async function loadReviewTasksList() {
+  async function loadReviewTasksList(nextFilter = reviewFilter) {
     if (!roomId) {
       return [];
     }
 
     setReviewTasksLoading(true);
     try {
-      const nextTasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${roomId}/review/tasks/`);
+      const nextTasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${roomId}/review/tasks/?filter=${nextFilter}`);
       setReviewTasks(nextTasks || []);
       return nextTasks || [];
     } catch (error) {
@@ -5509,10 +5631,11 @@ function RoomWorkPage() {
   async function loadReviewDetail(taskId: number, requestedAnnotatorId?: number | null) {
     try {
       const detail = await api<ReviewTaskDetail>(`/api/v1/tasks/${taskId}/review/`);
+      const fallbackSource = detail.consensus_available ? "consensus" : detail.annotations[0]?.id || "consensus";
       const initialSource =
         requestedAnnotatorId && detail.annotations.some((annotation) => annotation.annotator_id === requestedAnnotatorId)
           ? detail.annotations.find((annotation) => annotation.annotator_id === requestedAnnotatorId)?.id || "consensus"
-          : "consensus";
+          : fallbackSource;
       setReviewDetail(detail);
       setSelectedReviewSource(initialSource);
       setCurrentTask(detail.task);
@@ -5644,6 +5767,37 @@ function RoomWorkPage() {
     }
   }
 
+  async function handleReviewFilterChange(nextFilter: "final" | "incomplete") {
+    if (reviewFilter === nextFilter) {
+      return;
+    }
+
+    setReviewFilter(nextFilter);
+    if (workspaceMode !== "review") {
+      return;
+    }
+
+    setSelectedReviewTaskId(null);
+    setReviewDetail(null);
+    setSelectedReviewSource("consensus");
+    setCurrentTask(null);
+    setLoading(true);
+    try {
+      const nextTasks = await loadReviewTasksList(nextFilter);
+      const nextTaskId = nextTasks[0]?.id || null;
+      setSelectedReviewTaskId(nextTaskId);
+      if (nextTaskId) {
+        await loadReviewDetail(nextTaskId);
+        replaceEditorUrlQuery({ mode: "review", taskId: nextTaskId });
+      } else {
+        syncPayloadPreview(createDefaultGenericPayload());
+        replaceEditorUrlQuery({ mode: "review" });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleSelectReviewSource(nextSource: "consensus" | number) {
     setSelectedReviewSource(nextSource);
     syncPayloadPreview(getSelectedReviewPayload(reviewDetail, nextSource), null);
@@ -5717,6 +5871,35 @@ function RoomWorkPage() {
       addToast(getErrorMessage(error), "error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSkipTask() {
+    if (workspaceMode !== "queue" || !currentTask || !["image", "video"].includes(currentTask.source_type)) {
+      return;
+    }
+
+    clearToasts();
+    setSkipping(true);
+    try {
+      const skippedTaskId = currentTask.id;
+      await api(`/api/v1/tasks/${currentTask.id}/skip/`, {
+        method: "POST",
+        body: {},
+      });
+      setCurrentTask(null);
+      await refreshDashboardSnapshot();
+      const nextTask = await loadNextTask();
+      addToast(
+        nextTask
+          ? `Задача #${skippedTaskId} пропущена. Следующая задача уже готова.`
+          : `Задача #${skippedTaskId} пропущена. Доступных задач больше нет.`,
+        "success"
+      );
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setSkipping(false);
     }
   }
 
@@ -5794,48 +5977,55 @@ function RoomWorkPage() {
           </div>
         </div>
 
-        <div className="room-editor__tabs">
-          {canAnnotate ? (
-            <button
-              className={`btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => handleModeSwitch("queue")}
-            >
-              Новая задача
-            </button>
-          ) : null}
-          {canAnnotate ? (
-            <button
-              className={`btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => handleModeSwitch("submitted")}
-            >
-              Мои отправленные
-            </button>
-          ) : null}
-          {canReview ? (
-            <button
-              className={`btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`}
-              type="button"
-              onClick={() => handleModeSwitch("review")}
-            >
-              Проверка
-            </button>
-          ) : null}
-        </div>
-
         <div className="room-editor__actions">
-          {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
-          <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
-            Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
-          </button>
-          <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
-            JSON
-          </button>
-          {workspaceMode === "review" ? null : (
-            <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-              {submitButtonLabel}
+          <div className="room-editor__action-group room-editor__tabs" aria-label="Режим работы">
+            {canAnnotate ? (
+              <button
+                className={`btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => handleModeSwitch("queue")}
+              >
+                Задача
+              </button>
+            ) : null}
+            {canAnnotate ? (
+              <button
+                className={`btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => handleModeSwitch("submitted")}
+              >
+                Отправленные
+              </button>
+            ) : null}
+            {canReview ? (
+              <button
+                className={`btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => handleModeSwitch("review")}
+              >
+                Ревью
+              </button>
+            ) : null}
+          </div>
+          <div className="room-editor__action-group room-editor__action-group--inspect" aria-label="Панели редактора">
+            <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
+              Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
             </button>
+            <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
+              JSON
+            </button>
+          </div>
+          {workspaceMode === "review" ? null : (
+            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
+              {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
+                  {skipping ? "Пропускаем..." : "Пропустить"}
+                </button>
+              ) : null}
+              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                {submitButtonLabel}
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -5843,22 +6033,74 @@ function RoomWorkPage() {
       <div className="room-editor__body">
         <aside className="room-editor__taskrail">
           {workspaceMode === "queue" ? (
-            <section className="editor-sidepanel">
+            <section className="editor-sidepanel editor-sidepanel--task-meta">
               <div className="editor-sidepanel__head">
-                <span className="editor-panel__title">Очередь</span>
+                <span className="editor-panel__title">Задача</span>
+                {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
               </div>
-              <div className="editor-sidepanel__note">
-                {currentTask
-                  ? `Активна задача #${currentTask.id}. После отправки editor сразу запросит следующий item из очереди.`
-                  : "Активных задач сейчас нет. Можно вернуться в комнату или позже обновить экран."}
+              <div className="room-editor__meta-stack">
+                <div className="room-editor__metric-row">
+                  <span>Готово</span>
+                  <strong>{totalTasks ? `${completedTasks}/${totalTasks}` : completedTasks}</strong>
+                </div>
+                <div className="room-editor__metric-row">
+                  <span>Осталось</span>
+                  <strong>{remainingTasks == null ? "Неизвестно" : remainingTasks}</strong>
+                </div>
+                <div className="room-editor__metric-row">
+                  <span>Квота</span>
+                  <strong>{quotaLabel}</strong>
+                </div>
               </div>
+
+              {currentTask ? (
+                <div className="room-editor__meta-stack room-editor__meta-stack--task">
+                  <div className="room-editor__meta-row">
+                    <span>Объект</span>
+                    <strong>{currentTask.source_name || "Без названия"}</strong>
+                  </div>
+                  <div className="room-editor__meta-row">
+                    <span>Номер</span>
+                    <strong>#{currentTask.id}</strong>
+                  </div>
+                  <div className="room-editor__meta-row">
+                    <span>Тип</span>
+                    <strong>{translateSourceType(currentTask.source_type)}</strong>
+                  </div>
+                  <div className="room-editor__meta-row">
+                    <span>Этап</span>
+                    <strong>{translateWorkflowStage(currentTask.workflow_stage)}</strong>
+                  </div>
+                  <div className="room-editor__meta-row">
+                    <span>Раунд</span>
+                    <strong>{currentTask.current_round}</strong>
+                  </div>
+                  {taskDimensionsLabel ? (
+                    <div className="room-editor__meta-row">
+                      <span>Размер</span>
+                      <strong>{taskDimensionsLabel}</strong>
+                    </div>
+                  ) : null}
+                  {taskFrameValue == null || taskFrameValue === "" ? null : (
+                    <div className="room-editor__meta-row">
+                      <span>Кадр</span>
+                      <strong>{taskFrameValue}</strong>
+                    </div>
+                  )}
+                  <div className="editor-sidepanel__note">
+                    После отправки редактор сразу запросит следующий объект из очереди.
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-card">Активных задач сейчас нет. Можно вернуться в комнату или позже обновить экран.</div>
+              )}
             </section>
           ) : null}
 
           {workspaceMode === "submitted" ? (
             <section className="editor-sidepanel">
               <div className="editor-sidepanel__head">
-                <span className="editor-panel__title">Мои отправленные</span>
+                <span className="editor-panel__title">Отправленные</span>
                 <span className="editor-chip editor-chip--ghost">{submittedTasks.length}</span>
               </div>
               <div className="room-editor__tasklist">
@@ -5878,7 +6120,7 @@ function RoomWorkPage() {
                     </button>
                   ))
                 ) : (
-                  <div className="empty-card">У тебя пока нет submitted-разметок, которые можно открыть в editor-е.</div>
+                  <div className="empty-card">У тебя пока нет отправленных разметок, которые можно открыть в редакторе.</div>
                 )}
               </div>
               {submittedDetail && !submittedDetail.editable ? (
@@ -5890,7 +6132,7 @@ function RoomWorkPage() {
           {workspaceMode === "review" ? (
             <section className="editor-sidepanel">
               <div className="editor-sidepanel__head">
-                <span className="editor-panel__title">Проверка</span>
+                <span className="editor-panel__title">Ревью</span>
                 <span className="editor-chip editor-chip--ghost">{reviewTasks.length}</span>
               </div>
               <div className="room-editor__tasklist">
@@ -5906,26 +6148,32 @@ function RoomWorkPage() {
                     >
                       <strong>{task.source_name || `Задача #${task.id}`}</strong>
                       <span>{translateReviewOutcome(task.review_outcome)}</span>
-                      <small>{task.annotations_count} аннотаций</small>
+                      <small>
+                        {task.submitted_annotations_count}/{task.required_annotations_count || 0} разметок
+                      </small>
                     </button>
                   ))
                 ) : (
-                  <div className="empty-card">Сейчас нет итемов, которые нужно просмотреть в review-режиме.</div>
+                  <div className="empty-card">Сейчас нет объектов, которые нужно просмотреть в режиме ревью.</div>
                 )}
               </div>
 
               {reviewDetail ? (
                 <>
                   <div className="editor-sidepanel__section">
-                    <div className="editor-sidepanel__label">Источник разметки</div>
+                    <div className="editor-sidepanel__label">
+                      Источник разметки · {reviewDetail.submitted_annotations_count}/{reviewDetail.required_annotations_count || 0}
+                    </div>
                     <div className="room-editor__source-switcher">
-                      <button
-                        className={`room-editor__source-chip ${selectedReviewSource === "consensus" ? "is-active" : ""}`}
-                        type="button"
-                        onClick={() => handleSelectReviewSource("consensus")}
-                      >
-                        Итоговая
-                      </button>
+                      {reviewDetail.consensus_available ? (
+                        <button
+                          className={`room-editor__source-chip ${selectedReviewSource === "consensus" ? "is-active" : ""}`}
+                          type="button"
+                          onClick={() => handleSelectReviewSource("consensus")}
+                        >
+                          Итоговая
+                        </button>
+                      ) : null}
                       {reviewDetail.annotations.map((annotation) => (
                         <button
                           key={annotation.id}
@@ -5950,9 +6198,11 @@ function RoomWorkPage() {
                         {reviewActionBusy === `return-${selectedReviewAnnotation.annotator_id}` ? "Возвращаем..." : "Вернуть автору"}
                       </button>
                     ) : null}
-                    <button className="btn btn--danger btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={handleRejectTask}>
-                      {reviewActionBusy === "reject" ? "Отклоняем..." : "Отклонить итог"}
-                    </button>
+                    {reviewDetail.can_reject_all ? (
+                      <button className="btn btn--danger btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={handleRejectTask}>
+                        {reviewActionBusy === "reject" ? "Отклоняем..." : "Отклонить итог"}
+                      </button>
+                    ) : null}
                   </div>
                 </>
               ) : null}
@@ -5968,9 +6218,27 @@ function RoomWorkPage() {
               </div>
             </div>
 
-            <div ref={mediaToolRef} className={isMediaTask ? "editor-toolbar" : "editor-toolbar hidden"}>
+            <div ref={mediaToolRef} className={isMediaTask || workspaceMode === "review" ? "editor-toolbar" : "editor-toolbar hidden"}>
               <div className="editor-toolbar__frame">
-                <div ref={labelPaletteRef} className="label-chip-list editor-label-palette"></div>
+                {workspaceMode === "review" ? (
+                  <div className="room-editor__review-filters" role="group" aria-label="Фильтр проверки">
+                    <button
+                      className={`room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleReviewFilterChange("final")}
+                    >
+                      Финальные
+                    </button>
+                    <button
+                      className={`room-editor__filter-chip ${reviewFilter === "incomplete" ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleReviewFilterChange("incomplete")}
+                    >
+                      Неполные
+                    </button>
+                  </div>
+                ) : null}
+                <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" ? "hidden" : ""}`}></div>
               </div>
               <div ref={zoomToolbarRef} className={isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden"}>
                 <div className="media-zoom">

@@ -18,7 +18,7 @@ ROOM_DEADLINE_MAX_DAYS_AHEAD = 365
 
 class JsonStringField(serializers.Field):
     default_error_messages = {
-        "invalid": "Expected a JSON value or JSON string.",
+        "invalid": "Ожидается JSON-значение или строка с JSON.",
     }
 
     def to_internal_value(self, data):
@@ -97,7 +97,7 @@ class RoomCreateSerializer(serializers.Serializer):
         if attrs.get("cross_validation_enabled"):
             if attrs.get("cross_validation_annotators_count", 1) < 2:
                 raise serializers.ValidationError(
-                    {"cross_validation_annotators_count": "Set at least 2 independent annotators for cross validation."}
+                    {"cross_validation_annotators_count": "Укажи минимум 2 независимых разметчика для перекрестной разметки."}
                 )
         else:
             attrs["cross_validation_annotators_count"] = 1
@@ -113,7 +113,7 @@ class RoomCreateSerializer(serializers.Serializer):
             and dataset_mode not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
         ):
             raise serializers.ValidationError(
-                {"annotation_workflow": "Object detect + text is available only for image or video datasets."}
+                {"annotation_workflow": "Сценарий Object detect + text доступен только для датасетов с изображениями или видео."}
             )
 
         try:
@@ -125,7 +125,7 @@ class RoomCreateSerializer(serializers.Serializer):
             attrs["labels"] = []
         else:
             if not isinstance(labels, list):
-                raise serializers.ValidationError({"labels": "Labels must be a JSON array."})
+                raise serializers.ValidationError({"labels": "Лейблы должны быть JSON-массивом."})
             serializer = RoomLabelDefinitionSerializer(data=labels, many=True)
             serializer.is_valid(raise_exception=True)
             attrs["labels"] = serializer.validated_data
@@ -135,13 +135,13 @@ class RoomCreateSerializer(serializers.Serializer):
             and annotation_workflow != Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
             and not attrs["labels"]
         ):
-            raise serializers.ValidationError({"labels": "Provide at least one label for image or video datasets."})
+            raise serializers.ValidationError({"labels": "Добавь хотя бы один лейбл для датасета с изображениями или видео."})
 
         if media_manifest in (None, ""):
             attrs["media_manifest"] = []
         else:
             if not isinstance(media_manifest, list):
-                raise serializers.ValidationError({"media_manifest": "Media manifest must be a JSON array."})
+                raise serializers.ValidationError({"media_manifest": "Манифест медиа должен быть JSON-массивом."})
             serializer = MediaManifestItemSerializer(data=media_manifest, many=True)
             serializer.is_valid(raise_exception=True)
             attrs["media_manifest"] = serializer.validated_data
@@ -189,7 +189,7 @@ class RoomUpdateSerializer(serializers.Serializer):
         if cross_validation_enabled:
             if cross_validation_count < 2:
                 raise serializers.ValidationError(
-                    {"cross_validation_annotators_count": "Set at least 2 independent annotators for cross validation."}
+                    {"cross_validation_annotators_count": "Укажи минимум 2 независимых разметчика для перекрестной разметки."}
                 )
         else:
             attrs["cross_validation_annotators_count"] = 1
@@ -202,7 +202,7 @@ class RoomUpdateSerializer(serializers.Serializer):
 
         if has_password is True and not password and room is not None and not room.has_password:
             raise serializers.ValidationError(
-                {"password": "Enter a password or disable password protection before saving."}
+                {"password": "Укажи пароль или отключи защиту паролем перед сохранением."}
             )
 
         return attrs
@@ -401,6 +401,15 @@ class InviteAnnotatorSerializer(serializers.Serializer):
 
 class RoomMembershipRoleSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=RoomMembership.Role.values)
+
+
+class RoomAssignmentQuotaSerializer(serializers.Serializer):
+    task_quota = serializers.IntegerField(min_value=0, allow_null=True, required=False)
+
+    def validate(self, attrs):
+        if "task_quota" not in attrs:
+            raise serializers.ValidationError({"task_quota": "Укажи значение квоты или null, чтобы снять квоту."})
+        return attrs
 
 
 class RoomAccessSerializer(serializers.Serializer):

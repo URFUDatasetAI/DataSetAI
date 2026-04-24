@@ -22067,6 +22067,9 @@
     if (outcome === "rejected") {
       return "\u041D\u0435 \u043F\u0440\u0438\u043D\u044F\u0442\u0430";
     }
+    if (outcome === "incomplete") {
+      return "\u041D\u0435\u043F\u043E\u043B\u043D\u0430\u044F";
+    }
     return "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438";
   }
   function translateDatasetMode(mode) {
@@ -22086,6 +22089,15 @@
       return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E";
     }
     return annotationWorkflowLabels[workflow] || workflow;
+  }
+  function translateWorkflowStage(stage) {
+    if (stage === "text_detection") {
+      return "\u0414\u0435\u0442\u0435\u043A\u0446\u0438\u044F";
+    }
+    if (stage === "text_transcription") {
+      return "\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0442\u0435\u043A\u0441\u0442\u0430";
+    }
+    return "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430";
   }
   function pickRandomLabelColor() {
     return labelColorPool[Math.floor(Math.random() * labelColorPool.length)];
@@ -22170,7 +22182,7 @@
     }
     return {
       key: "json",
-      emptyStageMessage: "\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u0441\u0446\u0435\u043D\u0430 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 payload-editor \u0441\u043F\u0440\u0430\u0432\u0430.",
+      emptyStageMessage: "\u0414\u043B\u044F \u044D\u0442\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u0432\u0438\u0437\u0443\u0430\u043B\u044C\u043D\u0430\u044F \u0441\u0446\u0435\u043D\u0430 \u043D\u0435 \u0442\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044F. \u0418\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0434\u0430\u043D\u043D\u044B\u0445 \u0441\u043F\u0440\u0430\u0432\u0430.",
       annotationsTitle: "\u0421\u043E\u0434\u0435\u0440\u0436\u0438\u043C\u043E\u0435 payload-\u0430"
     };
   }
@@ -23825,6 +23837,8 @@
     const [reviewSearch, setReviewSearch] = (0, import_react.useState)("");
     const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = (0, import_react.useState)(null);
     const [selectedRole, setSelectedRole] = (0, import_react.useState)("");
+    const [selectedQuota, setSelectedQuota] = (0, import_react.useState)("");
+    const [quotaBusy, setQuotaBusy] = (0, import_react.useState)(false);
     const [reviewTasks, setReviewTasks] = (0, import_react.useState)([]);
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
@@ -23945,9 +23959,15 @@
       return [annotator.display_name, annotator.email, annotator.user_id, translateMembership(annotator.status), translateRole(annotator.role)].join(" ").toLowerCase().includes(searchTerm);
     });
     const activeAnnotator = (dashboard?.annotators || []).find((item) => item.user_id === selectedAnnotatorUserId) || null;
+    const activeAnnotatorCanReceiveQuota = Boolean(
+      activeAnnotator && (activeAnnotator.status === "joined" || activeAnnotator.status === "owner") && ["owner", "annotator", "admin"].includes(activeAnnotator.role)
+    );
     (0, import_react.useEffect)(() => {
       setSelectedRole(activeAnnotator?.role || "");
     }, [activeAnnotator?.user_id, activeAnnotator?.role]);
+    (0, import_react.useEffect)(() => {
+      setSelectedQuota(activeAnnotator?.task_quota == null ? "" : String(activeAnnotator.task_quota));
+    }, [activeAnnotator?.user_id, activeAnnotator?.task_quota]);
     const filteredReviewTasks = reviewTasks.filter((task) => {
       const matchesAnnotator = !selectedAnnotatorUserId || (task.annotator_ids || []).includes(selectedAnnotatorUserId);
       if (!matchesAnnotator) {
@@ -24052,6 +24072,34 @@
         addToast(getErrorMessage(error), "error");
       }
     }
+    async function handleQuotaSubmit() {
+      if (!roomId || !activeAnnotator) {
+        return;
+      }
+      const trimmedQuota = selectedQuota.trim();
+      const nextQuota = trimmedQuota === "" ? null : Number(trimmedQuota);
+      if (nextQuota !== null && (!Number.isFinite(nextQuota) || nextQuota < 0 || !Number.isInteger(nextQuota))) {
+        addToast("\u041A\u0432\u043E\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u0446\u0435\u043B\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C 0 \u0438\u043B\u0438 \u0431\u043E\u043B\u044C\u0448\u0435.", "error");
+        return;
+      }
+      clearToasts();
+      setQuotaBusy(true);
+      try {
+        await api(`/api/v1/rooms/${roomId}/quotas/${activeAnnotator.user_id}/`, {
+          method: "POST",
+          body: { task_quota: nextQuota }
+        });
+        addToast(
+          nextQuota === null ? `\u041A\u0432\u043E\u0442\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F #${activeAnnotator.user_id} \u0441\u043D\u044F\u0442\u0430.` : `\u041A\u0432\u043E\u0442\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F #${activeAnnotator.user_id} \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0430.`,
+          "success"
+        );
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setQuotaBusy(false);
+      }
+    }
     async function handleRemoveAnnotator() {
       if (!roomId || !activeAnnotator) {
         return;
@@ -24117,7 +24165,7 @@
       }
     }
     async function handleRejectTask() {
-      if (!reviewDetail?.task.id) {
+      if (!reviewDetail?.task.id || !reviewDetail.can_reject_all) {
         return;
       }
       const shouldReject = window.confirm(
@@ -24140,6 +24188,9 @@
         addToast(getErrorMessage(error), "error");
       }
     }
+    const hasRoomManagementActions = Boolean(
+      dashboard && (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
+    );
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--room", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
@@ -24170,7 +24221,11 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." })
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }),
+          dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-cta", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+            dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) : null,
+            dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null
+          ] }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "room-header-side", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-panel", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "room-progress-panel__eyebrow", children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
@@ -24186,146 +24241,142 @@
         ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
       ] }),
       loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
-      dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""}`, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043C\u043D\u043E\u0439" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.completed_tasks || 0 })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.in_progress_tasks || 0 })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks || 0 })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(dashboard.annotator_stats?.progress_percent || 0) })
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: dashboard.annotator_stats?.activity || [] }) })
-        ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side workspace-grid__side--room-controls", children: [
-          dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "details",
-            {
-              className: "panel-card section-disclosure",
-              open: manageSectionOpen,
-              onToggle: (event) => setManageSectionOpen(event.currentTarget.open),
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("summary", { className: "section-disclosure__summary", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__copy", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow section-disclosure__eyebrow", children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438 \u0434\u043E\u0441\u0442\u0443\u043F" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "section-disclosure__note", children: getManageSectionSummary(dashboard) })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
+      dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "section",
+        {
+          className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${hasRoomManagementActions ? "" : "workspace-grid--single"}`,
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack", children: [
-                  dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-                      dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "\u0422\u043E\u043B\u044C\u043A\u043E \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446" }) : null
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043C\u043D\u043E\u0439" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.completed_tasks || 0 })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.in_progress_tasks || 0 })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks || 0 })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(dashboard.annotator_stats?.progress_percent || 0) })
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: dashboard.annotator_stats?.activity || [] }) })
+            ] }) }),
+            hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-controls", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "details",
+              {
+                className: "panel-card section-disclosure",
+                open: manageSectionOpen,
+                onToggle: (event) => setManageSectionOpen(event.currentTarget.open),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("summary", { className: "section-disclosure__summary", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__copy", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow section-disclosure__eyebrow", children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438 \u0434\u043E\u0441\u0442\u0443\u043F" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "section-disclosure__note", children: getManageSectionSummary(dashboard) })
                     ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__locks", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack", children: [
+                    dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                        dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "\u0422\u043E\u043B\u044C\u043A\u043E \u0432\u043B\u0430\u0434\u0435\u043B\u0435\u0446" }) : null
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") })
-                      ] })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__footer", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
-                        dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
-                        dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
-                      ] })
-                    ] })
-                  ] }) : null,
-                  dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 \u0438 \u043B\u0435\u0439\u0431\u043B\u044B" }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-chip-list label-chip-list--static", children: dashboard.labels.length ? dashboard.labels.map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "label-chip label-chip--static", style: { ["--label-color"]: label.color }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label.name })
-                    ] }, label.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B." }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--export-compact", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0424\u043E\u0440\u043C\u0430\u0442 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: selectedExportFormat, onChange: (event) => setSelectedExportFormat(event.target.value), children: dashboard.export_formats.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: item.value, children: item.label }, item.value)) })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
-                  ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--invite", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430" }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "stack-form stack-form--compact", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0441\u044B\u043B\u043A\u0430 \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: dashboard.invite.url, type: "text", readOnly: true })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: handleCopyInviteLink, children: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", disabled: inviteBusy, onClick: handleRegenerateInvite, children: inviteBusy ? "\u041E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u043C..." : "\u041F\u0435\u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C invite" })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E \u044D\u0442\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0441\u043C\u043E\u0436\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443. \u0421\u0442\u0430\u0440\u044B\u0439 invite \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u043F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438." })
-                  ] }) : null,
-                  dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--requests", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0438 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435" }) }),
-                    dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list manage-request-list-legacy", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row manage-request-row-legacy", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
-                          joinRequest.email,
-                          " \xB7 ",
-                          translateMembership(joinRequest.status)
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__locks", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") })
                         ] })
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "role-assignment-box__actions", children: joinRequest.status === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                          "button",
-                          {
-                            className: "btn btn--secondary btn--compact",
-                            type: "button",
-                            disabled: joinRequestBusyId === joinRequest.id,
-                            onClick: () => handleJoinRequestAction(joinRequest.id, "approve"),
-                            children: "\u041F\u0440\u0438\u043D\u044F\u0442\u044C"
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                          "button",
-                          {
-                            className: "btn btn--muted btn--compact",
-                            type: "button",
-                            disabled: joinRequestBusyId === joinRequest.id,
-                            onClick: () => handleJoinRequestAction(joinRequest.id, "reject"),
-                            children: "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C"
-                          }
-                        )
-                      ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "panel-note", children: joinRequest.status === "approved" ? `\u041F\u0440\u0438\u043D\u044F\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` : `\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` }) })
-                    ] }, joinRequest.id)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E invite-\u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043A\u0430 \u043D\u0438\u043A\u0442\u043E \u043D\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u043B \u0434\u043E\u0441\u0442\u0443\u043F." })
-                  ] }) : null
-                ] }) })
-              ]
-            }
-          ) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-work", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "action-strip", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }),
-              dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041D\u0430 \u044D\u0442\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0431\u0437\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442\u044B. \u041F\u043E\u043B\u0443\u0447\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u0441\u0432\u043E\u0438\u0445 submit-\u043E\u0432 \u0438 review \u0438\u0442\u043E\u0433\u043E\u0432\u044B\u0445 \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A \u043D\u0430\u0445\u043E\u0434\u044F\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u043C \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u044D\u043A\u0440\u0430\u043D\u0435." })
-          ] }) })
-        ] })
-      ] }) : null,
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__footer", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
+                          dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
+                          dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
+                        ] })
+                      ] })
+                    ] }) : null,
+                    dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 \u0438 \u043B\u0435\u0439\u0431\u043B\u044B" }) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-chip-list label-chip-list--static", children: dashboard.labels.length ? dashboard.labels.map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "label-chip label-chip--static", style: { ["--label-color"]: label.color }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", {}),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label.name })
+                      ] }, label.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F \u044D\u0442\u043E\u0439 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B." }) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--export-compact", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0424\u043E\u0440\u043C\u0430\u0442 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0438" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: selectedExportFormat, onChange: (event) => setSelectedExportFormat(event.target.value), children: dashboard.export_formats.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: item.value, children: item.label }, item.value)) })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
+                    ] }) : null,
+                    dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--invite", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Invite-\u0441\u0441\u044B\u043B\u043A\u0430" }) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "stack-form stack-form--compact", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0441\u044B\u043B\u043A\u0430 \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: dashboard.invite.url, type: "text", readOnly: true })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: handleCopyInviteLink, children: "\u0421\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0441\u044B\u043B\u043A\u0443" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", disabled: inviteBusy, onClick: handleRegenerateInvite, children: inviteBusy ? "\u041E\u0431\u043D\u043E\u0432\u043B\u044F\u0435\u043C..." : "\u041F\u0435\u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C invite" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u041F\u043E \u044D\u0442\u043E\u0439 \u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u0441\u043C\u043E\u0436\u0435\u0442 \u0430\u0432\u0442\u043E\u0440\u0438\u0437\u043E\u0432\u0430\u0442\u044C\u0441\u044F \u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u0437\u0430\u044F\u0432\u043A\u0443 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443. \u0421\u0442\u0430\u0440\u044B\u0439 invite \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u043F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438." })
+                    ] }) : null,
+                    dashboard.actor.can_invite ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--requests", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u044F\u0432\u043A\u0438 \u043D\u0430 \u0432\u0441\u0442\u0443\u043F\u043B\u0435\u043D\u0438\u0435" }) }),
+                      dashboard.join_requests?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "annotators-list manage-request-list-legacy", children: dashboard.join_requests.map((joinRequest) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row manage-request-row-legacy", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__meta", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: joinRequest.display_name }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                            joinRequest.email,
+                            " \xB7 ",
+                            translateMembership(joinRequest.status)
+                          ] })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "role-assignment-box__actions", children: joinRequest.status === "pending" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "button",
+                            {
+                              className: "btn btn--secondary btn--compact",
+                              type: "button",
+                              disabled: joinRequestBusyId === joinRequest.id,
+                              onClick: () => handleJoinRequestAction(joinRequest.id, "approve"),
+                              children: "\u041F\u0440\u0438\u043D\u044F\u0442\u044C"
+                            }
+                          ),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "button",
+                            {
+                              className: "btn btn--muted btn--compact",
+                              type: "button",
+                              disabled: joinRequestBusyId === joinRequest.id,
+                              onClick: () => handleJoinRequestAction(joinRequest.id, "reject"),
+                              children: "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C"
+                            }
+                          )
+                        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "panel-note", children: joinRequest.status === "approved" ? `\u041F\u0440\u0438\u043D\u044F\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` : `\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u043B: ${joinRequest.reviewed_by_display_name || "\u043C\u043E\u0434\u0435\u0440\u0430\u0442\u043E\u0440"}` }) })
+                      ] }, joinRequest.id)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E invite-\u0441\u0441\u044B\u043B\u043A\u0435 \u043F\u043E\u043A\u0430 \u043D\u0438\u043A\u0442\u043E \u043D\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u043B \u0434\u043E\u0441\u0442\u0443\u043F." })
+                    ] }) : null
+                  ] }) })
+                ]
+              }
+            ) }) : null
+          ]
+        }
+      ) : null,
       dashboard?.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "details",
         {
@@ -24370,7 +24421,8 @@
                             annotator.completed_tasks,
                             " \u0438\u0437 ",
                             dashboard.overview.total_tasks
-                          ] })
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: annotator.task_quota == null ? "\u043A\u0432\u043E\u0442\u0430: \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `\u043A\u0432\u043E\u0442\u0430: ${annotator.quota_used}/${annotator.task_quota}` })
                         ] })
                       ]
                     },
@@ -24411,6 +24463,10 @@
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.remaining_tasks })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.task_quota == null ? "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `${activeAnnotator.quota_used} \u0438\u0437 ${activeAnnotator.task_quota}` })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(activeAnnotator.progress_percent) })
                       ] })
@@ -24420,9 +24476,24 @@
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: selectedRole, onChange: (event) => setSelectedRole(event.currentTarget.value), children: dashboard.membership_role_options.map((option) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: option.value, children: option.label }, option.value)) })
                       ] }) : null,
+                      dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--compact", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "input",
+                          {
+                            value: selectedQuota,
+                            type: "number",
+                            min: "0",
+                            step: "1",
+                            placeholder: "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430",
+                            onChange: (event) => setSelectedQuota(event.currentTarget.value)
+                          }
+                        )
+                      ] }) : null,
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: `/users/${activeAnnotator.user_id}/profile/`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0444\u0438\u043B\u044C" }),
                         dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleRoleSubmit, children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0440\u043E\u043B\u044C" }) : null,
+                        dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", disabled: quotaBusy, onClick: handleQuotaSubmit, children: quotaBusy ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043A\u0432\u043E\u0442\u0443" }) : null,
                         dashboard.actor.can_assign_roles ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", onClick: handleRemoveAnnotator, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" }) : null
                       ] })
                     ] }),
@@ -24492,9 +24563,9 @@
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "panel-card review-comparison-section", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "Editor Review" }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0420\u0435\u0432\u044C\u044E \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0435" }) }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: "\u0414\u0435\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u0441\u0440\u0430\u0432\u043D\u0435\u043D\u0438\u0435 \u0438\u0442\u043E\u0433\u043E\u0432\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u0438\u0445 \u0432\u0435\u0440\u0441\u0438\u0439 \u0442\u0435\u043F\u0435\u0440\u044C \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0432\u043D\u0443\u0442\u0440\u0438 fullscreen editor-\u0430. \u041D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u043E\u0431\u0437\u043E\u0440 \u0438 \u0431\u044B\u0441\u0442\u0440\u044B\u0439 \u043F\u0435\u0440\u0435\u0445\u043E\u0434 \u0432 review-\u0440\u0435\u0436\u0438\u043C." }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "action-strip", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0432 editor-\u0435" }) })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "action-strip", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0435" }) })
               ] })
             ] })
           ]
@@ -25721,7 +25792,9 @@
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
     const [selectedReviewSource, setSelectedReviewSource] = (0, import_react.useState)("consensus");
+    const [reviewFilter, setReviewFilter] = (0, import_react.useState)("final");
     const [reviewActionBusy, setReviewActionBusy] = (0, import_react.useState)(null);
+    const [skipping, setSkipping] = (0, import_react.useState)(false);
     const [editorState, setEditorState] = (0, import_react.useState)({
       annotationCount: 0,
       hasUnlabeledAnnotations: false
@@ -25738,7 +25811,7 @@
         return null;
       }
       if (source === "consensus") {
-        return detail.consensus_payload;
+        return detail.consensus_available ? detail.consensus_payload : null;
       }
       return detail.annotations.find((annotation) => annotation.id === source)?.result_payload || null;
     }
@@ -25747,18 +25820,24 @@
     const canAnnotate = Boolean(dashboard?.actor.can_annotate);
     const canReview = Boolean(dashboard?.actor.can_review);
     const selectedReviewAnnotation = selectedReviewSource === "consensus" ? null : reviewDetail?.annotations.find((annotation) => annotation.id === selectedReviewSource) || null;
-    const selectedReviewPayload = workspaceMode === "review" ? selectedReviewAnnotation?.result_payload || reviewDetail?.consensus_payload || null : null;
+    const selectedReviewPayload = workspaceMode === "review" ? getSelectedReviewPayload(reviewDetail, selectedReviewSource) : null;
     const submittedPayload = submittedDetail?.annotation.result_payload || null;
     const activeMediaPayload = workspaceMode === "queue" ? null : workspaceMode === "submitted" ? submittedPayload : selectedReviewPayload;
     const isReadOnlyStage = workspaceMode === "review" || workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable);
     const scenario = getWorkEditorScenario(currentTask);
     const isMediaTask = Boolean(currentTask && ["image", "video"].includes(currentTask.source_type));
     const stagePlaceholderText = loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0438 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : currentTask ? scenario.emptyStageMessage : workspaceMode === "queue" ? "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442\u044C \u043D\u043E\u0432\u0443\u044E \u0437\u0430\u0434\u0430\u0447\u0443." : workspaceMode === "submitted" ? "\u0412\u044B\u0431\u0435\u0440\u0438 \u0441\u0432\u043E\u044E \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u0441\u043B\u0435\u0432\u0430." : "\u0412\u044B\u0431\u0435\u0440\u0438 \u043E\u0431\u044A\u0435\u043A\u0442 \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438 \u0441\u043B\u0435\u0432\u0430.";
-    const submitDisabled = submitting || workspaceMode === "review" || !currentTask || workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable) || isMediaTask && !isReadOnlyStage && editorState.hasUnlabeledAnnotations;
+    const submitDisabled = submitting || skipping || workspaceMode === "review" || !currentTask || workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable) || isMediaTask && !isReadOnlyStage && editorState.hasUnlabeledAnnotations;
     const roomTitle = dashboard?.room.title || (roomId ? `\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${roomId}` : "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430");
-    const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : workspaceMode === "queue" ? "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430" : workspaceMode === "submitted" ? "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" : "\u0420\u0435\u0436\u0438\u043C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438";
+    const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : workspaceMode === "queue" ? "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430" : workspaceMode === "submitted" ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" : "\u0420\u0435\u0436\u0438\u043C \u0440\u0435\u0432\u044C\u044E";
     const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
     const totalTasks = dashboard?.overview.total_tasks ?? 0;
+    const remainingTasks = dashboard?.annotator_stats?.remaining_tasks ?? dashboard?.overview.remaining_tasks ?? null;
+    const quotaLabel = dashboard?.annotator_stats?.task_quota == null ? "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `${dashboard.annotator_stats.quota_used}/${dashboard.annotator_stats.task_quota}`;
+    const taskWidth = Number(currentTask?.input_payload?.width || currentTask?.input_payload?.source_width || 0);
+    const taskHeight = Number(currentTask?.input_payload?.height || currentTask?.input_payload?.source_height || 0);
+    const taskDimensionsLabel = taskWidth > 0 && taskHeight > 0 ? `${taskWidth}\xD7${taskHeight}` : null;
+    const taskFrameValue = currentTask?.input_payload?.frame_number ?? currentTask?.input_payload?.frame_index ?? currentTask?.input_payload?.frame ?? null;
     const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
     const submitButtonLabel = workspaceMode === "queue" ? submitting ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0435\u043C..." : currentTask ? "\u041E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C" : "\u041D\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" : submitting ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : submittedDetail?.editable ? "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F" : "\u0422\u043E\u043B\u044C\u043A\u043E \u0447\u0442\u0435\u043D\u0438\u0435";
     function toggleInspector(nextInspector) {
@@ -25804,7 +25883,10 @@
         return;
       }
       mediaEditorRef.current.reset(stagePlaceholderText);
-    }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText]);
+      if (workspaceMode === "review" && mediaToolRef.current) {
+        mediaToolRef.current.classList.remove("hidden");
+      }
+    }, [activeMediaPayload, currentTask, isReadOnlyStage, stagePlaceholderText, workspaceMode]);
     async function loadDashboard() {
       if (!roomId) {
         addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438\u0437 URL.", "error");
@@ -25881,13 +25963,13 @@
         return null;
       }
     }
-    async function loadReviewTasksList() {
+    async function loadReviewTasksList(nextFilter = reviewFilter) {
       if (!roomId) {
         return [];
       }
       setReviewTasksLoading(true);
       try {
-        const nextTasks = await api(`/api/v1/rooms/${roomId}/review/tasks/`);
+        const nextTasks = await api(`/api/v1/rooms/${roomId}/review/tasks/?filter=${nextFilter}`);
         setReviewTasks(nextTasks || []);
         return nextTasks || [];
       } catch (error) {
@@ -25901,7 +25983,8 @@
     async function loadReviewDetail(taskId, requestedAnnotatorId) {
       try {
         const detail = await api(`/api/v1/tasks/${taskId}/review/`);
-        const initialSource = requestedAnnotatorId && detail.annotations.some((annotation) => annotation.annotator_id === requestedAnnotatorId) ? detail.annotations.find((annotation) => annotation.annotator_id === requestedAnnotatorId)?.id || "consensus" : "consensus";
+        const fallbackSource = detail.consensus_available ? "consensus" : detail.annotations[0]?.id || "consensus";
+        const initialSource = requestedAnnotatorId && detail.annotations.some((annotation) => annotation.annotator_id === requestedAnnotatorId) ? detail.annotations.find((annotation) => annotation.annotator_id === requestedAnnotatorId)?.id || "consensus" : fallbackSource;
         setReviewDetail(detail);
         setSelectedReviewSource(initialSource);
         setCurrentTask(detail.task);
@@ -26017,6 +26100,34 @@
         setLoading(false);
       }
     }
+    async function handleReviewFilterChange(nextFilter) {
+      if (reviewFilter === nextFilter) {
+        return;
+      }
+      setReviewFilter(nextFilter);
+      if (workspaceMode !== "review") {
+        return;
+      }
+      setSelectedReviewTaskId(null);
+      setReviewDetail(null);
+      setSelectedReviewSource("consensus");
+      setCurrentTask(null);
+      setLoading(true);
+      try {
+        const nextTasks = await loadReviewTasksList(nextFilter);
+        const nextTaskId = nextTasks[0]?.id || null;
+        setSelectedReviewTaskId(nextTaskId);
+        if (nextTaskId) {
+          await loadReviewDetail(nextTaskId);
+          replaceEditorUrlQuery({ mode: "review", taskId: nextTaskId });
+        } else {
+          syncPayloadPreview(createDefaultGenericPayload());
+          replaceEditorUrlQuery({ mode: "review" });
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
     function handleSelectReviewSource(nextSource) {
       setSelectedReviewSource(nextSource);
       syncPayloadPreview(getSelectedReviewPayload(reviewDetail, nextSource), null);
@@ -26082,6 +26193,31 @@
         setSubmitting(false);
       }
     }
+    async function handleSkipTask() {
+      if (workspaceMode !== "queue" || !currentTask || !["image", "video"].includes(currentTask.source_type)) {
+        return;
+      }
+      clearToasts();
+      setSkipping(true);
+      try {
+        const skippedTaskId = currentTask.id;
+        await api(`/api/v1/tasks/${currentTask.id}/skip/`, {
+          method: "POST",
+          body: {}
+        });
+        setCurrentTask(null);
+        await refreshDashboardSnapshot();
+        const nextTask = await loadNextTask();
+        addToast(
+          nextTask ? `\u0417\u0430\u0434\u0430\u0447\u0430 #${skippedTaskId} \u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u0430. \u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u0443\u0436\u0435 \u0433\u043E\u0442\u043E\u0432\u0430.` : `\u0417\u0430\u0434\u0430\u0447\u0430 #${skippedTaskId} \u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u0430. \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435\u0442.`,
+          "success"
+        );
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setSkipping(false);
+      }
+    }
     async function handleReturnForRevision() {
       if (!reviewDetail?.task.id || !selectedReviewAnnotation) {
         return;
@@ -26144,58 +26280,112 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: summaryMeta })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__tabs", children: [
-          canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              className: `btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`,
-              type: "button",
-              onClick: () => handleModeSwitch("queue"),
-              children: "\u041D\u043E\u0432\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430"
-            }
-          ) : null,
-          canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              className: `btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`,
-              type: "button",
-              onClick: () => handleModeSwitch("submitted"),
-              children: "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435"
-            }
-          ) : null,
-          canReview ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              className: `btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`,
-              type: "button",
-              onClick: () => handleModeSwitch("review"),
-              children: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430"
-            }
-          ) : null
-        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__actions", children: [
-          totalTasks ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
-            completedTasks,
-            "/",
-            totalTasks
-          ] }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: `btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("annotations"), children: [
-            "\u041E\u0431\u043B\u0430\u0441\u0442\u0438",
-            editorState.annotationCount ? ` ${editorState.annotationCount}` : ""
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__action-group room-editor__tabs", "aria-label": "\u0420\u0435\u0436\u0438\u043C \u0440\u0430\u0431\u043E\u0442\u044B", children: [
+            canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: `btn btn--muted btn--compact ${workspaceMode === "queue" ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => handleModeSwitch("queue"),
+                children: "\u0417\u0430\u0434\u0430\u0447\u0430"
+              }
+            ) : null,
+            canAnnotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: `btn btn--muted btn--compact ${workspaceMode === "submitted" ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => handleModeSwitch("submitted"),
+                children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435"
+              }
+            ) : null,
+            canReview ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: `btn btn--muted btn--compact ${workspaceMode === "review" ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => handleModeSwitch("review"),
+                children: "\u0420\u0435\u0432\u044C\u044E"
+              }
+            ) : null
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: `btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("payload"), children: "JSON" }),
-          workspaceMode === "review" ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitButtonLabel })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__action-group room-editor__action-group--inspect", "aria-label": "\u041F\u0430\u043D\u0435\u043B\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0430", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { className: `btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("annotations"), children: [
+              "\u041E\u0431\u043B\u0430\u0441\u0442\u0438",
+              editorState.annotationCount ? ` ${editorState.annotationCount}` : ""
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: `btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("payload"), children: "JSON" })
+          ] }),
+          workspaceMode === "review" ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__action-group room-editor__action-group--submit", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441 \u0437\u0430\u0434\u0430\u0447\u0435\u0439", children: [
+            workspaceMode === "queue" && isMediaTask && currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: submitting || skipping, onClick: handleSkipTask, children: skipping ? "\u041F\u0440\u043E\u043F\u0443\u0441\u043A\u0430\u0435\u043C..." : "\u041F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C" }) : null,
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitButtonLabel })
+          ] })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__body", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "room-editor__taskrail", children: [
-          workspaceMode === "queue" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041E\u0447\u0435\u0440\u0435\u0434\u044C" }) }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__note", children: currentTask ? `\u0410\u043A\u0442\u0438\u0432\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}. \u041F\u043E\u0441\u043B\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 editor \u0441\u0440\u0430\u0437\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 item \u0438\u0437 \u043E\u0447\u0435\u0440\u0435\u0434\u0438.` : "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u044D\u043A\u0440\u0430\u043D." })
+          workspaceMode === "queue" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel editor-sidepanel--task-meta", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u0417\u0430\u0434\u0430\u0447\u0430" }),
+              totalTasks ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
+                completedTasks,
+                "/",
+                totalTasks
+              ] }) : null
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-stack", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u0442\u043E\u0432\u043E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: totalTasks ? `${completedTasks}/${totalTasks}` : completedTasks })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: remainingTasks == null ? "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E" : remainingTasks })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: quotaLabel })
+              ] })
+            ] }),
+            currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-stack room-editor__meta-stack--task", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0431\u044A\u0435\u043A\u0442" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: currentTask.source_name || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u043E\u043C\u0435\u0440" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                  "#",
+                  currentTask.id
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateSourceType(currentTask.source_type) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u042D\u0442\u0430\u043F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateWorkflowStage(currentTask.workflow_stage) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0443\u043D\u0434" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: currentTask.current_round })
+              ] }),
+              taskDimensionsLabel ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0430\u0437\u043C\u0435\u0440" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: taskDimensionsLabel })
+              ] }) : null,
+              taskFrameValue == null || taskFrameValue === "" ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0434\u0440" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: taskFrameValue })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__note", children: "\u041F\u043E\u0441\u043B\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440 \u0441\u0440\u0430\u0437\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0438\u0442 \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0438\u0437 \u043E\u0447\u0435\u0440\u0435\u0434\u0438." })
+            ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0410\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0441\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442. \u041C\u043E\u0436\u043D\u043E \u0432\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u0437\u0436\u0435 \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u044D\u043A\u0440\u0430\u043D." })
           ] }) : null,
           workspaceMode === "submitted" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041C\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-chip editor-chip--ghost", children: submittedTasks.length })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__tasklist", children: submittedTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0442\u0432\u043E\u0438 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438." }) : submittedTasks.length ? submittedTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -26214,12 +26404,12 @@
                 ]
               },
               task.id
-            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0442\u0435\u0431\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 submitted-\u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 editor-\u0435." }) }),
+            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0442\u0435\u0431\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0445 \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0432 \u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0435." }) }),
             submittedDetail && !submittedDetail.editable ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__note", children: submittedDetail.editable_reason || "\u042D\u0442\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0443\u0436\u0435 \u0437\u0430\u0444\u0438\u043D\u0430\u043B\u0438\u0437\u0438\u0440\u043E\u0432\u0430\u043D\u0430." }) : null
           ] }) : null,
           workspaceMode === "review" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u0420\u0435\u0432\u044C\u044E" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-chip editor-chip--ghost", children: reviewTasks.length })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__tasklist", children: reviewTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u043B\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438." }) : reviewTasks.length ? reviewTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -26232,18 +26422,25 @@
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateReviewOutcome(task.review_outcome) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("small", { children: [
-                    task.annotations_count,
-                    " \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0439"
+                    task.submitted_annotations_count,
+                    "/",
+                    task.required_annotations_count || 0,
+                    " \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A"
                   ] })
                 ]
               },
               task.id
-            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442 \u0438\u0442\u0435\u043C\u043E\u0432, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043D\u0443\u0436\u043D\u043E \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u0432 review-\u0440\u0435\u0436\u0438\u043C\u0435." }) }),
+            )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043D\u0443\u0436\u043D\u043E \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0440\u0435\u0432\u044C\u044E." }) }),
             reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__section", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__label", children: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__label", children: [
+                  "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \xB7 ",
+                  reviewDetail.submitted_annotations_count,
+                  "/",
+                  reviewDetail.required_annotations_count || 0
+                ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__source-switcher", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  reviewDetail.consensus_available ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
                       className: `room-editor__source-chip ${selectedReviewSource === "consensus" ? "is-active" : ""}`,
@@ -26251,7 +26448,7 @@
                       onClick: () => handleSelectReviewSource("consensus"),
                       children: "\u0418\u0442\u043E\u0433\u043E\u0432\u0430\u044F"
                     }
-                  ),
+                  ) : null,
                   reviewDetail.annotations.map((annotation) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                     "button",
                     {
@@ -26279,15 +26476,37 @@
                     children: reviewActionBusy === `return-${selectedReviewAnnotation.annotator_id}` ? "\u0412\u043E\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u043C..." : "\u0412\u0435\u0440\u043D\u0443\u0442\u044C \u0430\u0432\u0442\u043E\u0440\u0443"
                   }
                 ) : null,
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: Boolean(reviewActionBusy), onClick: handleRejectTask, children: reviewActionBusy === "reject" ? "\u041E\u0442\u043A\u043B\u043E\u043D\u044F\u0435\u043C..." : "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C \u0438\u0442\u043E\u0433" })
+                reviewDetail.can_reject_all ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: Boolean(reviewActionBusy), onClick: handleRejectTask, children: reviewActionBusy === "reject" ? "\u041E\u0442\u043A\u043B\u043E\u043D\u044F\u0435\u043C..." : "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C \u0438\u0442\u043E\u0433" }) : null
               ] })
             ] }) : null
           ] }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "room-editor__stage", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__canvas-shell", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-editor__stage-surface", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: mediaStageRef, className: "media-stage empty-card", children: stagePlaceholderText }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: isMediaTask ? "editor-toolbar" : "editor-toolbar hidden", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-toolbar__frame", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: "label-chip-list editor-label-palette" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: isMediaTask || workspaceMode === "review" ? "editor-toolbar" : "editor-toolbar hidden", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-toolbar__frame", children: [
+              workspaceMode === "review" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__review-filters", role: "group", "aria-label": "\u0424\u0438\u043B\u044C\u0442\u0440 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: `room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`,
+                    type: "button",
+                    onClick: () => handleReviewFilterChange("final"),
+                    children: "\u0424\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0435"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: `room-editor__filter-chip ${reviewFilter === "incomplete" ? "is-active" : ""}`,
+                    type: "button",
+                    onClick: () => handleReviewFilterChange("incomplete"),
+                    children: "\u041D\u0435\u043F\u043E\u043B\u043D\u044B\u0435"
+                  }
+                )
+              ] }) : null,
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: labelPaletteRef, className: `label-chip-list editor-label-palette ${workspaceMode === "review" ? "hidden" : ""}` })
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: zoomToolbarRef, className: isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "media-zoom", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { ref: zoomResetBtnRef, className: "editor-zoom-btn editor-zoom-btn--value", type: "button", children: "100%" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: zoomRangeRef, className: "media-zoom__range", type: "range", min: "100", max: "400", step: "25", defaultValue: "100" })

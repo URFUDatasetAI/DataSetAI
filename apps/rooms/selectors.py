@@ -1,14 +1,14 @@
 from collections import Counter
 from datetime import timedelta
 
-from django.db.models import DateTimeField, Exists, OuterRef, QuerySet, Subquery
+from django.db.models import DateTimeField, Exists, F, OuterRef, QuerySet, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
-from apps.rooms.models import Room, RoomJoinRequest, RoomMembership, RoomPin, RoomVisit
+from apps.rooms.models import Room, RoomAssignmentQuota, RoomJoinRequest, RoomMembership, RoomPin, RoomVisit
 from apps.rooms.policies import (
     can_annotate_room,
     can_edit_room,
@@ -33,6 +33,12 @@ Convention in this project:
 - services mutate state and enforce write-side business rules
 - API views should stay thin and delegate to selectors/services
 """
+
+
+ACTIVE_QUOTA_ASSIGNMENT_STATUSES = (
+    TaskAssignment.Status.IN_PROGRESS,
+    TaskAssignment.Status.SUBMITTED,
+)
 
 
 def list_owned_rooms(*, user: User) -> QuerySet[Room]:
@@ -141,6 +147,46 @@ def _count_completed_items_for_user(*, room: Room, user: User) -> int:
     return len(root_task_ids)
 
 
+def get_room_assignment_quota_usage(*, room: Room, user: User) -> int:
+    return TaskAssignment.objects.filter(
+        task__room=room,
+        annotator=user,
+        round_number=F("task__current_round"),
+        status__in=ACTIVE_QUOTA_ASSIGNMENT_STATUSES,
+    ).count()
+
+
+def get_room_assignment_quota_state(
+    *,
+    room: Room,
+    user: User,
+    quota_by_user_id: dict[int, int | None] | None = None,
+) -> dict:
+    if quota_by_user_id is None:
+        task_quota = (
+            RoomAssignmentQuota.objects.filter(room=room, user=user)
+            .values_list("task_quota", flat=True)
+            .first()
+        )
+    else:
+        task_quota = quota_by_user_id.get(user.id)
+
+    quota_used = get_room_assignment_quota_usage(room=room, user=user)
+    quota_remaining = None if task_quota is None else max(task_quota - quota_used, 0)
+    quota_progress_percent = (
+        round((quota_used / task_quota) * 100, 1)
+        if task_quota not in (None, 0)
+        else (100.0 if task_quota == 0 else 0.0)
+    )
+    return {
+        "task_quota": task_quota,
+        "quota_used": quota_used,
+        "quota_remaining": quota_remaining,
+        "quota_exhausted": quota_remaining == 0 if task_quota is not None else False,
+        "quota_progress_percent": quota_progress_percent,
+    }
+
+
 def _build_invite_link(*, room: Room, request=None) -> str:
     invite_path = f"/i/{room.invite_token}/"
     if request is None:
@@ -243,6 +289,10 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
     actor_can_review = can_review_room(room=room, user=actor, membership=actor_membership)
     actor_can_annotate = can_annotate_room(room=room, user=actor, membership=actor_membership)
 
+    quota_by_user_id = dict(
+        RoomAssignmentQuota.objects.filter(room=room).values_list("user_id", "task_quota")
+    )
+
     payload = {
         "room": {
             "id": room.id,
@@ -293,6 +343,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "can_annotate": actor_can_annotate,
             "can_invite": can_invite_members(room=room, user=actor, membership=actor_membership),
             "can_assign_roles": can_assign_room_roles(room=room, user=actor),
+            "can_assign_quotas": actor_can_manage,
             "can_edit_room": can_edit_room(room=room, user=actor),
             "can_export": can_export_room(room=room, user=actor),
             "can_delete_room": can_delete_room(room=room, user=actor),
@@ -301,12 +352,21 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
 
     if actor_can_annotate:
         actor_completed = _count_completed_items_for_user(room=room, user=actor)
+        actor_quota_state = get_room_assignment_quota_state(
+            room=room,
+            user=actor,
+            quota_by_user_id=quota_by_user_id,
+        )
         actor_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=actor,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        actor_remaining = max(total_tasks - actor_completed, 0)
+        actor_remaining = (
+            actor_quota_state["quota_remaining"]
+            if actor_quota_state["quota_remaining"] is not None
+            else max(total_tasks - actor_completed, 0)
+        )
         actor_progress = round((actor_completed / total_tasks) * 100, 1) if total_tasks else 0.0
         activity = build_activity_series(
             annotations_qs=Annotation.objects.filter(task__room=room, annotator=actor),
@@ -317,6 +377,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "in_progress_tasks": actor_in_progress,
             "remaining_tasks": actor_remaining,
             "progress_percent": actor_progress,
+            **actor_quota_state,
             "activity": activity,
         }
         if not (actor_can_manage or actor_can_review):
@@ -330,12 +391,21 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
         listed_user_ids.add(user.id)
         is_owner = user.id == room.created_by_id
         user_completed = _count_completed_items_for_user(room=room, user=user)
+        user_quota_state = get_room_assignment_quota_state(
+            room=room,
+            user=user,
+            quota_by_user_id=quota_by_user_id,
+        )
         user_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=user,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        user_remaining = max(total_tasks - user_completed, 0)
+        user_remaining = (
+            user_quota_state["quota_remaining"]
+            if user_quota_state["quota_remaining"] is not None
+            else max(total_tasks - user_completed, 0)
+        )
         user_progress = round((user_completed / total_tasks) * 100, 1) if total_tasks else 0.0
 
         annotators.append(
@@ -351,6 +421,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
                 "in_progress_tasks": user_in_progress,
                 "remaining_tasks": user_remaining,
                 "progress_percent": user_progress,
+                **user_quota_state,
                 "activity": build_activity_series(
                     annotations_qs=Annotation.objects.filter(task__room=room, annotator=user),
                 ),
@@ -360,12 +431,21 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
     if room.owner_is_annotator and room.created_by_id not in listed_user_ids:
         owner = room.created_by
         owner_completed = _count_completed_items_for_user(room=room, user=owner)
+        owner_quota_state = get_room_assignment_quota_state(
+            room=room,
+            user=owner,
+            quota_by_user_id=quota_by_user_id,
+        )
         owner_in_progress = TaskAssignment.objects.filter(
             task__room=room,
             annotator=owner,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        owner_remaining = max(total_tasks - owner_completed, 0)
+        owner_remaining = (
+            owner_quota_state["quota_remaining"]
+            if owner_quota_state["quota_remaining"] is not None
+            else max(total_tasks - owner_completed, 0)
+        )
         owner_progress = round((owner_completed / total_tasks) * 100, 1) if total_tasks else 0.0
         annotators.append(
             {
@@ -380,6 +460,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
                 "in_progress_tasks": owner_in_progress,
                 "remaining_tasks": owner_remaining,
                 "progress_percent": owner_progress,
+                **owner_quota_state,
                 "activity": build_activity_series(
                     annotations_qs=Annotation.objects.filter(task__room=room, annotator=owner),
                 ),

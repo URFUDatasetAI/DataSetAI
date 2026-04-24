@@ -1,11 +1,12 @@
 from django.db import connection, transaction
-from django.db.models import Count, Exists, IntegerField, OuterRef, Subquery
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.labeling.consensus import evaluate_annotation_consensus
 from apps.labeling.distribution import (
     get_effective_reviews_for_task,
+    get_task_assignment_pool_ids,
     get_task_designated_annotator_ids,
 )
 from apps.labeling.models import Annotation, Task, TaskAssignment
@@ -15,7 +16,7 @@ from apps.labeling.workflows import (
     get_task_revision_target_annotator_id,
     is_text_detection_workflow,
 )
-from apps.rooms.models import Room, RoomMembership
+from apps.rooms.models import Room, RoomAssignmentQuota, RoomMembership
 from apps.rooms.policies import can_annotate_room, can_review_room
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError
@@ -30,10 +31,49 @@ Key invariant:
 """
 
 
+ACTIVE_ASSIGNMENT_STATUSES = (
+    TaskAssignment.Status.IN_PROGRESS,
+    TaskAssignment.Status.SUBMITTED,
+)
+
+
 def _assert_joined_membership(*, room: Room, annotator: User) -> None:
     membership = RoomMembership.objects.filter(room=room, user=annotator).only("status", "role").first()
     if not can_annotate_room(room=room, user=annotator, membership=membership):
-        raise AccessDeniedError("Current user cannot label tasks in this room.")
+        raise AccessDeniedError("Текущий пользователь не может размечать задачи в этой комнате.")
+
+
+def get_room_assignment_quota_usage(*, room: Room, annotator: User) -> int:
+    return TaskAssignment.objects.filter(
+        task__room=room,
+        annotator=annotator,
+        round_number=F("task__current_round"),
+        status__in=ACTIVE_ASSIGNMENT_STATUSES,
+    ).count()
+
+
+def _has_assignment_quota_capacity(*, room: Room, annotator: User) -> bool:
+    task_quota = (
+        RoomAssignmentQuota.objects.filter(room=room, user=annotator)
+        .values_list("task_quota", flat=True)
+        .first()
+    )
+    if task_quota is None:
+        return True
+    return get_room_assignment_quota_usage(room=room, annotator=annotator) < task_quota
+
+
+def _get_current_round_assignment_pool_ids(*, task: Task, round_assignments: list[TaskAssignment]) -> list[int]:
+    skipped_annotator_ids = {
+        assignment.annotator_id
+        for assignment in round_assignments
+        if assignment.status == TaskAssignment.Status.SKIPPED
+    }
+    return [
+        annotator_id
+        for annotator_id in get_task_assignment_pool_ids(task=task)
+        if annotator_id not in skipped_annotator_ids
+    ]
 
 
 def _get_room_eligible_annotators_count(*, room: Room) -> int:
@@ -129,6 +169,9 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         if current_assignment:
             return current_assignment.task
 
+        if not _has_assignment_quota_capacity(room=room, annotator=annotator):
+            return None
+
         annotator_assignments = TaskAssignment.objects.filter(
             task_id=OuterRef("pk"),
             annotator=annotator,
@@ -138,6 +181,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
             TaskAssignment.objects.filter(
                 task_id=OuterRef("pk"),
                 round_number=OuterRef("current_round"),
+                status__in=ACTIVE_ASSIGNMENT_STATUSES,
             )
             .values("task_id")
             .annotate(total=Count("id"))
@@ -178,14 +222,28 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                 assignment.annotator_id
                 for assignment in candidate_task.assignments.all()
                 if assignment.round_number == candidate_task.current_round
+                and assignment.status in ACTIVE_ASSIGNMENT_STATUSES
             }
-            effective_reviews = get_effective_reviews_for_task(task=candidate_task)
+            current_round_assignments = [
+                assignment
+                for assignment in candidate_task.assignments.all()
+                if assignment.round_number == candidate_task.current_round
+            ]
+            assignment_pool_ids = _get_current_round_assignment_pool_ids(
+                task=candidate_task,
+                round_assignments=current_round_assignments,
+            )
+            effective_reviews = get_effective_reviews_for_task(
+                task=candidate_task,
+                assignment_pool_ids=assignment_pool_ids,
+            )
             if effective_reviews <= 0 or candidate_task.round_assignments_count >= effective_reviews:
                 continue
 
             designated_annotator_ids = get_task_designated_annotator_ids(
                 task=candidate_task,
                 current_round_annotator_ids=current_round_annotator_ids,
+                assignment_pool_ids=assignment_pool_ids,
             )
             if annotator.id in designated_annotator_ids:
                 next_task = candidate_task
@@ -224,7 +282,7 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
         if locked_task.status != Task.Status.IN_PROGRESS:
-            raise ConflictError("Only tasks in progress can be submitted.")
+            raise ConflictError("Отправить можно только задачу, которая сейчас в работе.")
 
         assignment = (
             TaskAssignment.objects.select_for_update()
@@ -237,10 +295,10 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
             .first()
         )
         if assignment is None:
-            raise AccessDeniedError("Task is not assigned to the current annotator.")
+            raise AccessDeniedError("Эта задача не назначена текущему разметчику.")
 
         if Annotation.objects.filter(assignment=assignment).exists():
-            raise ConflictError("Annotation for this assignment already exists.")
+            raise ConflictError("Разметка для этого назначения уже существует.")
 
         annotation = Annotation.objects.create(
             task=locked_task,
@@ -263,8 +321,15 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
             locked_task.assignments.filter(round_number=locked_task.current_round).order_by("id")
         )
         submitted_assignments = [item for item in round_assignments if item.status == TaskAssignment.Status.SUBMITTED]
+        assignment_pool_ids = _get_current_round_assignment_pool_ids(
+            task=locked_task,
+            round_assignments=round_assignments,
+        )
 
-        required_reviews = get_effective_reviews_for_task(task=locked_task)
+        required_reviews = get_effective_reviews_for_task(
+            task=locked_task,
+            assignment_pool_ids=assignment_pool_ids,
+        )
         if len(submitted_assignments) >= required_reviews:
             # Once the round has enough reviews we either accept consensus and
             # close the task, or reopen it for the next round.
@@ -317,6 +382,100 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
         return annotation
 
 
+def skip_task_for_annotator(*, task: Task, annotator: User) -> Task:
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        _assert_joined_membership(room=locked_task.room, annotator=annotator)
+        if locked_task.source_type not in (Task.SourceType.IMAGE, Task.SourceType.VIDEO):
+            raise ConflictError("Пропускать можно только задачи с изображениями или видео.")
+
+        assignment = (
+            TaskAssignment.objects.select_for_update()
+            .filter(
+                task=locked_task,
+                annotator=annotator,
+                status=TaskAssignment.Status.IN_PROGRESS,
+                round_number=locked_task.current_round,
+            )
+            .order_by("-assigned_at", "-id")
+            .first()
+        )
+        if assignment is None:
+            raise AccessDeniedError("Эта задача не назначена текущему разметчику.")
+
+        assignment.status = TaskAssignment.Status.SKIPPED
+        assignment.submitted_at = None
+        assignment.save(update_fields=["status", "submitted_at", "updated_at"])
+
+        round_assignments = list(
+            locked_task.assignments.filter(round_number=locked_task.current_round).order_by("id")
+        )
+        submitted_assignments = [item for item in round_assignments if item.status == TaskAssignment.Status.SUBMITTED]
+        assignment_pool_ids = _get_current_round_assignment_pool_ids(
+            task=locked_task,
+            round_assignments=round_assignments,
+        )
+        required_reviews = get_effective_reviews_for_task(
+            task=locked_task,
+            assignment_pool_ids=assignment_pool_ids,
+        )
+
+        if required_reviews > 0 and len(submitted_assignments) >= required_reviews:
+            round_annotations = list(
+                Annotation.objects.filter(assignment__in=submitted_assignments).order_by("submitted_at", "id")
+            )
+            consensus = evaluate_annotation_consensus(
+                annotations=round_annotations,
+                similarity_threshold=locked_task.room.cross_validation_similarity_threshold,
+            )
+
+            locked_task.validation_score = consensus["score"]
+            if consensus["accepted"]:
+                locked_task.status = Task.Status.SUBMITTED
+                locked_task.consensus_payload = consensus["consensus_payload"]
+                _delete_rejected_round_history(task=locked_task)
+            else:
+                locked_task.status = Task.Status.PENDING
+                locked_task.current_round += 1
+                locked_task.consensus_payload = None
+
+            locked_task.save(
+                update_fields=[
+                    "status",
+                    "current_round",
+                    "validation_score",
+                    "consensus_payload",
+                    "updated_at",
+                ]
+            )
+
+            if (
+                consensus["accepted"]
+                and is_text_detection_workflow(room=locked_task.room)
+                and locked_task.workflow_stage == Task.WorkflowStage.TEXT_DETECTION
+                and locked_task.consensus_payload is not None
+            ):
+                _create_followup_transcription_task(
+                    task=locked_task,
+                    consensus_payload=locked_task.consensus_payload,
+                    submitted_assignments=submitted_assignments,
+                )
+            return locked_task
+
+        if locked_task.status == Task.Status.IN_PROGRESS:
+            active_assignments_exist = any(
+                item.status in ACTIVE_ASSIGNMENT_STATUSES
+                for item in round_assignments
+            )
+            if not active_assignments_exist:
+                locked_task.status = Task.Status.PENDING
+                locked_task.save(update_fields=["status", "updated_at"])
+            else:
+                locked_task.save(update_fields=["updated_at"])
+
+        return locked_task
+
+
 def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
@@ -334,7 +493,7 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
             .first()
         )
         if assignment is None:
-            raise AccessDeniedError("Submitted annotation not found for the current user.")
+            raise AccessDeniedError("Отправленная разметка текущего пользователя не найдена.")
 
         # Reverse one-to-one joins to `annotation` are rendered as LEFT OUTER JOINs.
         # PostgreSQL does not allow `FOR UPDATE` on the nullable side of such joins,
@@ -346,7 +505,7 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
             .first()
         )
         if annotation is None:
-            raise AccessDeniedError("Submitted annotation not found for the current user.")
+            raise AccessDeniedError("Отправленная разметка текущего пользователя не найдена.")
 
         editable, reason = get_submission_editability(task=locked_task, assignment=assignment)
         if not editable:
@@ -365,14 +524,14 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
 
 def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
     if not can_review_room(room=task.room, user=reviewer):
-        raise AccessDeniedError("You do not have permission to reject annotations in this room.")
+        raise AccessDeniedError("У тебя нет прав отклонять разметки в этой комнате.")
 
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
         if not can_review_room(room=locked_task.room, user=reviewer):
-            raise AccessDeniedError("You do not have permission to reject annotations in this room.")
+            raise AccessDeniedError("У тебя нет прав отклонять разметки в этой комнате.")
         if locked_task.status != Task.Status.SUBMITTED:
-            raise ConflictError("Only submitted tasks can be rejected.")
+            raise ConflictError("Отклонить можно только отправленные на проверку задачи.")
 
         locked_task.status = Task.Status.PENDING
         locked_task.current_round += 1
@@ -392,14 +551,14 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
 
 def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator_id: int) -> Task:
     if not can_review_room(room=task.room, user=reviewer):
-        raise AccessDeniedError("You do not have permission to return annotations for revision in this room.")
+        raise AccessDeniedError("У тебя нет прав возвращать разметки на исправление в этой комнате.")
 
     with transaction.atomic():
         locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
         if not can_review_room(room=locked_task.room, user=reviewer):
-            raise AccessDeniedError("You do not have permission to return annotations for revision in this room.")
-        if locked_task.status != Task.Status.SUBMITTED or not get_task_is_final_stage(task=locked_task):
-            raise ConflictError("Only final submitted tasks can be returned for revision.")
+            raise AccessDeniedError("У тебя нет прав возвращать разметки на исправление в этой комнате.")
+        if not get_task_is_final_stage(task=locked_task):
+            raise ConflictError("Вернуть на исправление можно только задачу финального этапа.")
 
         target_assignment = (
             TaskAssignment.objects.select_for_update()
@@ -414,9 +573,20 @@ def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator
             .first()
         )
         if target_assignment is None:
-            raise ConflictError("Selected annotator does not have a submitted annotation for this task.")
+            raise ConflictError("У выбранного разметчика нет отправленной разметки для этой задачи.")
 
         _assert_joined_membership(room=locked_task.room, annotator=target_assignment.annotator)
+
+        if locked_task.status != Task.Status.SUBMITTED or locked_task.consensus_payload is None:
+            Annotation.objects.filter(assignment=target_assignment).delete()
+            target_assignment.status = TaskAssignment.Status.IN_PROGRESS
+            target_assignment.submitted_at = None
+            target_assignment.save(update_fields=["status", "submitted_at", "updated_at"])
+            locked_task.status = Task.Status.IN_PROGRESS
+            locked_task.validation_score = None
+            locked_task.consensus_payload = None
+            locked_task.save(update_fields=["status", "validation_score", "consensus_payload", "updated_at"])
+            return locked_task
 
         next_round = locked_task.current_round + 1
         locked_task.status = Task.Status.IN_PROGRESS

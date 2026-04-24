@@ -1,5 +1,11 @@
 from rest_framework import serializers
 
+from apps.labeling.selectors import (
+    REVIEW_FILTER_FINAL,
+    REVIEW_FILTER_INCOMPLETE,
+    get_task_current_round_review_counts,
+    get_task_review_state,
+)
 from apps.labeling.models import Annotation, Task, TaskAssignment
 from apps.labeling.services import get_submission_editability
 
@@ -147,6 +153,9 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     source_file_url = serializers.SerializerMethodField()
     annotations_count = serializers.SerializerMethodField()
     annotator_ids = serializers.SerializerMethodField()
+    review_state = serializers.SerializerMethodField()
+    required_annotations_count = serializers.SerializerMethodField()
+    submitted_annotations_count = serializers.SerializerMethodField()
     review_outcome = serializers.SerializerMethodField()
 
     class Meta:
@@ -162,6 +171,9 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "source_file_url",
             "annotations_count",
             "annotator_ids",
+            "review_state",
+            "required_annotations_count",
+            "submitted_annotations_count",
             "review_outcome",
             "updated_at",
         )
@@ -175,16 +187,34 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(obj.source_file.url)
 
     def get_annotations_count(self, obj):
-        return obj.annotations.count()
+        return get_task_current_round_review_counts(task=obj)["submitted_annotations_count"]
 
     def get_annotator_ids(self, obj):
-        return list(obj.annotations.order_by().values_list("annotator_id", flat=True).distinct())
+        return list(
+            obj.annotations.filter(
+                assignment__round_number=obj.current_round,
+                assignment__status=TaskAssignment.Status.SUBMITTED,
+            )
+            .order_by()
+            .values_list("annotator_id", flat=True)
+            .distinct()
+        )
+
+    def get_review_state(self, obj):
+        return get_task_review_state(task=obj)
+
+    def get_required_annotations_count(self, obj):
+        return get_task_current_round_review_counts(task=obj)["required_annotations_count"]
+
+    def get_submitted_annotations_count(self, obj):
+        return get_task_current_round_review_counts(task=obj)["submitted_annotations_count"]
 
     def get_review_outcome(self, obj):
-        if obj.status == Task.Status.SUBMITTED and obj.consensus_payload is not None:
+        review_state = get_task_review_state(task=obj)
+        if review_state == REVIEW_FILTER_FINAL:
             return "accepted"
-        if obj.annotations.exists():
-            return "rejected"
+        if review_state == REVIEW_FILTER_INCOMPLETE:
+            return "incomplete"
         return "pending"
 
 
@@ -198,6 +228,11 @@ class ReviewAnnotationSerializer(AnnotationSerializer):
 class ReviewTaskDetailSerializer(serializers.Serializer):
     task = TaskSerializer()
     consensus_payload = serializers.JSONField(allow_null=True)
+    consensus_available = serializers.BooleanField()
+    can_reject_all = serializers.BooleanField()
+    review_state = serializers.CharField()
+    required_annotations_count = serializers.IntegerField()
+    submitted_annotations_count = serializers.IntegerField()
     annotations = ReviewAnnotationSerializer(many=True)
     review_outcome = serializers.CharField()
 

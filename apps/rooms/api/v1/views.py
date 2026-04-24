@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 
 from apps.rooms.api.v1.serializers import (
     RoomAccessSerializer,
+    RoomAssignmentQuotaSerializer,
     InviteAnnotatorSerializer,
     RoomCreateSerializer,
     RoomJoinRequestDecisionSerializer,
@@ -22,6 +23,7 @@ from apps.rooms.api.v1.serializers import (
 from apps.rooms.selectors import (
     build_room_invite_preview,
     build_room_dashboard,
+    get_room_assignment_quota_state,
     get_room_by_id,
     get_room_by_invite_token,
     get_room_for_owner,
@@ -42,10 +44,12 @@ from apps.rooms.services import (
     reorder_room_pins,
     reject_room_join_request,
     set_room_membership_role,
+    set_room_assignment_quota,
     set_room_pinned,
     submit_room_join_request,
     update_room,
 )
+from apps.users.models import User
 
 """
 Rooms API surface.
@@ -226,6 +230,29 @@ class RoomMembershipRoleView(APIView):
             role=serializer.validated_data["role"],
         )
         return Response(RoomMembershipSerializer(membership).data)
+
+
+class RoomAssignmentQuotaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int, user_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomAssignmentQuotaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        quota = set_room_assignment_quota(
+            room=room,
+            actor=request.user,
+            target_user_id=user_id,
+            task_quota=serializer.validated_data["task_quota"],
+        )
+        target_user = quota.user if quota is not None else User.objects.get(id=user_id)
+        return Response(
+            {
+                "room_id": room.id,
+                "user_id": user_id,
+                **get_room_assignment_quota_state(room=room, user=target_user),
+            }
+        )
 
 
 class RoomMembershipDeleteView(APIView):

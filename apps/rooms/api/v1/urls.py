@@ -3,6 +3,7 @@ from django.urls import path
 from apps.rooms.api.v1.views import (
     MyRoomListView,
     RoomAccessView,
+    RoomAssignmentQuotaView,
     RoomDashboardView,
     RoomDetailView,
     RoomInviteLinkView,
@@ -41,6 +42,7 @@ urlpatterns = [
         name="room-join-request-reject",
     ),
     path("rooms/<int:room_id>/memberships/<int:user_id>/role/", RoomMembershipRoleView.as_view(), name="room-membership-role"),
+    path("rooms/<int:room_id>/quotas/<int:user_id>/", RoomAssignmentQuotaView.as_view(), name="room-assignment-quota"),
     path("rooms/<int:room_id>/memberships/<int:user_id>/", RoomMembershipDeleteView.as_view(), name="room-membership-delete"),
     path("rooms/<int:room_id>/pin/", RoomPinView.as_view(), name="room-pin"),
     path("rooms/<int:room_id>/pin/reorder/", RoomPinReorderView.as_view(), name="room-pin-reorder"),
