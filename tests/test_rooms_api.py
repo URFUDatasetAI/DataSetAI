@@ -291,39 +291,6 @@ class RoomsApiTests(APITestCase):
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.JOINED)
 
-    def test_invited_user_can_enter_room_by_id_and_password(self):
-        room = make_room(customer=self.customer, title="Password room")
-        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer)
-        room.set_access_password("demo123")
-        room.save(update_fields=["access_password_hash", "updated_at"])
-
-        response = self.client.post(
-            reverse("room-access"),
-            {"room_id": room.id, "password": "demo123"},
-            format="json",
-            **self.auth(self.annotator),
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["redirect_url"], f"/rooms/{room.id}/")
-        membership = RoomMembership.objects.get(room=room, user=self.annotator)
-        self.assertEqual(membership.status, RoomMembership.Status.JOINED)
-
-    def test_non_member_cannot_enter_room_by_id_even_with_password(self):
-        room = make_room(customer=self.customer, title="Protected room")
-        room.set_access_password("demo123")
-        room.save(update_fields=["access_password_hash", "updated_at"])
-
-        response = self.client.post(
-            reverse("room-access"),
-            {"room_id": room.id, "password": "demo123"},
-            format="json",
-            **self.auth(self.annotator),
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertFalse(RoomMembership.objects.filter(room=room, user=self.annotator).exists())
-
     def test_user_can_request_access_by_invite_link_and_owner_can_approve(self):
         room = make_room(customer=self.customer, title="Invite room")
 

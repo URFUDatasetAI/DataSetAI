@@ -498,11 +498,6 @@ class RoomAssignmentQuotaSerializer(serializers.Serializer):
         return attrs
 
 
-class RoomAccessSerializer(serializers.Serializer):
-    room_id = serializers.IntegerField(min_value=1)
-    password = serializers.CharField(required=False, allow_blank=True)
-
-
 class RoomJoinSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True)
 

@@ -22776,8 +22776,6 @@
     const [rooms, setRooms] = (0, import_react.useState)([]);
     const [loading, setLoading] = (0, import_react.useState)(true);
     const [pinBusyRoomId, setPinBusyRoomId] = (0, import_react.useState)(null);
-    const [roomId, setRoomId] = (0, import_react.useState)("");
-    const [password, setPassword] = (0, import_react.useState)("");
     function sortRooms(list) {
       return [...list].sort((left, right) => {
         if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
@@ -22826,23 +22824,6 @@
     (0, import_react.useEffect)(() => {
       loadRooms();
     }, []);
-    async function handleDirectEnter() {
-      clearToasts();
-      try {
-        const response = await api("/api/v1/rooms/access/", {
-          method: "POST",
-          body: {
-            room_id: Number(roomId),
-            password
-          }
-        });
-        window.location.href = response.redirect_url;
-      } catch (error) {
-        addToast(getErrorMessage(error), "error");
-      } finally {
-        setPinBusyRoomId(null);
-      }
-    }
     async function handleTogglePin(event, room) {
       event.preventDefault();
       event.stopPropagation();
@@ -22884,45 +22865,16 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u043D\u0435\u0435, \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u044F ID \u0438 \u043F\u0430\u0440\u043E\u043B\u044C. \u0422\u0430\u043A\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445." })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445. \u0414\u043B\u044F \u043D\u043E\u0432\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 invite-\u0441\u0441\u044B\u043B\u043A\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-stack", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card__copy", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u041D\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0430 \u0441 \u0432\u044B\u0431\u043E\u0440\u043E\u043C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0438 \u043F\u0440\u043E\u0447\u0438\u0445 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u043E\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-create-card__action", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-toolbar-stack", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card__copy", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u041D\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0430 \u0441 \u0432\u044B\u0431\u043E\u0440\u043E\u043C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0438 \u043F\u0440\u043E\u0447\u0438\u0445 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u043E\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-card room-toolbar-card--join", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar-card__intro", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u0412\u0445\u043E\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0418\u043B\u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044E\u0449\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0434\u043E\u0441\u0442\u0443\u043F\u0430." })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-toolbar", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: roomId, type: "number", min: "1", placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 1", onChange: (event) => setRoomId(event.currentTarget.value) })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "inline-field", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: password, type: "password", placeholder: "\u041F\u0430\u0440\u043E\u043B\u044C", onChange: (event) => setPassword(event.currentTarget.value) })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "button",
-                {
-                  className: `btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`,
-                  type: "button",
-                  disabled: !roomId.trim().length,
-                  onClick: handleDirectEnter,
-                  children: "\u0412\u043E\u0439\u0442\u0438 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443"
-                }
-              )
-            ] })
-          ] })
-        ] })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-create-card__action", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
+        ] }) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-grid-section", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-grid-section__header", children: [
@@ -22939,7 +22891,6 @@
             {
               className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
               onClick: () => {
-                setRoomId(String(room.id));
                 window.location.href = `/rooms/${room.id}/`;
               },
               children: [
@@ -26621,10 +26572,18 @@
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: `btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`, type: "button", onClick: () => toggleInspector("payload"), children: "JSON" })
           ] }),
-          workspaceMode === "review" ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__action-group room-editor__action-group--submit", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441 \u0437\u0430\u0434\u0430\u0447\u0435\u0439", children: [
-            workspaceMode === "queue" && isMediaTask && currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: submitting || skipping, onClick: handleSkipTask, children: skipping ? "\u041F\u0440\u043E\u043F\u0443\u0441\u043A\u0430\u0435\u043C..." : "\u041F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C" }) : null,
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitButtonLabel })
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              className: `room-editor__action-group room-editor__action-group--submit ${workspaceMode === "review" ? "is-placeholder" : ""}`,
+              "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0441 \u0437\u0430\u0434\u0430\u0447\u0435\u0439",
+              "aria-hidden": workspaceMode === "review",
+              children: workspaceMode === "review" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "room-editor__submit-placeholder", children: "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                workspaceMode === "queue" && isMediaTask && currentTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: submitting || skipping, onClick: handleSkipTask, children: skipping ? "\u041F\u0440\u043E\u043F\u0443\u0441\u043A\u0430\u0435\u043C..." : "\u041F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u0442\u044C" }) : null,
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact room-editor__submit", type: "submit", disabled: submitDisabled, children: submitButtonLabel })
+              ] })
+            }
+          )
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__body", children: [

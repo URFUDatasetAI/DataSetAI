@@ -1770,8 +1770,6 @@ function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
-  const [roomId, setRoomId] = useState("");
-  const [password, setPassword] = useState("");
 
   function sortRooms(list: RoomItem[]) {
     return [...list].sort((left, right) => {
@@ -1829,24 +1827,6 @@ function RoomsPage() {
     loadRooms();
   }, []);
 
-  async function handleDirectEnter() {
-    clearToasts();
-    try {
-      const response = await api<{ redirect_url: string }>("/api/v1/rooms/access/", {
-        method: "POST",
-        body: {
-          room_id: Number(roomId),
-          password,
-        },
-      });
-      window.location.href = response.redirect_url;
-    } catch (error) {
-      addToast(getErrorMessage(error), "error");
-    } finally {
-      setPinBusyRoomId(null);
-    }
-  }
-
   async function handleTogglePin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem) {
     event.preventDefault();
     event.stopPropagation();
@@ -1894,7 +1874,7 @@ function RoomsPage() {
         <div className="page-topbar__copy">
           <span className="eyebrow">Комнаты</span>
           <h1>Доступные комнаты</h1>
-          <p>Создайте комнату или войдите в нее, используя ID и пароль. Также можно выбрать комнату из списка доступных.</p>
+          <p>Создайте комнату или откройте комнату из списка доступных. Для новых участников используйте invite-ссылку комнаты.</p>
         </div>
         <div className="room-toolbar-stack">
           <div className="room-create-card">
@@ -1906,31 +1886,6 @@ function RoomsPage() {
             <a className="btn btn--primary room-create-card__action" href="/rooms/create/">
               Создать комнату
             </a>
-          </div>
-          <div className="room-toolbar-card room-toolbar-card--join">
-            <div className="room-toolbar-card__intro">
-              <span className="header-note">Вход в комнату</span>
-              <strong>Или войдите в уже существующую комнату</strong>
-              <p>Укажите ID комнаты и пароль доступа.</p>
-            </div>
-            <div className="room-toolbar">
-              <label className="inline-field">
-                <span>ID комнаты</span>
-                <input value={roomId} type="number" min="1" placeholder="Например, 1" onChange={(event) => setRoomId(event.currentTarget.value)} />
-              </label>
-              <label className="inline-field">
-                <span>Пароль комнаты</span>
-                <input value={password} type="password" placeholder="Пароль" onChange={(event) => setPassword(event.currentTarget.value)} />
-              </label>
-              <button
-                className={`btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`}
-                type="button"
-                disabled={!roomId.trim().length}
-                onClick={handleDirectEnter}
-              >
-                Войти в комнату
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -1957,7 +1912,6 @@ function RoomsPage() {
                   key={room.id}
                   className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
                   onClick={() => {
-                    setRoomId(String(room.id));
                     window.location.href = `/rooms/${room.id}/`;
                   }}
                 >
@@ -6334,18 +6288,26 @@ function RoomWorkPage() {
               JSON
             </button>
           </div>
-          {workspaceMode === "review" ? null : (
-            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
-              {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
-                  {skipping ? "Пропускаем..." : "Пропустить"}
+          <div
+            className={`room-editor__action-group room-editor__action-group--submit ${workspaceMode === "review" ? "is-placeholder" : ""}`}
+            aria-label="Действия с задачей"
+            aria-hidden={workspaceMode === "review"}
+          >
+            {workspaceMode === "review" ? (
+              <span className="room-editor__submit-placeholder">Действия</span>
+            ) : (
+              <>
+                {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
+                    {skipping ? "Пропускаем..." : "Пропустить"}
+                  </button>
+                ) : null}
+                <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                  {submitButtonLabel}
                 </button>
-              ) : null}
-              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-                {submitButtonLabel}
-              </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
