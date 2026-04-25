@@ -39,6 +39,7 @@
 - Fallback должен включаться для всего пула, если `len(assignment_pool) % required_reviews_per_item != 0`; нельзя формировать partial grouped split и молча оставлять “лишних” annotator-ов без задач.
 - `owner_is_annotator` входит в assignment pool только если это явно разрешено room settings.
 - Квота annotator-а берётся из персонального override-а или из `Room.default_assignment_quota`; UI и selectors должны показывать прогресс относительно этой квоты, даже если она больше или меньше размера датасета.
+- Skipped media assignments не расходуют completed quota, но ограничивают выдачу новых unseen изображений до размера квоты. Они могут быть переоткрыты тому же annotator-у; если skipped-задачу submitted-нул другой annotator, она освобождает exposure-слот и не должна переоткрываться исходному пропустившему.
 - Rejected-задачи сначала возвращаются исходным annotator-ам, но assignment flow имеет rescue-pass для зависших задач, когда у другого annotator-а есть свободная квота и строгих задач больше нет. Rescue-pass не должен превышать `required_reviews_per_item` в текущем раунде.
 
 ## Open Edges / Risks
