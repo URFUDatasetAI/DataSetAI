@@ -59,6 +59,8 @@ def _has_assignment_quota_capacity(*, room: Room, annotator: User) -> bool:
         .first()
     )
     if task_quota is None:
+        task_quota = room.default_assignment_quota
+    if task_quota is None:
         return True
     return get_room_assignment_quota_usage(room=room, annotator=annotator) < task_quota
 
@@ -74,6 +76,14 @@ def _get_current_round_assignment_pool_ids(*, task: Task, round_assignments: lis
         for annotator_id in get_task_assignment_pool_ids(task=task)
         if annotator_id not in skipped_annotator_ids
     ]
+
+
+def _can_rescue_assignment_candidate(*, task: Task, annotator: User, assignment_pool_ids: list[int]) -> bool:
+    if annotator.id not in assignment_pool_ids:
+        return False
+    if get_task_revision_target_annotator_id(task=task) is not None:
+        return False
+    return True
 
 
 def _get_room_eligible_annotators_count(*, room: Room) -> int:
@@ -216,38 +226,50 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         else:
             queryset = queryset.select_for_update()
 
-        next_task = None
-        for candidate_task in queryset.prefetch_related("assignments"):
-            current_round_annotator_ids = {
-                assignment.annotator_id
-                for assignment in candidate_task.assignments.all()
-                if assignment.round_number == candidate_task.current_round
-                and assignment.status in ACTIVE_ASSIGNMENT_STATUSES
-            }
-            current_round_assignments = [
-                assignment
-                for assignment in candidate_task.assignments.all()
-                if assignment.round_number == candidate_task.current_round
-            ]
-            assignment_pool_ids = _get_current_round_assignment_pool_ids(
-                task=candidate_task,
-                round_assignments=current_round_assignments,
-            )
-            effective_reviews = get_effective_reviews_for_task(
-                task=candidate_task,
-                assignment_pool_ids=assignment_pool_ids,
-            )
-            if effective_reviews <= 0 or candidate_task.round_assignments_count >= effective_reviews:
-                continue
+        candidate_tasks = list(queryset.prefetch_related("assignments"))
 
-            designated_annotator_ids = get_task_designated_annotator_ids(
-                task=candidate_task,
-                current_round_annotator_ids=current_round_annotator_ids,
-                assignment_pool_ids=assignment_pool_ids,
-            )
-            if annotator.id in designated_annotator_ids:
-                next_task = candidate_task
-                break
+        def choose_next_task(*, allow_rescue: bool) -> Task | None:
+            for candidate_task in candidate_tasks:
+                current_round_annotator_ids = {
+                    assignment.annotator_id
+                    for assignment in candidate_task.assignments.all()
+                    if assignment.round_number == candidate_task.current_round
+                    and assignment.status in ACTIVE_ASSIGNMENT_STATUSES
+                }
+                current_round_assignments = [
+                    assignment
+                    for assignment in candidate_task.assignments.all()
+                    if assignment.round_number == candidate_task.current_round
+                ]
+                assignment_pool_ids = _get_current_round_assignment_pool_ids(
+                    task=candidate_task,
+                    round_assignments=current_round_assignments,
+                )
+                effective_reviews = get_effective_reviews_for_task(
+                    task=candidate_task,
+                    assignment_pool_ids=assignment_pool_ids,
+                )
+                if effective_reviews <= 0 or len(current_round_annotator_ids) >= effective_reviews:
+                    continue
+
+                designated_annotator_ids = get_task_designated_annotator_ids(
+                    task=candidate_task,
+                    current_round_annotator_ids=current_round_annotator_ids,
+                    assignment_pool_ids=assignment_pool_ids,
+                )
+                if annotator.id in designated_annotator_ids:
+                    return candidate_task
+                if allow_rescue and _can_rescue_assignment_candidate(
+                    task=candidate_task,
+                    annotator=annotator,
+                    assignment_pool_ids=assignment_pool_ids,
+                ):
+                    return candidate_task
+            return None
+
+        next_task = choose_next_task(allow_rescue=False)
+        if next_task is None:
+            next_task = choose_next_task(allow_rescue=True)
 
         if next_task:
             TaskAssignment.objects.create(

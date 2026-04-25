@@ -23248,6 +23248,7 @@
     const [crossValidationCount, setCrossValidationCount] = (0, import_react.useState)("2");
     const [crossValidationThreshold, setCrossValidationThreshold] = (0, import_react.useState)("80");
     const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
+    const [defaultAssignmentQuota, setDefaultAssignmentQuota] = (0, import_react.useState)("");
     const [datasetMode, setDatasetMode] = (0, import_react.useState)("demo");
     const [annotationWorkflow, setAnnotationWorkflow] = (0, import_react.useState)("standard");
     const [datasetLabel, setDatasetLabel] = (0, import_react.useState)("\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442");
@@ -23287,6 +23288,7 @@
       try {
         const normalizedAnnotatorIds = annotatorIds.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item > 0);
         const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+        const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
         if (datasetMode !== "demo" && !selectedFiles.length) {
           throw new Error("\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u0430\u0439\u043B\u043E\u0432 \u0434\u043B\u044F \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u0442\u0438\u043F\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430.");
         }
@@ -23295,6 +23297,9 @@
         }
         if (crossValidationEnabled && Number(crossValidationCount) < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (normalizedDefaultQuota !== null && (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))) {
+          throw new Error("\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u0446\u0435\u043B\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C 0 \u0438\u043B\u0438 \u0431\u043E\u043B\u044C\u0448\u0435.");
         }
         if (hasCreateTextLimitError) {
           throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
@@ -23315,6 +23320,9 @@
         payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
         payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
         payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
+        if (normalizedDefaultQuota !== null) {
+          payload.append("default_assignment_quota", String(normalizedDefaultQuota));
+        }
         normalizedAnnotatorIds.forEach((item) => payload.append("annotator_ids", String(item)));
         selectedFiles.forEach((file) => payload.append("dataset_files", file));
         if (deadline) {
@@ -23437,6 +23445,21 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: ownerIsAnnotator, name: "owner_is_annotator", type: "checkbox", onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked) })
             ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: defaultAssignmentQuota,
+                name: "default_assignment_quota",
+                type: "number",
+                min: "0",
+                step: "1",
+                placeholder: "\u041F\u043E \u043A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u0443 \u0437\u0430\u0434\u0430\u0447",
+                onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
+              }
+            )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439 (n)" }),
@@ -23570,6 +23593,7 @@
     const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = (0, import_react.useState)("2");
     const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = (0, import_react.useState)("80");
     const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
+    const [defaultAssignmentQuota, setDefaultAssignmentQuota] = (0, import_react.useState)("");
     const [initialHasPassword, setInitialHasPassword] = (0, import_react.useState)(false);
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
@@ -23592,6 +23616,7 @@
           setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
           setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
           setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
+          setDefaultAssignmentQuota(nextRoom.default_assignment_quota == null ? "" : String(nextRoom.default_assignment_quota));
         } catch (error) {
           addToast(getErrorMessage(error), "error");
         }
@@ -23616,11 +23641,15 @@
         const passwordChanged = !passwordEnabled && initialHasPassword || Boolean(nextPassword);
         const nextCrossValidationCount = Math.max(Number(crossValidationAnnotatorsCount || 0), 0);
         const nextCrossValidationThreshold = clamp(Number(crossValidationSimilarityThreshold || 0), 1, 100);
+        const nextDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
         if (passwordEnabled && !initialHasPassword && !nextPassword) {
           throw new Error("\u0423\u043A\u0430\u0436\u0438 \u043F\u0430\u0440\u043E\u043B\u044C, \u0447\u0442\u043E\u0431\u044B \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0437\u0430\u0449\u0438\u0442\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.");
         }
         if (crossValidationEnabled && nextCrossValidationCount < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (nextDefaultQuota !== null && (!Number.isFinite(nextDefaultQuota) || nextDefaultQuota < 0 || !Number.isInteger(nextDefaultQuota))) {
+          throw new Error("\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u0446\u0435\u043B\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C 0 \u0438\u043B\u0438 \u0431\u043E\u043B\u044C\u0448\u0435.");
         }
         if (hasEditTextLimitError) {
           throw new Error("\u0421\u043E\u043A\u0440\u0430\u0442\u0438 \u0442\u0435\u043A\u0441\u0442 \u0432 \u043F\u043E\u043B\u044F\u0445, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0434\u0435\u043B\u0435\u043D\u044B \u043A\u0440\u0430\u0441\u043D\u044B\u043C.");
@@ -23640,7 +23669,8 @@
             cross_validation_enabled: crossValidationEnabled,
             cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
             cross_validation_similarity_threshold: nextCrossValidationThreshold,
-            owner_is_annotator: ownerIsAnnotator
+            owner_is_annotator: ownerIsAnnotator,
+            default_assignment_quota: nextDefaultQuota
           }
         });
         addToast(`\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B #${roomId} \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u044B.`, "success");
@@ -23657,7 +23687,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "page-topbar", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0431\u043D\u043E\u0432\u0438 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430 \u0438 \u0434\u043E\u0441\u0442\u0443\u043F \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u0430\u043C\u0438\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438 \u0444\u0430\u0439\u043B\u043E\u0432." })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0431\u043D\u043E\u0432\u0438 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043A\u0432\u043E\u0442\u044B \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u0430\u043C\u0438\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438 \u0444\u0430\u0439\u043B\u043E\u0432." })
       ] }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "create-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "form-card", onSubmit: handleSubmit, children: [
         room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-edit-summary", children: [
@@ -23708,6 +23738,20 @@
                 className: datasetLabelTooLong ? "field__control--invalid" : "",
                 "aria-invalid": datasetLabelTooLong,
                 onChange: (event) => setDatasetLabel(event.currentTarget.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: defaultAssignmentQuota,
+                type: "number",
+                min: "0",
+                step: "1",
+                placeholder: "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430",
+                onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
               }
             )
           ] }),
@@ -23818,7 +23862,7 @@
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-password-note", children: passwordEnabled ? initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u043E\u043B\u0435 \u043F\u0443\u0441\u0442\u044B\u043C, \u0435\u0441\u043B\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u043C\u0435\u043D\u044F\u0442\u044C \u043D\u0435 \u043D\u0443\u0436\u043D\u043E. \u0412\u0432\u0435\u0434\u0438 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C, \u0435\u0441\u043B\u0438 \u0445\u043E\u0447\u0435\u0448\u044C \u0435\u0433\u043E \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C." : "\u0423\u043A\u0430\u0436\u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0438 \u0444\u043E\u0440\u043C\u0443, \u0447\u0442\u043E\u0431\u044B \u0437\u0430\u043A\u0440\u044B\u0442\u044C \u0432\u0445\u043E\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E." : "\u041F\u043E\u0441\u043B\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0431\u0443\u0434\u0435\u0442 \u043E\u0442\u043A\u0440\u044B\u0442 \u0431\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F." }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-note", children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043B\u0435\u0439\u0431\u043B\u044B \u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043D\u044B\u0435 \u0444\u0430\u0439\u043B\u044B \u0432 \u044D\u0442\u043E\u0439 \u0444\u043E\u0440\u043C\u0435 \u043D\u0435 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F. \u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0438\u043B\u0438 \u043F\u0435\u0440\u0435\u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0437\u0434\u0435\u0441\u044C, \u043D\u0435 \u043C\u0435\u043D\u044F\u044F \u0441\u0430\u043C \u0441\u043E\u0441\u0442\u0430\u0432 \u0437\u0430\u0434\u0430\u0447." })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-note", children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043B\u0435\u0439\u0431\u043B\u044B \u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043D\u044B\u0435 \u0444\u0430\u0439\u043B\u044B \u0432 \u044D\u0442\u043E\u0439 \u0444\u043E\u0440\u043C\u0435 \u043D\u0435 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F. \u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u0438 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0443\u044E \u043A\u0432\u043E\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u043F\u0435\u0440\u0435\u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0437\u0434\u0435\u0441\u044C, \u043D\u0435 \u043C\u0435\u043D\u044F\u044F \u0441\u0430\u043C \u0441\u043E\u0441\u0442\u0430\u0432 \u0437\u0430\u0434\u0430\u0447." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-actions", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${roomId}/`, children: "\u041D\u0430\u0437\u0430\u0434 \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
@@ -24010,8 +24054,8 @@
       setSelectedRole(activeAnnotator?.role || "");
     }, [activeAnnotator?.user_id, activeAnnotator?.role]);
     (0, import_react.useEffect)(() => {
-      setSelectedQuota(activeAnnotator?.task_quota == null ? "" : String(activeAnnotator.task_quota));
-    }, [activeAnnotator?.user_id, activeAnnotator?.task_quota]);
+      setSelectedQuota(activeAnnotator?.custom_task_quota == null ? "" : String(activeAnnotator.custom_task_quota));
+    }, [activeAnnotator?.user_id, activeAnnotator?.custom_task_quota]);
     const filteredReviewTasks = reviewTasks.filter((task) => {
       const matchesAnnotator = !selectedAnnotatorUserId || (task.annotator_ids || []).includes(selectedAnnotatorUserId);
       if (!matchesAnnotator) {
@@ -24153,7 +24197,7 @@
           body: { task_quota: nextQuota }
         });
         addToast(
-          nextQuota === null ? `\u041A\u0432\u043E\u0442\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F #${activeAnnotator.user_id} \u0441\u043D\u044F\u0442\u0430.` : `\u041A\u0432\u043E\u0442\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F #${activeAnnotator.user_id} \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0430.`,
+          nextQuota === null ? `\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C #${activeAnnotator.user_id} \u0432\u0435\u0440\u043D\u0435\u0442\u0441\u044F \u043A \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u043E\u0439 \u043A\u0432\u043E\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.` : `\u041A\u0432\u043E\u0442\u0430 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F #${activeAnnotator.user_id} \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0430.`,
           "success"
         );
         await refresh();
@@ -24397,7 +24441,11 @@
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks || 0 })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u043E" : dashboard.annotator_stats.remaining_tasks })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.task_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `${dashboard.annotator_stats.quota_used} \u0438\u0437 ${dashboard.annotator_stats.task_quota}` })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
@@ -24435,10 +24483,14 @@
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.default_assignment_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : dashboard.room.default_assignment_quota })
                         ] })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__footer", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C, \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435, \u0447\u0442\u043E\u0431\u044B \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 \u044D\u043A\u0440\u0430\u043D \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043F\u0435\u0440\u0435\u0433\u0440\u0443\u0436\u0430\u043B\u0441\u044F." }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
                           dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
                           dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
@@ -24673,11 +24725,10 @@
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__brief", children: [
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: formatPercent(annotator.progress_percent) }),
                           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                            annotator.completed_tasks,
-                            " \u0438\u0437 ",
-                            dashboard.overview.total_tasks
+                            "\u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E: ",
+                            annotator.completed_tasks
                           ] }),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: annotator.task_quota == null ? "\u043A\u0432\u043E\u0442\u0430: \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `\u043A\u0432\u043E\u0442\u0430: ${annotator.quota_used}/${annotator.task_quota}` })
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: annotator.task_quota == null ? "\u043A\u0432\u043E\u0442\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `\u043A\u0432\u043E\u0442\u0430: ${annotator.quota_used}/${annotator.task_quota}` })
                         ] })
                       ]
                     },
@@ -24715,11 +24766,11 @@
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.remaining_tasks })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.remaining_tasks == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u043E" : activeAnnotator.remaining_tasks })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.task_quota == null ? "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `${activeAnnotator.quota_used} \u0438\u0437 ${activeAnnotator.task_quota}` })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeAnnotator.task_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `${activeAnnotator.quota_used} \u0438\u0437 ${activeAnnotator.task_quota}${activeAnnotator.quota_source === "default" ? " \xB7 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F" : ""}` })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
@@ -24740,7 +24791,7 @@
                             type: "number",
                             min: "0",
                             step: "1",
-                            placeholder: "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430",
+                            placeholder: dashboard.room.default_assignment_quota == null ? "\u0411\u0435\u0437 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u043E\u0439 \u043A\u0432\u043E\u0442\u044B" : `\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F: ${dashboard.room.default_assignment_quota}`,
                             onChange: (event) => setSelectedQuota(event.currentTarget.value)
                           }
                         )
@@ -26086,9 +26137,10 @@
     const roomTitle = dashboard?.room.title || (roomId ? `\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${roomId}` : "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0440\u0435\u0434\u0430");
     const stageTitle = currentTask ? currentTask.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${currentTask.id}` : loading ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0440\u0430\u0431\u043E\u0447\u0443\u044E \u043E\u0431\u043B\u0430\u0441\u0442\u044C" : workspaceMode === "queue" ? "\u041E\u0447\u0435\u0440\u0435\u0434\u044C \u0437\u0430\u0434\u0430\u0447 \u043F\u0443\u0441\u0442\u0430" : workspaceMode === "submitted" ? "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" : "\u0420\u0435\u0436\u0438\u043C \u0440\u0435\u0432\u044C\u044E";
     const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
-    const totalTasks = dashboard?.overview.total_tasks ?? 0;
     const remainingTasks = dashboard?.annotator_stats?.remaining_tasks ?? dashboard?.overview.remaining_tasks ?? null;
-    const quotaLabel = dashboard?.annotator_stats?.task_quota == null ? "\u0411\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u0430" : `${dashboard.annotator_stats.quota_used}/${dashboard.annotator_stats.task_quota}`;
+    const quotaUsed = dashboard?.annotator_stats?.quota_used ?? completedTasks;
+    const quotaTarget = dashboard?.annotator_stats?.task_quota ?? null;
+    const quotaLabel = dashboard?.annotator_stats?.task_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `${dashboard.annotator_stats.quota_used}/${dashboard.annotator_stats.task_quota}`;
     const taskWidth = Number(currentTask?.input_payload?.width || currentTask?.input_payload?.source_width || 0);
     const taskHeight = Number(currentTask?.input_payload?.height || currentTask?.input_payload?.source_height || 0);
     const taskDimensionsLabel = taskWidth > 0 && taskHeight > 0 ? `${taskWidth}\xD7${taskHeight}` : null;
@@ -26591,20 +26643,20 @@
           workspaceMode === "queue" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "editor-sidepanel editor-sidepanel--task-meta", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__head", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "editor-panel__title", children: "\u0417\u0430\u0434\u0430\u0447\u0430" }),
-              totalTasks ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
-                completedTasks,
+              quotaTarget == null ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "editor-chip editor-chip--ghost", children: [
+                quotaUsed,
                 "/",
-                totalTasks
-              ] }) : null
+                quotaTarget
+              ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-stack", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u0442\u043E\u0432\u043E" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: totalTasks ? `${completedTasks}/${totalTasks}` : completedTasks })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u043E" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: quotaTarget == null ? quotaUsed : `${quotaUsed}/${quotaTarget}` })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: remainingTasks == null ? "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E" : remainingTasks })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: remainingTasks == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u043E" : remainingTasks })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__metric-row", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),

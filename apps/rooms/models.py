@@ -76,6 +76,7 @@ class Room(TimeStampedModel):
     cross_validation_annotators_count = models.PositiveSmallIntegerField(default=1)
     cross_validation_similarity_threshold = models.PositiveSmallIntegerField(default=80)
     owner_is_annotator = models.BooleanField(default=True)
+    default_assignment_quota = models.PositiveIntegerField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -178,10 +179,11 @@ class RoomMembership(TimeStampedModel):
 
 class RoomAssignmentQuota(TimeStampedModel):
     """
-    Optional per-room cap for how many active task attempts a user may hold.
+    Optional per-room override for how many active task attempts a user may hold.
 
-    A missing row means unlimited work. Submitted and in-progress assignments in
-    the current task round consume quota; skipped or rejected rounds do not.
+    A missing row falls back to Room.default_assignment_quota. Submitted and
+    in-progress assignments in the current task round consume quota; skipped
+    or rejected rounds do not.
     """
 
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="assignment_quotas")

@@ -655,9 +655,90 @@ class LabelingConsensusAndDistributionTests(TestCase):
         self.assertEqual(task.annotations.count(), 2)
         self.assertEqual(TaskAssignment.objects.filter(task=task, round_number=1).count(), 2)
 
-        self.assertIsNone(get_next_task_for_annotator(room=room, annotator=third_annotator))
         self.assertEqual(get_next_task_for_annotator(room=room, annotator=first_annotator).id, task.id)
         self.assertEqual(get_next_task_for_annotator(room=room, annotator=second_annotator).id, task.id)
+        self.assertIsNone(get_next_task_for_annotator(room=room, annotator=third_annotator))
+
+    def test_rejected_task_can_be_rescued_when_original_annotators_do_not_take_it(self):
+        room = Room.objects.create(
+            title="Review rescue room",
+            created_by=self.owner,
+            owner_is_annotator=False,
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+            cross_validation_similarity_threshold=60,
+        )
+        first_annotator = User.objects.create_user(
+            email="rescue-annotator1@example.com",
+            full_name="Rescue Annotator 1",
+            password="secret123",
+        )
+        second_annotator = User.objects.create_user(
+            email="rescue-annotator2@example.com",
+            full_name="Rescue Annotator 2",
+            password="secret123",
+        )
+        third_annotator = User.objects.create_user(
+            email="rescue-annotator3@example.com",
+            full_name="Rescue Annotator 3",
+            password="secret123",
+        )
+        for annotator in (first_annotator, second_annotator, third_annotator):
+            RoomMembership.objects.create(
+                room=room,
+                user=annotator,
+                invited_by=self.owner,
+                status=RoomMembership.Status.JOINED,
+                role=RoomMembership.Role.ANNOTATOR,
+            )
+
+        task = Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            input_payload={"dataset": "Vision", "item_number": 1, "width": 400, "height": 400},
+        )
+
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=first_annotator).id, task.id)
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=second_annotator).id, task.id)
+        submit_annotation(
+            task=task,
+            annotator=first_annotator,
+            result_payload={
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": 1,
+                        "points": [10, 10, 80, 80],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            },
+        )
+        submit_annotation(
+            task=task,
+            annotator=second_annotator,
+            result_payload={
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": 1,
+                        "points": [12, 12, 82, 82],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            },
+        )
+
+        reject_task_annotation(task=task, reviewer=self.owner)
+
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=third_annotator).id, task.id)
+        self.assertEqual(get_next_task_for_annotator(room=room, annotator=first_annotator).id, task.id)
+        self.assertIsNone(get_next_task_for_annotator(room=room, annotator=second_annotator))
+        self.assertEqual(TaskAssignment.objects.filter(task=task, round_number=2).count(), 2)
 
     def test_accepted_consensus_removes_old_rejected_round_annotations(self):
         room = Room.objects.create(

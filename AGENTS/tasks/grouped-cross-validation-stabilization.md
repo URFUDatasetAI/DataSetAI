@@ -38,12 +38,15 @@
 - Неполный annotator pool не должен ронять систему и не должен притворяться полными группами; для таких случаев нужен fallback.
 - Fallback должен включаться для всего пула, если `len(assignment_pool) % required_reviews_per_item != 0`; нельзя формировать partial grouped split и молча оставлять “лишних” annotator-ов без задач.
 - `owner_is_annotator` входит в assignment pool только если это явно разрешено room settings.
+- Квота annotator-а берётся из персонального override-а или из `Room.default_assignment_quota`; UI и selectors должны показывать прогресс относительно этой квоты, даже если она больше или меньше размера датасета.
+- Rejected-задачи сначала возвращаются исходным annotator-ам, но assignment flow имеет rescue-pass для зависших задач, когда у другого annotator-а есть свободная квота и строгих задач больше нет. Rescue-pass не должен превышать `required_reviews_per_item` в текущем раунде.
 
 ## Open Edges / Risks
 
 - Изменения в selectors или participant stats могут тихо рассинхронизироваться с assignment pool semantics.
 - Рефакторинг review/progress/export логики легко ломает final-stage semantics для `text_detect_text`.
 - Любая “упрощающая” правка в assignment flow должна проверяться не только на happy path, но и на concurrency/fallback cases.
+- Rescue-pass особенно чувствителен к гонкам: нельзя ослаблять `select_for_update(skip_locked=True)` и проверки текущего числа annotator-ов раунда.
 
 ## Next Likely Steps
 

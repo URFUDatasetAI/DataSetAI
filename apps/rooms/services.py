@@ -114,6 +114,7 @@ def create_room(
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
     owner_is_annotator: bool = True,
+    default_assignment_quota=UNSET,
     annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     annotator_ids: list[int] | None = None,
     dataset_mode: str = "demo",
@@ -153,6 +154,7 @@ def create_room(
             cross_validation_annotators_count=cross_validation_annotators_count,
             cross_validation_similarity_threshold=cross_validation_similarity_threshold,
             owner_is_annotator=owner_is_annotator,
+            default_assignment_quota=None if default_assignment_quota is UNSET else default_assignment_quota,
         )
         room.set_access_password(password)
         room.save()
@@ -187,6 +189,10 @@ def create_room(
 
         if label_definitions:
             _create_room_labels(room=room, label_definitions=label_definitions)
+
+        if default_assignment_quota is UNSET:
+            room.default_assignment_quota = get_room_primary_tasks_queryset(room=room).count()
+            room.save(update_fields=["default_assignment_quota", "updated_at"])
 
         for annotator_id in unique_annotator_ids:
             invite_user_to_room(room=room, inviter=creator, invited_user_id=annotator_id)
@@ -502,6 +508,7 @@ def update_room(
     cross_validation_annotators_count=UNSET,
     cross_validation_similarity_threshold=UNSET,
     owner_is_annotator=UNSET,
+    default_assignment_quota=UNSET,
 ) -> Room:
     if not can_edit_room(room=room, user=owner):
         raise AccessDeniedError("Только владелец комнаты может менять настройки.")
@@ -547,6 +554,10 @@ def update_room(
     if owner_is_annotator is not UNSET and room.owner_is_annotator != owner_is_annotator:
         room.owner_is_annotator = owner_is_annotator
         update_fields.append("owner_is_annotator")
+
+    if default_assignment_quota is not UNSET and room.default_assignment_quota != default_assignment_quota:
+        room.default_assignment_quota = default_assignment_quota
+        update_fields.append("default_assignment_quota")
 
     if has_password is not UNSET:
         if not has_password:
