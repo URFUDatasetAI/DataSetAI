@@ -23,11 +23,13 @@
 - `RoomVisit.last_accessed_at` участвует в recency sorting и отражает недавнюю активность пользователя.
 - `Room.owner_is_annotator` означает, что владелец комнаты не должен неявно считаться annotator-ом всегда; это сознательно вынесено в отдельную семантику.
 - Join/access flow должен оставаться согласованным между policies, services, selectors и UI payload-ами.
+- Image dataset management теперь часть room lifecycle: владелец может после создания комнаты добавить изображения или ZIP-архив и удалить отдельные primary task rows. Этот write-side flow должен оставаться в `apps/rooms/services.py`, а UI/API не должны обходить каскадное удаление задач и связанных результатов.
 
 ## What Refactors Must Preserve
 
 - Доступ нельзя менять частично только в UI или только в selector: room access живёт через services + policies + shaped payloads.
 - Любое изменение роли владельца должно проверяться не только в create/update flow, но и в assignment eligibility, participant stats и review/dashboard payload-ах.
+- Post-create изменение датасета должно сохранять корректные `item_number`, source files и child-task semantics; нельзя просто удалять файл из storage без удаления task row и зависимых annotation/assignment rows.
 - Порядок комнат не должен “плыть” от случайных query изменений: pinned rooms и non-pinned rooms имеют разные сигналы сортировки, и это уже часть UX.
 
 ## First Files To Read

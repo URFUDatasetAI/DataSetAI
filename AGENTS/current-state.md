@@ -22,6 +22,10 @@
 - Write-side бизнес-логика живёт в `services.py`; read-side shaping payload-ов живёт в `selectors.py`.
 - Изменения в assignment/submit/reopen flow обязаны уважать `transaction.atomic()` и схему `select_for_update()`.
 - `get_next_task_for_annotator` нельзя случайно лишить `select_for_update(skip_locked=True)` там, где это поддерживается СУБД.
+- Пользовательские квоты внутри комнаты живут в `RoomAssignmentQuota`: квоту расходуют только assignments текущего раунда в статусах `in_progress`/`submitted`; skipped assignments и старые отклонённые раунды квоту не занимают.
+- Пропуск media-задачи представлен как `TaskAssignment.Status.SKIPPED`: пропустивший annotator не должен получить ту же задачу снова в том же раунде, а skipped assignments не считаются как нужные cross-validation submissions.
+- Review различает `final` и `incomplete` задачи. `final` включает как accepted consensus, так и уже rejected старые раунды; `incomplete` - только текущий раунд, где есть submissions, но их меньше нужного числа. Неполные cross-validation задачи показывают только per-annotator submissions без consensus и позволяют вернуть на исправление только одну выбранную разметку.
+- Image dataset room не считается immutable после создания: владелец может дозагружать изображения/ZIP и удалять primary task rows через room dataset API; новые task rows должны продолжать `input_payload.item_number`, а удаление primary task удаляет связанные child tasks/разметки каскадом.
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
 - Ручной reject на review должен возвращать задачу тем же annotator-ам, которые сдавали отклонённый раунд; не удаляй rejected-round assignments до успешного принятия нового раунда.
 - В `text_detect_text` финальным считается transcription stage, а не все task rows подряд.

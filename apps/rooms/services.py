@@ -1,6 +1,5 @@
 import io
 import json
-import mimetypes
 import shutil
 import subprocess
 import tempfile
@@ -10,15 +9,16 @@ from itertools import cycle
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from django.core.files import File
 from django.core.files.base import ContentFile
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.utils import timezone
 
 from apps.labeling.models import Task
-from apps.labeling.workflows import get_room_final_tasks_queryset
+from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from apps.rooms.models import (
     Room,
+    RoomAssignmentQuota,
     RoomJoinRequest,
     RoomLabel,
     RoomMembership,
@@ -26,7 +26,7 @@ from apps.rooms.models import (
     RoomVisit,
     generate_room_invite_token,
 )
-from apps.rooms.policies import can_edit_room, can_invite_members
+from apps.rooms.policies import can_annotate_room, can_edit_room, can_invite_members, can_manage_room
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
 
@@ -72,6 +72,10 @@ JSON_EXTENSIONS = {".json"}
 ARCHIVE_EXTENSIONS = {".zip"}
 UNSET = object()
 MAX_PINNED_ROOMS = 5
+MAX_ARCHIVE_FILES = 10000
+MAX_ARCHIVE_MEMBER_BYTES = 512 * 1024 * 1024
+MAX_ARCHIVE_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
+ARCHIVE_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
 
 
 @dataclass
@@ -192,15 +196,15 @@ def create_room(
 
 def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> RoomMembership:
     if not can_invite_members(room=room, user=inviter):
-        raise AccessDeniedError("You do not have permission to invite participants to this room.")
+        raise AccessDeniedError("У тебя нет прав приглашать участников в эту комнату.")
 
     try:
         invited_user = User.objects.get(id=invited_user_id)
     except User.DoesNotExist as exc:
-        raise NotFoundError("Invited user not found.") from exc
+        raise NotFoundError("Приглашаемый пользователь не найден.") from exc
 
     if invited_user.id == room.created_by_id:
-        raise ConflictError("Room owner already has access to this room.")
+        raise ConflictError("У владельца уже есть доступ к этой комнате.")
 
     membership, created = RoomMembership.objects.get_or_create(
         room=room,
@@ -230,15 +234,15 @@ def invite_user_to_room(*, room: Room, inviter: User, invited_user_id: int) -> R
 
 def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, role: str) -> RoomMembership:
     if room.created_by_id != owner.id:
-        raise AccessDeniedError("Only the room owner can assign room roles.")
+        raise AccessDeniedError("Только владелец комнаты может назначать роли.")
 
     if target_user_id == room.created_by_id:
-        raise ConflictError("Room owner role cannot be changed.")
+        raise ConflictError("Роль владельца комнаты нельзя изменить.")
 
     try:
         membership = RoomMembership.objects.get(room=room, user_id=target_user_id)
     except RoomMembership.DoesNotExist as exc:
-        raise NotFoundError("Room membership not found.") from exc
+        raise NotFoundError("Участник комнаты не найден.") from exc
 
     if membership.role != role:
         membership.role = role
@@ -247,26 +251,52 @@ def set_room_membership_role(*, room: Room, owner: User, target_user_id: int, ro
     return membership
 
 
+def set_room_assignment_quota(*, room: Room, actor: User, target_user_id: int, task_quota: int | None) -> RoomAssignmentQuota | None:
+    if not can_manage_room(room=room, user=actor):
+        raise AccessDeniedError("У тебя нет прав управлять квотами задач в этой комнате.")
+
+    try:
+        target_user = User.objects.get(id=target_user_id)
+    except User.DoesNotExist as exc:
+        raise NotFoundError("Пользователь для квоты не найден.") from exc
+
+    membership = RoomMembership.objects.filter(room=room, user=target_user).only("status", "role").first()
+    if not can_annotate_room(room=room, user=target_user, membership=membership):
+        raise ConflictError("Квоты можно назначать только пользователям, которые могут размечать задачи в этой комнате.")
+
+    if task_quota is None:
+        RoomAssignmentQuota.objects.filter(room=room, user=target_user).delete()
+        return None
+
+    quota, _ = RoomAssignmentQuota.objects.update_or_create(
+        room=room,
+        user=target_user,
+        defaults={"task_quota": task_quota},
+    )
+    return quota
+
+
 def remove_room_membership(*, room: Room, owner: User, target_user_id: int) -> None:
     if room.created_by_id != owner.id:
-        raise AccessDeniedError("Only the room owner can remove participants from the room.")
+        raise AccessDeniedError("Только владелец комнаты может удалять участников.")
 
     if target_user_id == room.created_by_id:
-        raise ConflictError("Room owner cannot be removed from the room.")
+        raise ConflictError("Владельца комнаты нельзя удалить из комнаты.")
 
     deleted_count, _ = RoomMembership.objects.filter(room=room, user_id=target_user_id).delete()
     if not deleted_count:
-        raise NotFoundError("Room membership not found.")
+        raise NotFoundError("Участник комнаты не найден.")
+    RoomAssignmentQuota.objects.filter(room=room, user_id=target_user_id).delete()
 
 
 def validate_room_password(*, room: Room, password: str = "") -> None:
     if not room.check_access_password(password):
-        raise AccessDeniedError("Incorrect room password.")
+        raise AccessDeniedError("Неверный пароль комнаты.")
 
 
 def regenerate_room_invite(*, room: Room, actor: User) -> Room:
     if not can_invite_members(room=room, user=actor):
-        raise AccessDeniedError("You do not have permission to regenerate the invite link for this room.")
+        raise AccessDeniedError("У тебя нет прав обновлять invite-ссылку этой комнаты.")
 
     while True:
         candidate = generate_room_invite_token()
@@ -279,13 +309,13 @@ def regenerate_room_invite(*, room: Room, actor: User) -> Room:
 
 def submit_room_join_request(*, room: Room, applicant: User) -> RoomJoinRequest:
     if applicant.id == room.created_by_id:
-        raise ConflictError("Room owner already has access to this room.")
+        raise ConflictError("У владельца уже есть доступ к этой комнате.")
 
     membership = RoomMembership.objects.filter(room=room, user=applicant).first()
     if membership is not None:
         if membership.status == RoomMembership.Status.JOINED:
-            raise ConflictError("You already have access to this room.")
-        raise ConflictError("You have already been invited to this room.")
+            raise ConflictError("У тебя уже есть доступ к этой комнате.")
+        raise ConflictError("Тебя уже пригласили в эту комнату.")
 
     join_request, created = RoomJoinRequest.objects.get_or_create(
         room=room,
@@ -306,12 +336,12 @@ def submit_room_join_request(*, room: Room, applicant: User) -> RoomJoinRequest:
 
 def approve_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
     if not can_invite_members(room=room, user=approver):
-        raise AccessDeniedError("You do not have permission to approve join requests for this room.")
+        raise AccessDeniedError("У тебя нет прав принимать заявки в эту комнату.")
 
     try:
         join_request = RoomJoinRequest.objects.select_related("user").get(id=join_request_id, room=room)
     except RoomJoinRequest.DoesNotExist as exc:
-        raise NotFoundError("Join request not found.") from exc
+        raise NotFoundError("Заявка на вступление не найдена.") from exc
 
     approved_at = timezone.now()
     membership, _ = RoomMembership.objects.get_or_create(
@@ -353,15 +383,15 @@ def approve_room_join_request(*, room: Room, approver: User, join_request_id: in
 
 def reject_room_join_request(*, room: Room, approver: User, join_request_id: int) -> RoomJoinRequest:
     if not can_invite_members(room=room, user=approver):
-        raise AccessDeniedError("You do not have permission to reject join requests for this room.")
+        raise AccessDeniedError("У тебя нет прав отклонять заявки в эту комнату.")
 
     try:
         join_request = RoomJoinRequest.objects.get(id=join_request_id, room=room)
     except RoomJoinRequest.DoesNotExist as exc:
-        raise NotFoundError("Join request not found.") from exc
+        raise NotFoundError("Заявка на вступление не найдена.") from exc
 
     if RoomMembership.objects.filter(room=room, user=join_request.user).exists():
-        raise ConflictError("This user already has access to the room.")
+        raise ConflictError("У этого пользователя уже есть доступ к комнате.")
 
     if (
         join_request.status != RoomJoinRequest.Status.REJECTED
@@ -383,7 +413,7 @@ def join_room(*, room: Room, annotator: User, password: str | None = None) -> Ro
     try:
         membership = RoomMembership.objects.get(room=room, user=annotator)
     except RoomMembership.DoesNotExist as exc:
-        raise AccessDeniedError("You do not have access to this room. Use the invite link and wait for approval.") from exc
+        raise AccessDeniedError("У тебя нет доступа к этой комнате. Используй invite-ссылку и дождись одобрения.") from exc
 
     if membership.status != RoomMembership.Status.JOINED or membership.joined_at is None:
         membership.status = RoomMembership.Status.JOINED
@@ -474,7 +504,7 @@ def update_room(
     owner_is_annotator=UNSET,
 ) -> Room:
     if not can_edit_room(room=room, user=owner):
-        raise AccessDeniedError("Only the room owner can edit room settings.")
+        raise AccessDeniedError("Только владелец комнаты может менять настройки.")
 
     update_fields: list[str] = []
 
@@ -536,6 +566,95 @@ def update_room(
     return room
 
 
+def _get_next_room_item_number(*, room: Room) -> int:
+    item_numbers = [
+        int(value)
+        for value in get_room_primary_tasks_queryset(room=room).values_list("input_payload__item_number", flat=True)
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+    ]
+    return (max(item_numbers) if item_numbers else 0) + 1
+
+
+def add_room_dataset_images(
+    *,
+    room: Room,
+    actor: User,
+    dataset_files: list,
+    media_manifest: list[dict] | None = None,
+) -> list[Task]:
+    if not can_edit_room(room=room, user=actor):
+        raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
+    if room.dataset_type != Room.DatasetType.IMAGE:
+        raise ConflictError("Добавлять изображения можно только в комнаты с типом датасета «Фото».")
+
+    validate_dataset_upload(dataset_mode=Room.DatasetType.IMAGE, dataset_files=dataset_files)
+
+    with transaction.atomic():
+        locked_room = Room.objects.select_for_update().get(id=room.id)
+        return _create_media_tasks(
+            room=locked_room,
+            dataset_label=locked_room.dataset_label or "Тестовый датасет",
+            dataset_files=list(dataset_files or []),
+            media_manifest=list(media_manifest or []),
+            source_type=Task.SourceType.IMAGE,
+            start_item_number=_get_next_room_item_number(room=locked_room),
+        )
+
+
+def delete_room_dataset_tasks(*, room: Room, actor: User, task_ids: list[int]) -> int:
+    if not can_edit_room(room=room, user=actor):
+        raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
+
+    normalized_task_ids = []
+    for task_id in dict.fromkeys(task_ids or []):
+        try:
+            normalized_task_id = int(task_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_task_id > 0:
+            normalized_task_ids.append(normalized_task_id)
+    if not normalized_task_ids:
+        raise ConflictError("Выбери хотя бы один объект датасета для удаления.")
+
+    with transaction.atomic():
+        locked_room = Room.objects.select_for_update().get(id=room.id)
+        tasks = list(
+            get_room_primary_tasks_queryset(room=locked_room)
+            .select_for_update()
+            .filter(id__in=normalized_task_ids)
+            .prefetch_related("child_tasks")
+            .order_by("id")
+        )
+        if len(tasks) != len(normalized_task_ids):
+            raise NotFoundError("Один или несколько объектов датасета не найдены.")
+
+        files_to_delete = []
+        child_ids = []
+        for task in tasks:
+            if task.source_file:
+                files_to_delete.append(task.source_file)
+            for child_task in task.child_tasks.all():
+                child_ids.append(child_task.id)
+                if child_task.source_file:
+                    files_to_delete.append(child_task.source_file)
+
+        if child_ids:
+            nested_children = Task.objects.filter(parent_task_id__in=child_ids).only("source_file")
+            for child_task in nested_children:
+                if child_task.source_file:
+                    files_to_delete.append(child_task.source_file)
+
+        deleted_count, _ = Task.objects.filter(id__in=[task.id for task in tasks]).delete()
+
+    for source_file in files_to_delete:
+        try:
+            source_file.delete(save=False)
+        except FileNotFoundError:
+            continue
+
+    return deleted_count
+
+
 def _create_demo_tasks(*, room: Room, task_count: int, dataset_label: str) -> None:
     sample_iterator = cycle(DEMO_DATASET_SAMPLES)
     tasks = []
@@ -583,7 +702,7 @@ def _load_json_dataset_items(dataset_file) -> list:
     try:
         payload = json.loads(dataset_file.read().decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConflictError("JSON dataset must be a valid UTF-8 JSON file.") from exc
+        raise ConflictError("JSON-датасет должен быть корректным UTF-8 JSON-файлом.") from exc
 
     if isinstance(payload, list):
         return payload
@@ -594,17 +713,17 @@ def _load_json_dataset_items(dataset_file) -> list:
                 return payload[key]
         return [payload]
 
-    raise ConflictError("JSON dataset must contain an array or an object.")
+    raise ConflictError("JSON-датасет должен содержать массив или объект.")
 
 
 def _create_json_tasks(*, room: Room, dataset_label: str, dataset_files: list) -> None:
     dataset_files = _expand_dataset_files(dataset_mode=Room.DatasetType.JSON, dataset_files=dataset_files)
     if len(dataset_files) != 1:
-        raise ConflictError("JSON dataset upload expects exactly one .json file.")
+        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
 
     items = _load_json_dataset_items(dataset_files[0])
     if not items:
-        raise ConflictError("JSON dataset file is empty.")
+        raise ConflictError("JSON-файл датасета пуст.")
 
     tasks = []
     for index, item in enumerate(items):
@@ -625,7 +744,8 @@ def _create_media_tasks(
     dataset_files: list,
     media_manifest: list[dict],
     source_type: str,
-) -> None:
+    start_item_number: int = 1,
+) -> list[Task]:
     dataset_files = _expand_dataset_files(
         dataset_mode=Room.DatasetType.IMAGE if source_type == Task.SourceType.IMAGE else Room.DatasetType.VIDEO,
         dataset_files=dataset_files,
@@ -634,20 +754,22 @@ def _create_media_tasks(
     # For video datasets we fan out one uploaded video into many image tasks
     # (frames), because the rest of the labeling pipeline operates on Task rows.
     manifest_by_name = {item["name"]: item for item in media_manifest if item.get("name")}
-    next_item_number = 1
+    next_item_number = start_item_number
+    created_tasks: list[Task] = []
 
     for dataset_file in dataset_files:
         file_name = Path(dataset_file.name).name
         metadata = manifest_by_name.get(file_name, {})
 
         if source_type == Task.SourceType.VIDEO:
-            next_item_number = _create_video_frame_tasks(
+            next_item_number, frame_tasks = _create_video_frame_tasks(
                 room=room,
                 dataset_label=dataset_label,
                 dataset_file=dataset_file,
                 metadata=metadata,
                 start_item_number=next_item_number,
             )
+            created_tasks.extend(frame_tasks)
             continue
 
         input_payload = {
@@ -660,7 +782,7 @@ def _create_media_tasks(
         if metadata.get("height"):
             input_payload["height"] = metadata["height"]
 
-        Task.objects.create(
+        task = Task.objects.create(
             room=room,
             source_type=source_type,
             workflow_stage=(
@@ -672,7 +794,10 @@ def _create_media_tasks(
             source_file=dataset_file,
             input_payload=input_payload,
         )
+        created_tasks.append(task)
         next_item_number += 1
+
+    return created_tasks
 
 
 def _create_video_frame_tasks(
@@ -682,7 +807,7 @@ def _create_video_frame_tasks(
     dataset_file,
     metadata: dict,
     start_item_number: int,
-) -> int:
+) -> tuple[int, list[Task]]:
     """
     Splits an uploaded video file into discrete frames (images) using ffmpeg.
     Each frame is then represented as a separate Image Task.
@@ -695,7 +820,7 @@ def _create_video_frame_tasks(
     # serving, otherwise video/image labeling breaks even if Django itself works.
     ffmpeg_path = shutil.which("ffmpeg")
     if not ffmpeg_path:
-        raise ConflictError("FFmpeg is required to import video datasets.")
+        raise ConflictError("Для импорта видео-датасетов нужен FFmpeg.")
 
     video_name = Path(dataset_file.name).name
     frame_rate = int(metadata.get("frame_rate") or 25)
@@ -738,6 +863,7 @@ def _create_video_frame_tasks(
             raise ConflictError(f"Видео {video_name} не содержит кадров для разметки.")
 
         next_item_number = start_item_number
+        created_tasks: list[Task] = []
         for frame_index, frame_path in enumerate(frame_paths, start=1):
             frame_name = f"{Path(video_name).stem}_frame_{frame_index:06d}.jpg"
             frame_task = Task(
@@ -765,9 +891,10 @@ def _create_video_frame_tasks(
             )
             frame_task.source_file.save(frame_name, ContentFile(frame_path.read_bytes()), save=False)
             frame_task.save()
+            created_tasks.append(frame_task)
             next_item_number += 1
 
-        return next_item_number
+        return next_item_number, created_tasks
 
 
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
@@ -775,18 +902,18 @@ def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
         return
 
     if not dataset_files:
-        raise ConflictError("Upload at least one dataset file.")
+        raise ConflictError("Загрузи хотя бы один файл датасета.")
 
     suffixes = {Path(file.name).suffix.lower() for file in dataset_files}
 
     if dataset_mode == Room.DatasetType.JSON:
         if suffixes - (JSON_EXTENSIONS | ARCHIVE_EXTENSIONS):
-            raise ConflictError("JSON mode accepts .json files or .zip archives with JSON datasets.")
+            raise ConflictError("JSON-режим принимает .json-файлы или .zip-архивы с JSON-датасетами.")
         return
 
     allowed_extensions = IMAGE_EXTENSIONS if dataset_mode == Room.DatasetType.IMAGE else VIDEO_EXTENSIONS
     if suffixes - (allowed_extensions | ARCHIVE_EXTENSIONS):
-        raise ConflictError("Uploaded files do not match the selected dataset type. You can also upload a .zip archive.")
+        raise ConflictError("Загруженные файлы не соответствуют выбранному типу датасета. Также можно загрузить .zip-архив.")
 
 
 def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
@@ -811,16 +938,18 @@ def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
             expanded_files.append(dataset_file)
 
     if not expanded_files:
-        raise ConflictError("Archive does not contain supported dataset files.")
+        raise ConflictError("Архив не содержит поддерживаемых файлов датасета.")
 
     if dataset_mode == Room.DatasetType.JSON and len(expanded_files) != 1:
-        raise ConflictError("JSON dataset upload expects exactly one .json file.")
+        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
 
     return expanded_files
 
 
 def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]) -> list:
     archive_members = []
+    archive_file_count = 0
+    total_uncompressed_size = 0
 
     if hasattr(dataset_file, "seek"):
         dataset_file.seek(0)
@@ -832,17 +961,29 @@ def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]
                     continue
                 if archive_info.filename.startswith("__MACOSX/"):
                     continue
+                archive_file_count += 1
+                if archive_file_count > MAX_ARCHIVE_FILES:
+                    raise ConflictError(f"В ZIP-архиве слишком много файлов. Максимум: {MAX_ARCHIVE_FILES}.")
+                if archive_info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+                    max_mb = MAX_ARCHIVE_MEMBER_BYTES // (1024 * 1024)
+                    raise ConflictError(f"Файл {Path(archive_info.filename).name} в архиве больше {max_mb} МБ.")
+                total_uncompressed_size += archive_info.file_size
+                if total_uncompressed_size > MAX_ARCHIVE_TOTAL_BYTES:
+                    max_gb = MAX_ARCHIVE_TOTAL_BYTES // (1024 * 1024 * 1024)
+                    raise ConflictError(f"Суммарный размер файлов в ZIP-архиве больше {max_gb} ГБ.")
 
                 inner_name = Path(archive_info.filename).name
                 inner_suffix = Path(inner_name).suffix.lower()
                 if not inner_name or inner_name.startswith(".") or inner_suffix not in allowed_extensions:
                     continue
 
-                content = archive.read(archive_info)
-                content_type = mimetypes.guess_type(inner_name)[0] or "application/octet-stream"
-                archive_members.append(SimpleUploadedFile(inner_name, content, content_type=content_type))
+                spooled_file = tempfile.SpooledTemporaryFile(max_size=ARCHIVE_SPOOL_MEMORY_BYTES)
+                with archive.open(archive_info) as archive_member:
+                    shutil.copyfileobj(archive_member, spooled_file, length=1024 * 1024)
+                spooled_file.seek(0)
+                archive_members.append(File(spooled_file, name=inner_name))
     except zipfile.BadZipFile as exc:
-        raise ConflictError("Uploaded archive is not a valid ZIP file.") from exc
+        raise ConflictError("Загруженный архив не является корректным ZIP-файлом.") from exc
     finally:
         if hasattr(dataset_file, "seek"):
             dataset_file.seek(0)
@@ -944,7 +1085,7 @@ def _build_jsonl_export(*, room: Room, tasks, labels, base_url: str | None) -> E
 
 def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("COCO export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт COCO доступен только для датасетов с изображениями или кадрами видео.")
 
     annotations = []
     images = []
@@ -1007,7 +1148,7 @@ def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("YOLO export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт YOLO доступен только для датасетов с изображениями или кадрами видео.")
 
     label_order = {label.id: index for index, label in enumerate(labels)}
     buffer = io.BytesIO()
@@ -1063,7 +1204,7 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
 def _build_pascal_voc_export(*, room: Room, tasks, labels) -> ExportArtifact:
     if room.dataset_type not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
-        raise ConflictError("Pascal VOC export is available only for image or video-frame datasets.")
+        raise ConflictError("Экспорт Pascal VOC доступен только для датасетов с изображениями или кадрами видео.")
 
     labels_by_id = {label.id: label for label in labels}
     buffer = io.BytesIO()
@@ -1127,7 +1268,7 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
     # Export only submitted tasks. Pending/in-progress tasks are intentionally
     # excluded so downstream datasets contain finalized results.
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":
-        raise ConflictError("Object detect + text rooms support only Native JSON export.")
+        raise ConflictError("Комнаты Object detect + text поддерживают только экспорт Native JSON.")
     tasks = list(get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).prefetch_related("annotations").all())
     labels = list(room.labels.all())
 
@@ -1142,7 +1283,7 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
     if export_format == "pascal_voc_zip":
         return _build_pascal_voc_export(room=room, tasks=tasks, labels=labels)
 
-    raise NotFoundError("Unsupported export format.")
+    raise NotFoundError("Неподдерживаемый формат экспорта.")
 
 
 def _get_export_annotation_payload(task: Task):

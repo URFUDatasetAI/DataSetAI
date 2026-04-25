@@ -1,3 +1,4 @@
+from django.db.models import Count, F, Q
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -6,6 +7,10 @@ from rest_framework.views import APIView
 
 from apps.rooms.api.v1.serializers import (
     RoomAccessSerializer,
+    RoomAssignmentQuotaSerializer,
+    RoomDatasetDeleteSerializer,
+    RoomDatasetTaskSerializer,
+    RoomDatasetUploadSerializer,
     InviteAnnotatorSerializer,
     RoomCreateSerializer,
     RoomJoinRequestDecisionSerializer,
@@ -22,6 +27,7 @@ from apps.rooms.api.v1.serializers import (
 from apps.rooms.selectors import (
     build_room_invite_preview,
     build_room_dashboard,
+    get_room_assignment_quota_state,
     get_room_by_id,
     get_room_by_invite_token,
     get_room_for_owner,
@@ -30,8 +36,10 @@ from apps.rooms.selectors import (
     list_owned_rooms,
 )
 from apps.rooms.services import (
+    add_room_dataset_images,
     approve_room_join_request,
     create_room,
+    delete_room_dataset_tasks,
     export_room_annotations,
     invite_user_to_room,
     join_room,
@@ -42,10 +50,13 @@ from apps.rooms.services import (
     reorder_room_pins,
     reject_room_join_request,
     set_room_membership_role,
+    set_room_assignment_quota,
     set_room_pinned,
     submit_room_join_request,
     update_room,
 )
+from apps.labeling.workflows import get_room_primary_tasks_queryset
+from apps.users.models import User
 
 """
 Rooms API surface.
@@ -57,6 +68,7 @@ Important split:
 
 
 ROOM_CREATE_LIST_FIELDS = {"annotator_ids", "dataset_files"}
+ROOM_DATASET_UPLOAD_LIST_FIELDS = {"dataset_files"}
 
 
 def _build_room_create_payload(request):
@@ -75,6 +87,21 @@ def _build_room_create_payload(request):
     dataset_files = request.FILES.getlist("dataset_files")
     data["dataset_files"] = dataset_files
 
+    return data
+
+
+def _build_room_dataset_upload_payload(request):
+    if hasattr(request.data, "lists"):
+        data = {}
+        for key, values in request.data.lists():
+            if key in ROOM_DATASET_UPLOAD_LIST_FIELDS:
+                data[key] = values
+            else:
+                data[key] = values if len(values) > 1 else (values[0] if values else None)
+    else:
+        data = dict(request.data)
+
+    data["dataset_files"] = request.FILES.getlist("dataset_files")
     return data
 
 
@@ -129,6 +156,71 @@ class RoomDashboardView(APIView):
         room = get_visible_room(room_id=room_id, user=request.user)
         record_room_visit(room=room, user=request.user)
         return Response(build_room_dashboard(room=room, actor=request.user, request=request))
+
+
+class RoomDatasetTaskListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id: int):
+        room = get_room_for_owner(room_id=room_id, owner=request.user)
+        tasks = (
+            get_room_primary_tasks_queryset(room=room)
+            .annotate(
+                assignments_count_value=Count(
+                    "assignments",
+                    filter=Q(assignments__round_number=F("current_round")),
+                    distinct=True,
+                ),
+                submitted_annotations_count_value=Count(
+                    "annotations",
+                    filter=Q(
+                        annotations__assignment__round_number=F("current_round"),
+                        annotations__assignment__status="submitted",
+                    ),
+                    distinct=True,
+                ),
+            )
+            .order_by("id")
+        )
+        serializer = RoomDatasetTaskSerializer(tasks, many=True, context={"request": request})
+        return Response(serializer.data)
+
+
+class RoomDatasetUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomDatasetUploadSerializer(data=_build_room_dataset_upload_payload(request))
+        serializer.is_valid(raise_exception=True)
+        tasks = add_room_dataset_images(
+            room=room,
+            actor=request.user,
+            dataset_files=serializer.validated_data["dataset_files"],
+            media_manifest=serializer.validated_data.get("media_manifest") or [],
+        )
+        return Response(
+            {
+                "added_count": len(tasks),
+                "tasks": RoomDatasetTaskSerializer(tasks, many=True, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class RoomDatasetDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomDatasetDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        deleted_count = delete_room_dataset_tasks(
+            room=room,
+            actor=request.user,
+            task_ids=serializer.validated_data["task_ids"],
+        )
+        return Response({"deleted_count": deleted_count})
 
 
 class RoomInviteLinkView(APIView):
@@ -226,6 +318,29 @@ class RoomMembershipRoleView(APIView):
             role=serializer.validated_data["role"],
         )
         return Response(RoomMembershipSerializer(membership).data)
+
+
+class RoomAssignmentQuotaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id: int, user_id: int):
+        room = get_visible_room(room_id=room_id, user=request.user)
+        serializer = RoomAssignmentQuotaSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        quota = set_room_assignment_quota(
+            room=room,
+            actor=request.user,
+            target_user_id=user_id,
+            task_quota=serializer.validated_data["task_quota"],
+        )
+        target_user = quota.user if quota is not None else User.objects.get(id=user_id)
+        return Response(
+            {
+                "room_id": room.id,
+                "user_id": user_id,
+                **get_room_assignment_quota_state(room=room, user=target_user),
+            }
+        )
 
 
 class RoomMembershipDeleteView(APIView):

@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.labeling.models import Annotation, Task, TaskAssignment
-from apps.rooms.models import RoomMembership
+from apps.rooms.models import RoomAssignmentQuota, RoomMembership
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
 
@@ -144,6 +144,48 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(task.status, Task.Status.SUBMITTED)
         self.assertGreaterEqual(task.validation_score, 80)
 
+    def test_assignment_quota_caps_new_tasks_and_restores_after_rejection(self):
+        quota_room = make_room(
+            customer=self.customer,
+            title="Quota labeling room",
+            owner_is_annotator=False,
+        )
+        invite_annotator(room=quota_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        RoomAssignmentQuota.objects.create(room=quota_room, user=self.annotator, task_quota=1)
+        first_task = make_task(room=quota_room, payload={"text": "quota first"})
+        make_task(room=quota_room, payload={"text": "quota second"})
+
+        first_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": quota_room.id}),
+            **self.auth(self.annotator),
+        )
+        first_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": first_task.id}),
+            {"result_payload": {"label": "done"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        quota_blocked = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": quota_room.id}),
+            **self.auth(self.annotator),
+        )
+        reject_response = self.client.post(
+            reverse("task-reject", kwargs={"task_id": first_task.id}),
+            format="json",
+            **self.auth(self.customer),
+        )
+        restored_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": quota_room.id}),
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(first_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_submit.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(quota_blocked.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(reject_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(restored_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(restored_next.data["id"], first_task.id)
+
     def test_unjoined_annotator_cannot_get_next_task(self):
         response = self.client.get(
             reverse("room-next-task", kwargs={"room_id": self.room.id}),
@@ -178,6 +220,35 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.image_task.refresh_from_db()
         self.assertEqual(self.image_task.status, Task.Status.SUBMITTED)
+
+    def test_annotator_can_skip_image_task_without_receiving_same_round_again(self):
+        second_image_task = make_task(
+            room=self.image_room,
+            payload={"width": 320, "height": 240, "source_name": "car-2.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="car-2.jpg",
+        )
+        self.client.get(reverse("room-next-task", kwargs={"room_id": self.image_room.id}), **self.auth(self.annotator))
+
+        skip_response = self.client.post(
+            reverse("task-skip", kwargs={"task_id": self.image_task.id}),
+            format="json",
+            **self.auth(self.annotator),
+        )
+        next_response = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": self.image_room.id}),
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(skip_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            TaskAssignment.objects.get(task=self.image_task, annotator=self.annotator).status,
+            TaskAssignment.Status.SKIPPED,
+        )
+        self.image_task.refresh_from_db()
+        self.assertEqual(self.image_task.status, Task.Status.PENDING)
+        self.assertEqual(next_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(next_response.data["id"], second_image_task.id)
 
     def test_image_annotation_rejects_unknown_label_id(self):
         self.client.get(reverse("room-next-task", kwargs={"room_id": self.image_room.id}), **self.auth(self.annotator))
@@ -493,6 +564,91 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(reject_response.status_code, status.HTTP_200_OK)
         task.refresh_from_db()
         self.assertEqual(task.status, Task.Status.PENDING)
+
+    def test_incomplete_cross_validation_review_hides_consensus_and_reject_all(self):
+        review_room = make_room(
+            customer=self.customer,
+            title="Incomplete review room",
+            dataset_type="image",
+            cross_validation_enabled=True,
+            cross_validation_annotators_count=2,
+            owner_is_annotator=False,
+        )
+        invite_annotator(room=review_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=review_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        label = review_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = make_task(
+            room=review_room,
+            payload={"width": 640, "height": 480, "source_name": "incomplete.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="incomplete.jpg",
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": review_room.id}), **self.auth(self.annotator))
+        submit_response = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [10, 10, 100, 100],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        final_list_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "final"},
+            **self.auth(self.customer),
+        )
+        incomplete_list_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "incomplete"},
+            **self.auth(self.customer),
+        )
+        detail_response = self.client.get(
+            reverse("task-review-detail", kwargs={"task_id": task.id}),
+            **self.auth(self.customer),
+        )
+        reject_response = self.client.post(
+            reverse("task-reject", kwargs={"task_id": task.id}),
+            format="json",
+            **self.auth(self.customer),
+        )
+        return_response = self.client.post(
+            reverse("task-return-for-revision", kwargs={"task_id": task.id}),
+            {"annotator_id": self.annotator.id},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(submit_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(final_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(final_list_response.data, [])
+        self.assertEqual(incomplete_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in incomplete_list_response.data], [task.id])
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(detail_response.data["consensus_available"])
+        self.assertFalse(detail_response.data["can_reject_all"])
+        self.assertIsNone(detail_response.data["consensus_payload"])
+        self.assertEqual(detail_response.data["review_outcome"], "incomplete")
+        self.assertEqual(detail_response.data["submitted_annotations_count"], 1)
+        self.assertEqual(detail_response.data["required_annotations_count"], 2)
+        self.assertEqual(reject_response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(return_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            TaskAssignment.objects.get(task=task, annotator=self.annotator, round_number=1).status,
+            TaskAssignment.Status.IN_PROGRESS,
+        )
+        self.assertFalse(Annotation.objects.filter(task=task, annotator=self.annotator).exists())
 
     def test_tester_can_review_submitted_tasks(self):
         review_room = make_room(customer=self.customer, title="Tester review room", dataset_type="image")
