@@ -280,6 +280,114 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(next_response.status_code, status.HTTP_200_OK)
         self.assertEqual(next_response.data["id"], second_image_task.id)
 
+    def test_skipped_images_count_against_new_image_quota_until_retried(self):
+        quota_room = make_room(
+            customer=self.customer,
+            title="Skip quota room",
+            dataset_type="image",
+            owner_is_annotator=False,
+            default_assignment_quota=2,
+        )
+        invite_annotator(room=quota_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        first_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "skip-1.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="skip-1.jpg",
+        )
+        second_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "skip-2.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="skip-2.jpg",
+        )
+        third_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "skip-3.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="skip-3.jpg",
+        )
+
+        first_next = self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+        first_skip = self.client.post(reverse("task-skip", kwargs={"task_id": first_task.id}), format="json", **self.auth(self.annotator))
+        second_next = self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+        second_skip = self.client.post(reverse("task-skip", kwargs={"task_id": second_task.id}), format="json", **self.auth(self.annotator))
+        retry_next = self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+
+        self.assertEqual(first_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_next.data["id"], first_task.id)
+        self.assertEqual(first_skip.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_next.data["id"], second_task.id)
+        self.assertEqual(second_skip.status_code, status.HTTP_200_OK)
+        self.assertEqual(retry_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(retry_next.data["id"], first_task.id)
+        self.assertNotEqual(retry_next.data["id"], third_task.id)
+
+    def test_skipped_image_completed_by_other_annotator_frees_new_image_slot(self):
+        quota_room = make_room(
+            customer=self.customer,
+            title="Skip quota refill room",
+            dataset_type="image",
+            owner_is_annotator=False,
+            default_assignment_quota=2,
+        )
+        invite_annotator(room=quota_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=quota_room, annotator=self.other_annotator, invited_by=self.customer, joined=True)
+        label = quota_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        first_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "refill-1.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="refill-1.jpg",
+        )
+        second_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "refill-2.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="refill-2.jpg",
+        )
+        third_task = make_task(
+            room=quota_room,
+            payload={"width": 320, "height": 240, "source_name": "refill-3.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="refill-3.jpg",
+        )
+        payload = {
+            "result_payload": {
+                "annotations": [
+                    {
+                        "type": "bbox",
+                        "label_id": label.id,
+                        "points": [10, 10, 120, 120],
+                        "frame": 0,
+                        "attributes": [],
+                        "occluded": False,
+                    }
+                ]
+            }
+        }
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+        self.client.post(reverse("task-skip", kwargs={"task_id": first_task.id}), format="json", **self.auth(self.annotator))
+        self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+        self.client.post(reverse("task-skip", kwargs={"task_id": second_task.id}), format="json", **self.auth(self.annotator))
+
+        other_next = self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.other_annotator))
+        other_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": first_task.id}),
+            payload,
+            format="json",
+            **self.auth(self.other_annotator),
+        )
+        refill_next = self.client.get(reverse("room-next-task", kwargs={"room_id": quota_room.id}), **self.auth(self.annotator))
+
+        self.assertEqual(other_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(other_next.data["id"], first_task.id)
+        self.assertEqual(other_submit.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(refill_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(refill_next.data["id"], third_task.id)
+
     def test_image_annotation_rejects_unknown_label_id(self):
         self.client.get(reverse("room-next-task", kwargs={"room_id": self.image_room.id}), **self.auth(self.annotator))
 

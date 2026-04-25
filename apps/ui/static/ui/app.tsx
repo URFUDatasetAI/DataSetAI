@@ -6359,26 +6359,18 @@ function RoomWorkPage() {
               JSON
             </button>
           </div>
-          <div
-            className={`room-editor__action-group room-editor__action-group--submit ${workspaceMode === "review" ? "is-placeholder" : ""}`}
-            aria-label="Действия с задачей"
-            aria-hidden={workspaceMode === "review"}
-          >
-            {workspaceMode === "review" ? (
-              <span className="room-editor__submit-placeholder">Действия</span>
-            ) : (
-              <>
-                {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
-                    {skipping ? "Пропускаем..." : "Пропустить"}
-                  </button>
-                ) : null}
-                <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-                  {submitButtonLabel}
+          {workspaceMode === "review" ? null : (
+            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
+              {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
+                  {skipping ? "Пропускаем..." : "Пропустить"}
                 </button>
-              </>
-            )}
-          </div>
+              ) : null}
+              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                {submitButtonLabel}
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

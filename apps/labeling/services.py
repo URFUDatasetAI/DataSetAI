@@ -35,12 +35,27 @@ ACTIVE_ASSIGNMENT_STATUSES = (
     TaskAssignment.Status.IN_PROGRESS,
     TaskAssignment.Status.SUBMITTED,
 )
+EXPOSURE_ASSIGNMENT_STATUSES = (
+    *ACTIVE_ASSIGNMENT_STATUSES,
+    TaskAssignment.Status.SKIPPED,
+)
 
 
 def _assert_joined_membership(*, room: Room, annotator: User) -> None:
     membership = RoomMembership.objects.filter(room=room, user=annotator).only("status", "role").first()
     if not can_annotate_room(room=room, user=annotator, membership=membership):
         raise AccessDeniedError("Текущий пользователь не может размечать задачи в этой комнате.")
+
+
+def _get_assignment_quota_limit(*, room: Room, annotator: User) -> int | None:
+    task_quota = (
+        RoomAssignmentQuota.objects.filter(room=room, user=annotator)
+        .values_list("task_quota", flat=True)
+        .first()
+    )
+    if task_quota is None:
+        task_quota = room.default_assignment_quota
+    return task_quota
 
 
 def get_room_assignment_quota_usage(*, room: Room, annotator: User) -> int:
@@ -52,24 +67,54 @@ def get_room_assignment_quota_usage(*, room: Room, annotator: User) -> int:
     ).count()
 
 
-def _has_assignment_quota_capacity(*, room: Room, annotator: User) -> bool:
-    task_quota = (
-        RoomAssignmentQuota.objects.filter(room=room, user=annotator)
-        .values_list("task_quota", flat=True)
-        .first()
+def _get_room_assignment_exposure_usage(*, room: Room, annotator: User) -> int:
+    other_submitted_assignments = TaskAssignment.objects.filter(
+        task_id=OuterRef("task_id"),
+        round_number=OuterRef("round_number"),
+        status=TaskAssignment.Status.SUBMITTED,
+    ).exclude(annotator=annotator)
+
+    return (
+        TaskAssignment.objects.filter(
+            task__room=room,
+            annotator=annotator,
+            round_number=F("task__current_round"),
+            status__in=EXPOSURE_ASSIGNMENT_STATUSES,
+        )
+        .annotate(has_other_submitted_assignment=Exists(other_submitted_assignments))
+        .exclude(
+            status=TaskAssignment.Status.SKIPPED,
+            has_other_submitted_assignment=True,
+        )
+        .count()
     )
+
+
+def _has_assignment_quota_capacity(*, room: Room, annotator: User, task_quota: int | None = None) -> bool:
     if task_quota is None:
-        task_quota = room.default_assignment_quota
+        task_quota = _get_assignment_quota_limit(room=room, annotator=annotator)
     if task_quota is None:
         return True
     return get_room_assignment_quota_usage(room=room, annotator=annotator) < task_quota
 
 
-def _get_current_round_assignment_pool_ids(*, task: Task, round_assignments: list[TaskAssignment]) -> list[int]:
+def _has_assignment_exposure_capacity(*, room: Room, annotator: User, task_quota: int | None) -> bool:
+    if task_quota is None:
+        return True
+    return _get_room_assignment_exposure_usage(room=room, annotator=annotator) < task_quota
+
+
+def _get_current_round_assignment_pool_ids(
+    *,
+    task: Task,
+    round_assignments: list[TaskAssignment],
+    retry_annotator_id: int | None = None,
+) -> list[int]:
     skipped_annotator_ids = {
         assignment.annotator_id
         for assignment in round_assignments
         if assignment.status == TaskAssignment.Status.SKIPPED
+        and assignment.annotator_id != retry_annotator_id
     }
     return [
         annotator_id
@@ -179,7 +224,8 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         if current_assignment:
             return current_assignment.task
 
-        if not _has_assignment_quota_capacity(room=room, annotator=annotator):
+        task_quota = _get_assignment_quota_limit(room=room, annotator=annotator)
+        if not _has_assignment_quota_capacity(room=room, annotator=annotator, task_quota=task_quota):
             return None
 
         annotator_assignments = TaskAssignment.objects.filter(
@@ -197,38 +243,80 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
             .annotate(total=Count("id"))
             .values("total")[:1]
         )
-        queryset = (
-            Task.objects.filter(
-                room=room,
-                status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
-            )
-            .annotate(
-                has_annotator_assignment=Exists(annotator_assignments),
-                round_assignments_count=Coalesce(
-                    Subquery(round_assignments, output_field=IntegerField()),
-                    0,
-                ),
-            )
-            .filter(
-                has_annotator_assignment=False,
-                round_assignments_count__lt=room.required_reviews_per_item,
-            )
-            .exclude(
-                workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
-                input_payload__excluded_annotator_ids__contains=[annotator.id],
-            )
-            .order_by("id")
-        )
-        # `skip_locked` lets multiple annotators ask for work concurrently
-        # without blocking each other on the same candidate task.
-        if connection.features.has_select_for_update_skip_locked:
-            queryset = queryset.select_for_update(skip_locked=True)
-        else:
-            queryset = queryset.select_for_update()
+        other_submitted_assignments = TaskAssignment.objects.filter(
+            task_id=OuterRef("pk"),
+            round_number=OuterRef("current_round"),
+            status=TaskAssignment.Status.SUBMITTED,
+        ).exclude(annotator=annotator)
 
-        candidate_tasks = list(queryset.prefetch_related("assignments"))
+        def lock_candidate_queryset(queryset):
+            # `skip_locked` lets multiple annotators ask for work concurrently
+            # without blocking each other on the same candidate task.
+            if connection.features.has_select_for_update_skip_locked:
+                return queryset.select_for_update(skip_locked=True)
+            return queryset.select_for_update()
 
-        def choose_next_task(*, allow_rescue: bool) -> Task | None:
+        def build_new_task_candidates() -> list[Task]:
+            queryset = (
+                Task.objects.filter(
+                    room=room,
+                    status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
+                )
+                .annotate(
+                    has_annotator_assignment=Exists(annotator_assignments),
+                    round_assignments_count=Coalesce(
+                        Subquery(round_assignments, output_field=IntegerField()),
+                        0,
+                    ),
+                )
+                .filter(
+                    has_annotator_assignment=False,
+                    round_assignments_count__lt=room.required_reviews_per_item,
+                )
+                .exclude(
+                    workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
+                    input_payload__excluded_annotator_ids__contains=[annotator.id],
+                )
+                .order_by("id")
+            )
+            return list(lock_candidate_queryset(queryset).prefetch_related("assignments"))
+
+        def build_skipped_retry_candidates() -> list[Task]:
+            skipped_assignments = TaskAssignment.objects.filter(
+                task_id=OuterRef("pk"),
+                annotator=annotator,
+                round_number=OuterRef("current_round"),
+                status=TaskAssignment.Status.SKIPPED,
+            )
+
+            queryset = (
+                Task.objects.filter(
+                    room=room,
+                    status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
+                )
+                .annotate(
+                    has_skipped_assignment=Exists(skipped_assignments),
+                    has_other_submitted_assignment=Exists(other_submitted_assignments),
+                    round_assignments_count=Coalesce(
+                        Subquery(round_assignments, output_field=IntegerField()),
+                        0,
+                    ),
+                )
+                .filter(
+                    has_skipped_assignment=True,
+                    has_other_submitted_assignment=False,
+                    round_assignments_count__lt=room.required_reviews_per_item,
+                )
+                .order_by("id")
+            )
+            return list(lock_candidate_queryset(queryset).prefetch_related("assignments"))
+
+        def choose_next_task(
+            *,
+            candidate_tasks: list[Task],
+            allow_rescue: bool,
+            retry_annotator_id: int | None = None,
+        ) -> Task | None:
             for candidate_task in candidate_tasks:
                 current_round_annotator_ids = {
                     assignment.annotator_id
@@ -244,6 +332,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                 assignment_pool_ids = _get_current_round_assignment_pool_ids(
                     task=candidate_task,
                     round_assignments=current_round_assignments,
+                    retry_annotator_id=retry_annotator_id,
                 )
                 effective_reviews = get_effective_reviews_for_task(
                     task=candidate_task,
@@ -267,9 +356,12 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                     return candidate_task
             return None
 
-        next_task = choose_next_task(allow_rescue=False)
-        if next_task is None:
-            next_task = choose_next_task(allow_rescue=True)
+        next_task = None
+        if _has_assignment_exposure_capacity(room=room, annotator=annotator, task_quota=task_quota):
+            candidate_tasks = build_new_task_candidates()
+            next_task = choose_next_task(candidate_tasks=candidate_tasks, allow_rescue=False)
+            if next_task is None:
+                next_task = choose_next_task(candidate_tasks=candidate_tasks, allow_rescue=True)
 
         if next_task:
             TaskAssignment.objects.create(
@@ -285,6 +377,38 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                 next_task.save(update_fields=["status", "updated_at"])
 
             return next_task
+
+        retry_tasks = build_skipped_retry_candidates()
+        retry_task = choose_next_task(
+            candidate_tasks=retry_tasks,
+            allow_rescue=True,
+            retry_annotator_id=annotator.id,
+        )
+        if retry_task:
+            retry_assignment = (
+                TaskAssignment.objects.select_for_update()
+                .filter(
+                    task=retry_task,
+                    annotator=annotator,
+                    round_number=retry_task.current_round,
+                    status=TaskAssignment.Status.SKIPPED,
+                )
+                .order_by("assigned_at", "id")
+                .first()
+            )
+            if retry_assignment is None:
+                return None
+
+            retry_assignment.status = TaskAssignment.Status.IN_PROGRESS
+            retry_assignment.assigned_at = timezone.now()
+            retry_assignment.submitted_at = None
+            retry_assignment.save(update_fields=["status", "assigned_at", "submitted_at", "updated_at"])
+
+            if retry_task.status != Task.Status.IN_PROGRESS:
+                retry_task.status = Task.Status.IN_PROGRESS
+                retry_task.save(update_fields=["status", "updated_at"])
+
+            return retry_task
 
         return None
 
