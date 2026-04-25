@@ -36,6 +36,13 @@ class RoomsApiTests(APITestCase):
     def auth(self, user):
         return {"HTTP_X_USER_ID": str(user.id)}
 
+    def make_zip_upload(self, name: str, files: dict[str, bytes]):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for file_name, content in files.items():
+                archive.writestr(file_name, content)
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type="application/zip")
+
     def test_customer_can_create_room(self):
         response = self.client.post(
             reverse("room-list-create"),
@@ -393,6 +400,153 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(first_task.source_type, Task.SourceType.IMAGE)
         self.assertTrue(first_task.source_file.name)
         self.assertEqual(first_task.input_payload["width"], 1920)
+
+    def test_customer_can_create_image_room_from_zip_archive(self):
+        response = self.client.post(
+            reverse("room-list-create"),
+            {
+                "title": "Archive image room",
+                "dataset_mode": "image",
+                "dataset_label": "Archive cars",
+                "labels": json.dumps([{"name": "car", "color": "#FF6B6B"}]),
+                "dataset_files": [
+                    self.make_zip_upload(
+                        "images.zip",
+                        {
+                            "nested/car-zip-1.jpg": b"fake-image-1",
+                            "car-zip-2.png": b"fake-image-2",
+                            "__MACOSX/ignored.jpg": b"ignored",
+                            "notes.txt": b"ignored",
+                        },
+                    ),
+                ],
+            },
+            format="multipart",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        room = self.customer.created_rooms.get(id=response.data["id"])
+        self.assertEqual(room.dataset_type, "image")
+        self.assertEqual(room.tasks.count(), 2)
+        self.assertEqual(
+            list(room.tasks.order_by("id").values_list("source_name", flat=True)),
+            ["car-zip-1.jpg", "car-zip-2.png"],
+        )
+        self.assertEqual(
+            list(room.tasks.order_by("id").values_list("input_payload__item_number", flat=True)),
+            [1, 2],
+        )
+
+    def test_owner_can_add_images_to_existing_room_dataset(self):
+        room = make_room(customer=self.customer, title="Editable dataset", dataset_type="image")
+        room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            source_name="existing.jpg",
+            input_payload={"item_number": 7, "source_name": "existing.jpg"},
+        )
+
+        response = self.client.post(
+            reverse("room-dataset-upload", kwargs={"room_id": room.id}),
+            {
+                "media_manifest": json.dumps([{"name": "loose.jpg", "width": 640, "height": 480}]),
+                "dataset_files": [
+                    SimpleUploadedFile("loose.jpg", b"fake-image-3", content_type="image/jpeg"),
+                    self.make_zip_upload(
+                        "more-images.zip",
+                        {
+                            "batch/zip-1.jpg": b"fake-image-1",
+                            "batch/zip-2.webp": b"fake-image-2",
+                        },
+                    ),
+                ],
+            },
+            format="multipart",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["added_count"], 3)
+        self.assertEqual(room.tasks.count(), 4)
+        created_tasks = room.tasks.exclude(source_name="existing.jpg").order_by("id")
+        self.assertEqual(list(created_tasks.values_list("source_name", flat=True)), ["loose.jpg", "zip-1.jpg", "zip-2.webp"])
+        self.assertEqual(list(created_tasks.values_list("input_payload__item_number", flat=True)), [8, 9, 10])
+        self.assertEqual(created_tasks.first().input_payload["width"], 640)
+
+    def test_owner_can_list_and_delete_room_dataset_tasks(self):
+        room = make_room(customer=self.customer, title="Delete dataset", dataset_type="image")
+        first_task = Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            source_name="first.jpg",
+            source_file=SimpleUploadedFile("first.jpg", b"first", content_type="image/jpeg"),
+            input_payload={"item_number": 1, "source_name": "first.jpg"},
+        )
+        second_task = Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            source_name="second.jpg",
+            source_file=SimpleUploadedFile("second.jpg", b"second", content_type="image/jpeg"),
+            input_payload={"item_number": 2, "source_name": "second.jpg"},
+        )
+
+        list_response = self.client.get(
+            reverse("room-dataset-task-list", kwargs={"room_id": room.id}),
+            **self.auth(self.customer),
+        )
+        delete_response = self.client.post(
+            reverse("room-dataset-delete", kwargs={"room_id": room.id}),
+            {"task_ids": [first_task.id]},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in list_response.data], [first_task.id, second_task.id])
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(delete_response.data["deleted_count"], 1)
+        self.assertFalse(Task.objects.filter(id=first_task.id).exists())
+        self.assertTrue(Task.objects.filter(id=second_task.id).exists())
+
+    def test_non_owner_cannot_edit_room_dataset(self):
+        room = make_room(customer=self.customer, title="Owner-only dataset", dataset_type="image")
+        invite_annotator(
+            room=room,
+            annotator=self.admin_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.ADMIN,
+        )
+        task = Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            source_name="first.jpg",
+            input_payload={"item_number": 1, "source_name": "first.jpg"},
+        )
+
+        upload_response = self.client.post(
+            reverse("room-dataset-upload", kwargs={"room_id": room.id}),
+            {"dataset_files": [SimpleUploadedFile("other.jpg", b"other", content_type="image/jpeg")]},
+            format="multipart",
+            **self.auth(self.admin_user),
+        )
+        delete_response = self.client.post(
+            reverse("room-dataset-delete", kwargs={"room_id": room.id}),
+            {"task_ids": [task.id]},
+            format="json",
+            **self.auth(self.admin_user),
+        )
+        list_response = self.client.get(
+            reverse("room-dataset-task-list", kwargs={"room_id": room.id}),
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(upload_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(delete_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(list_response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(room.tasks.count(), 1)
 
     def test_customer_can_create_detect_text_image_room_without_manual_labels(self):
         response = self.client.post(

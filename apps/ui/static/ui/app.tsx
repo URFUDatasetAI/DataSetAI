@@ -254,6 +254,16 @@ type ReviewTaskListItem = {
   updated_at: string;
 };
 
+type RoomDatasetTaskItem = TaskItem & {
+  assignments_count: number;
+  submitted_annotations_count: number;
+};
+
+type RoomDatasetUploadResponse = {
+  added_count: number;
+  tasks: RoomDatasetTaskItem[];
+};
+
 type AnnotationItem = {
   id: number;
   task_id: number;
@@ -528,7 +538,7 @@ function normalizeToastType(type?: string): ToastType {
 
 function formatApiError(data: any, fallbackStatus: number) {
   if (!data) {
-    return `HTTP ${fallbackStatus}`;
+    return `Ошибка HTTP ${fallbackStatus}`;
   }
 
   if (typeof data.detail === "string" && data.detail.trim()) {
@@ -547,6 +557,9 @@ function formatApiError(data: any, fallbackStatus: number) {
       title: "Название",
       description: "Описание",
       dataset_label: "Название датасета",
+      dataset_files: "Файлы датасета",
+      media_manifest: "Медиа-манифест",
+      task_ids: "Объекты датасета",
     };
     Object.entries(data).forEach(([key, value]) => {
       const fieldName = key === "non_field_errors" ? "Ошибка" : apiFieldLabels[key] || key;
@@ -561,7 +574,7 @@ function formatApiError(data: any, fallbackStatus: number) {
     }
   }
 
-  return `HTTP ${fallbackStatus}`;
+  return `Ошибка HTTP ${fallbackStatus}`;
 }
 
 async function apiRequest(path: string, authUser: AuthUser, options: ApiRequestOptions = {}) {
@@ -640,9 +653,9 @@ async function downloadRoomExport(roomId: number, exportFormat: string, authUser
     try {
       data = JSON.parse(text);
     } catch (error) {
-      data = { detail: text || `HTTP ${response.status}` };
+      data = { detail: text || `Ошибка HTTP ${response.status}` };
     }
-    throw new Error(data?.detail || `HTTP ${response.status}`);
+    throw new Error(data?.detail || `Ошибка HTTP ${response.status}`);
   }
 
   const disposition = response.headers.get("content-disposition") || "";
@@ -661,6 +674,23 @@ async function downloadRoomExport(roomId: number, exportFormat: string, authUser
 
 function formatPercent(value: number | null | undefined) {
   return `${Number(value || 0).toFixed(1)}%`;
+}
+
+function formatFileSize(bytes: number | null | undefined) {
+  const size = Number(bytes || 0);
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 Б";
+  }
+
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -817,6 +847,24 @@ function translateWorkflowStage(stage: string | null | undefined) {
     return "Распознавание текста";
   }
   return "Разметка";
+}
+
+function isArchiveFile(file: File) {
+  const name = file.name.toLowerCase();
+  return name.endsWith(".zip") || file.type === "application/zip" || file.type === "application/x-zip-compressed";
+}
+
+function getMediaMetadataFiles(files: File[], datasetMode: string) {
+  if (datasetMode !== "image" && datasetMode !== "video") {
+    return [];
+  }
+  return files.filter((file) => !isArchiveFile(file));
+}
+
+function getTaskItemNumber(task: Pick<TaskItem, "input_payload"> | null | undefined) {
+  const rawValue = task?.input_payload?.item_number;
+  const value = Number(rawValue);
+  return Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function pickRandomLabelColor() {
@@ -997,12 +1045,16 @@ function summarizeSelectedFiles(files: File[]) {
   if (!files.length) {
     return "Файлы пока не выбраны.";
   }
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  const archiveCount = files.filter((file) => isArchiveFile(file)).length;
+  const sizePart = `общий размер ${formatFileSize(totalSize)}`;
+  const archivePart = archiveCount ? `ZIP: ${archiveCount}` : "";
   if (files.length === 1) {
-    return `Выбран файл: ${files[0].name}`;
+    return `Выбран файл: ${files[0].name} · ${sizePart}`;
   }
   const preview = files.slice(0, 3).map((file) => file.name).join(", ");
   const suffix = files.length > 3 ? ` и еще ${files.length - 3}` : "";
-  return `Выбрано ${files.length} файлов: ${preview}${suffix}`;
+  return [`Выбрано ${files.length} файлов · ${sizePart}`, archivePart, `${preview}${suffix}`].filter(Boolean).join(" · ");
 }
 
 function readImageMetadata(file: File) {
@@ -1051,11 +1103,12 @@ function readVideoMetadata(file: File) {
 }
 
 async function buildMediaManifest(files: File[], datasetMode: string) {
+  const metadataFiles = getMediaMetadataFiles(files, datasetMode);
   if (datasetMode === "image") {
-    return Promise.all(files.map((file) => readImageMetadata(file)));
+    return Promise.all(metadataFiles.map((file) => readImageMetadata(file)));
   }
   if (datasetMode === "video") {
-    return Promise.all(files.map((file) => readVideoMetadata(file)));
+    return Promise.all(metadataFiles.map((file) => readVideoMetadata(file)));
   }
   return [];
 }
@@ -2940,10 +2993,12 @@ function RoomEditPage() {
 function RoomDetailPage() {
   const { bootstrap, authUser, api, addToast, clearToasts } = useApp();
   const roomId = bootstrap.room_id;
+  const datasetFileInputRef = useRef<HTMLInputElement | null>(null);
   const [dashboard, setDashboard] = useState<RoomDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [annotatorSearch, setAnnotatorSearch] = useState("");
   const [reviewSearch, setReviewSearch] = useState("");
+  const [datasetTaskSearch, setDatasetTaskSearch] = useState("");
   const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = useState<number | null>(null);
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedQuota, setSelectedQuota] = useState("");
@@ -2957,6 +3012,12 @@ function RoomDetailPage() {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [selectedExportFormat, setSelectedExportFormat] = useState("native_json");
   const [joinRequestBusyId, setJoinRequestBusyId] = useState<number | null>(null);
+  const [datasetTasks, setDatasetTasks] = useState<RoomDatasetTaskItem[]>([]);
+  const [selectedDatasetTaskIds, setSelectedDatasetTaskIds] = useState<number[]>([]);
+  const [datasetUploadFiles, setDatasetUploadFiles] = useState<File[]>([]);
+  const [datasetTasksLoading, setDatasetTasksLoading] = useState(false);
+  const [datasetUploadBusy, setDatasetUploadBusy] = useState(false);
+  const [datasetDeleteBusy, setDatasetDeleteBusy] = useState(false);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
   const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
   const [manageSectionOpen, setManageSectionOpen] = useState(() => readStoredDisclosureState(manageSectionStorageKey, false));
@@ -3004,6 +3065,30 @@ function RoomDetailPage() {
     }
   }
 
+  async function loadDatasetTasks(nextRoomId = roomId) {
+    if (!nextRoomId) {
+      setDatasetTasks([]);
+      setSelectedDatasetTaskIds([]);
+      return [];
+    }
+
+    setDatasetTasksLoading(true);
+    try {
+      const tasks = await api<RoomDatasetTaskItem[]>(`/api/v1/rooms/${nextRoomId}/dataset/tasks/`);
+      const nextTasks = tasks || [];
+      setDatasetTasks(nextTasks);
+      setSelectedDatasetTaskIds((current) => current.filter((taskId) => nextTasks.some((task) => task.id === taskId)));
+      return nextTasks;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setDatasetTasks([]);
+      setSelectedDatasetTaskIds([]);
+      return [];
+    } finally {
+      setDatasetTasksLoading(false);
+    }
+  }
+
   function getManageSectionSummary(currentDashboard: RoomDashboard | null) {
     if (!currentDashboard) {
       return "Настройки, доступ и выгрузка собраны в одном разделе.";
@@ -3048,6 +3133,14 @@ function RoomDetailPage() {
       const nextDashboard = await api<RoomDashboard>(`/api/v1/rooms/${roomId}/dashboard/`);
       setDashboard(nextDashboard);
 
+      if (nextDashboard.actor.can_edit_room && nextDashboard.room.dataset_type === "image" && manageSectionOpen) {
+        await loadDatasetTasks(roomId);
+      } else {
+        setDatasetTasksLoading(false);
+        setDatasetTasks([]);
+        setSelectedDatasetTaskIds([]);
+      }
+
       if (nextDashboard.actor.can_review && reviewSectionOpen) {
         await loadReviewTasks(roomId);
       } else {
@@ -3082,6 +3175,16 @@ function RoomDetailPage() {
       loadReviewTasks();
     }
   }, [dashboard?.actor.can_review, reviewSectionOpen]);
+
+  useEffect(() => {
+    if (!dashboard?.actor.can_edit_room || dashboard.room.dataset_type !== "image" || !manageSectionOpen) {
+      return;
+    }
+
+    if (!datasetTasks.length && !datasetTasksLoading) {
+      loadDatasetTasks();
+    }
+  }, [dashboard?.actor.can_edit_room, dashboard?.room.dataset_type, manageSectionOpen]);
 
   const filteredAnnotators = (dashboard?.annotators || []).filter((annotator) => {
     const searchTerm = annotatorSearch.trim().toLowerCase();
@@ -3126,6 +3229,30 @@ function RoomDetailPage() {
       .toLowerCase()
       .includes(searchTerm);
   });
+
+  const filteredDatasetTasks = datasetTasks.filter((task) => {
+    const searchTerm = datasetTaskSearch.trim().toLowerCase();
+    if (!searchTerm) {
+      return true;
+    }
+
+    return [
+      `задача ${task.id}`,
+      `#${task.id}`,
+      task.source_name,
+      getTaskItemNumber(task),
+      translateWorkflowStage(task.workflow_stage),
+      translateTaskStatus(task.status),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(searchTerm);
+  });
+  const displayedDatasetTasks = filteredDatasetTasks.slice(0, 300);
+  const selectedDatasetTaskCount = selectedDatasetTaskIds.length;
+  const allDisplayedDatasetTasksSelected = Boolean(
+    displayedDatasetTasks.length && displayedDatasetTasks.every((task) => selectedDatasetTaskIds.includes(task.id))
+  );
 
   useEffect(() => {
     if (!dashboard?.actor.can_review) {
@@ -3265,6 +3392,85 @@ function RoomDetailPage() {
     }
   }
 
+  function handleDatasetTaskToggle(taskId: number) {
+    setSelectedDatasetTaskIds((current) =>
+      current.includes(taskId) ? current.filter((item) => item !== taskId) : [...current, taskId]
+    );
+  }
+
+  function handleDatasetSelectDisplayed() {
+    if (allDisplayedDatasetTasksSelected) {
+      const displayedIds = new Set(displayedDatasetTasks.map((task) => task.id));
+      setSelectedDatasetTaskIds((current) => current.filter((taskId) => !displayedIds.has(taskId)));
+      return;
+    }
+
+    setSelectedDatasetTaskIds((current) => Array.from(new Set([...current, ...displayedDatasetTasks.map((task) => task.id)])));
+  }
+
+  async function handleDatasetUpload() {
+    if (!roomId || !datasetUploadFiles.length) {
+      addToast("Выбери изображения или ZIP-архив для загрузки.", "error");
+      return;
+    }
+
+    clearToasts();
+    setDatasetUploadBusy(true);
+    try {
+      const mediaManifest = await buildMediaManifest(datasetUploadFiles, "image");
+      const payload = new FormData();
+      datasetUploadFiles.forEach((file) => payload.append("dataset_files", file));
+      if (mediaManifest.length) {
+        payload.append("media_manifest", JSON.stringify(mediaManifest));
+      }
+
+      const result = await api<RoomDatasetUploadResponse>(`/api/v1/rooms/${roomId}/dataset/upload/`, {
+        method: "POST",
+        formData: payload,
+      });
+      addToast(`Добавлено объектов: ${result.added_count}.`, "success");
+      setDatasetUploadFiles([]);
+      if (datasetFileInputRef.current) {
+        datasetFileInputRef.current.value = "";
+      }
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setDatasetUploadBusy(false);
+    }
+  }
+
+  async function handleDatasetDelete() {
+    if (!roomId || !selectedDatasetTaskIds.length) {
+      addToast("Выбери объекты датасета для удаления.", "error");
+      return;
+    }
+
+    const shouldDelete = window.confirm(
+      `Удалить выбранные объекты датасета (${selectedDatasetTaskIds.length})? Связанные разметки тоже будут удалены.`
+    );
+    if (!shouldDelete) {
+      return;
+    }
+
+    clearToasts();
+    setDatasetDeleteBusy(true);
+    try {
+      const result = await api<{ deleted_count: number }>(`/api/v1/rooms/${roomId}/dataset/delete/`, {
+        method: "POST",
+        body: { task_ids: selectedDatasetTaskIds },
+      });
+      addToast(`Удалено объектов: ${result.deleted_count}.`, "success");
+      setSelectedDatasetTaskIds([]);
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setDatasetDeleteBusy(false);
+    }
+  }
+
   async function handleRemoveAnnotator() {
     if (!roomId || !activeAnnotator) {
       return;
@@ -3370,6 +3576,7 @@ function RoomDetailPage() {
     dashboard &&
       (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
   );
+  const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
 
   return (
     <>
@@ -3527,6 +3734,118 @@ function RoomDetailPage() {
                             ) : null}
                           </div>
                         </div>
+                      </div>
+                    ) : null}
+
+                    {canManageDataset ? (
+                      <div className="panel-card manage-card-legacy manage-card-legacy--dataset">
+                        <div className="panel-card__head">
+                          <h2>Датасет</h2>
+                          <span className="eyebrow room-settings-panel__eyebrow">Фото и ZIP</span>
+                        </div>
+                        <div className="dataset-manager-upload">
+                          <label className="field">
+                            <span>Добавить изображения</span>
+                            <input
+                              ref={datasetFileInputRef}
+                              type="file"
+                              accept={datasetModeConfig.image.accept}
+                              multiple
+                              onChange={(event) => setDatasetUploadFiles(Array.from(event.currentTarget.files || []))}
+                            />
+                          </label>
+                          <div className="panel-note">{summarizeSelectedFiles(datasetUploadFiles)}</div>
+                          <button
+                            className="btn btn--primary"
+                            type="button"
+                            disabled={datasetUploadBusy || !datasetUploadFiles.length}
+                            onClick={handleDatasetUpload}
+                          >
+                            {datasetUploadBusy ? "Загружаем..." : "Добавить в комнату"}
+                          </button>
+                        </div>
+                        <div className="dataset-manager-toolbar">
+                          <label className="field panel-search">
+                            <span>Поиск по датасету</span>
+                            <input
+                              value={datasetTaskSearch}
+                              type="text"
+                              placeholder="Файл, номер или ID"
+                              onChange={(event) => setDatasetTaskSearch(event.currentTarget.value)}
+                            />
+                          </label>
+                          <div className="dataset-manager-toolbar__actions">
+                            <button
+                              className="btn btn--muted btn--compact"
+                              type="button"
+                              disabled={!displayedDatasetTasks.length}
+                              onClick={handleDatasetSelectDisplayed}
+                            >
+                              {allDisplayedDatasetTasksSelected ? "Снять выбор" : "Выбрать показанные"}
+                            </button>
+                            <button
+                              className="btn btn--danger btn--compact"
+                              type="button"
+                              disabled={datasetDeleteBusy || !selectedDatasetTaskCount}
+                              onClick={handleDatasetDelete}
+                            >
+                              {datasetDeleteBusy ? "Удаляем..." : `Удалить (${selectedDatasetTaskCount})`}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="summary-stack dataset-manager-summary">
+                          <div className="summary-row">
+                            <span>Всего объектов</span>
+                            <strong>{datasetTasks.length}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>По фильтру</span>
+                            <strong>{filteredDatasetTasks.length}</strong>
+                          </div>
+                        </div>
+                        {datasetTasksLoading ? (
+                          <div className="empty-card">Загружаем состав датасета.</div>
+                        ) : !datasetTasks.length ? (
+                          <div className="empty-card">В датасете пока нет изображений.</div>
+                        ) : !filteredDatasetTasks.length ? (
+                          <div className="empty-card">По этому запросу изображения не найдены.</div>
+                        ) : (
+                          <>
+                            <div className="dataset-task-list" aria-label="Изображения датасета">
+                              {displayedDatasetTasks.map((task) => (
+                                <label key={task.id} className="dataset-task-row">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedDatasetTaskIds.includes(task.id)}
+                                    onChange={() => handleDatasetTaskToggle(task.id)}
+                                  />
+                                  {task.source_file_url ? (
+                                    <img
+                                      className="dataset-task-row__thumb"
+                                      src={task.source_file_url}
+                                      alt={task.source_name || `Задача ${task.id}`}
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <span className="dataset-task-row__thumb dataset-task-row__thumb--empty" aria-hidden="true"></span>
+                                  )}
+                                  <span className="dataset-task-row__meta">
+                                    <strong>{task.source_name || `Задача #${task.id}`}</strong>
+                                    <span>
+                                      #{task.id} · № {getTaskItemNumber(task) || "?"} · {translateTaskStatus(task.status)} ·{" "}
+                                      {task.submitted_annotations_count} разметок
+                                    </span>
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            {filteredDatasetTasks.length > displayedDatasetTasks.length ? (
+                              <div className="panel-note">
+                                Показаны первые {displayedDatasetTasks.length} из {filteredDatasetTasks.length}. Уточни поиск, чтобы быстрее найти нужные изображения.
+                              </div>
+                            ) : null}
+                          </>
+                        )}
                       </div>
                     ) : null}
 

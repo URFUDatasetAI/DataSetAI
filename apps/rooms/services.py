@@ -1,6 +1,5 @@
 import io
 import json
-import mimetypes
 import shutil
 import subprocess
 import tempfile
@@ -10,13 +9,13 @@ from itertools import cycle
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from django.core.files import File
 from django.core.files.base import ContentFile
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.utils import timezone
 
 from apps.labeling.models import Task
-from apps.labeling.workflows import get_room_final_tasks_queryset
+from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from apps.rooms.models import (
     Room,
     RoomAssignmentQuota,
@@ -73,6 +72,10 @@ JSON_EXTENSIONS = {".json"}
 ARCHIVE_EXTENSIONS = {".zip"}
 UNSET = object()
 MAX_PINNED_ROOMS = 5
+MAX_ARCHIVE_FILES = 10000
+MAX_ARCHIVE_MEMBER_BYTES = 512 * 1024 * 1024
+MAX_ARCHIVE_TOTAL_BYTES = 5 * 1024 * 1024 * 1024
+ARCHIVE_SPOOL_MEMORY_BYTES = 8 * 1024 * 1024
 
 
 @dataclass
@@ -563,6 +566,95 @@ def update_room(
     return room
 
 
+def _get_next_room_item_number(*, room: Room) -> int:
+    item_numbers = [
+        int(value)
+        for value in get_room_primary_tasks_queryset(room=room).values_list("input_payload__item_number", flat=True)
+        if isinstance(value, int) or (isinstance(value, str) and value.isdigit())
+    ]
+    return (max(item_numbers) if item_numbers else 0) + 1
+
+
+def add_room_dataset_images(
+    *,
+    room: Room,
+    actor: User,
+    dataset_files: list,
+    media_manifest: list[dict] | None = None,
+) -> list[Task]:
+    if not can_edit_room(room=room, user=actor):
+        raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
+    if room.dataset_type != Room.DatasetType.IMAGE:
+        raise ConflictError("Добавлять изображения можно только в комнаты с типом датасета «Фото».")
+
+    validate_dataset_upload(dataset_mode=Room.DatasetType.IMAGE, dataset_files=dataset_files)
+
+    with transaction.atomic():
+        locked_room = Room.objects.select_for_update().get(id=room.id)
+        return _create_media_tasks(
+            room=locked_room,
+            dataset_label=locked_room.dataset_label or "Тестовый датасет",
+            dataset_files=list(dataset_files or []),
+            media_manifest=list(media_manifest or []),
+            source_type=Task.SourceType.IMAGE,
+            start_item_number=_get_next_room_item_number(room=locked_room),
+        )
+
+
+def delete_room_dataset_tasks(*, room: Room, actor: User, task_ids: list[int]) -> int:
+    if not can_edit_room(room=room, user=actor):
+        raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
+
+    normalized_task_ids = []
+    for task_id in dict.fromkeys(task_ids or []):
+        try:
+            normalized_task_id = int(task_id)
+        except (TypeError, ValueError):
+            continue
+        if normalized_task_id > 0:
+            normalized_task_ids.append(normalized_task_id)
+    if not normalized_task_ids:
+        raise ConflictError("Выбери хотя бы один объект датасета для удаления.")
+
+    with transaction.atomic():
+        locked_room = Room.objects.select_for_update().get(id=room.id)
+        tasks = list(
+            get_room_primary_tasks_queryset(room=locked_room)
+            .select_for_update()
+            .filter(id__in=normalized_task_ids)
+            .prefetch_related("child_tasks")
+            .order_by("id")
+        )
+        if len(tasks) != len(normalized_task_ids):
+            raise NotFoundError("Один или несколько объектов датасета не найдены.")
+
+        files_to_delete = []
+        child_ids = []
+        for task in tasks:
+            if task.source_file:
+                files_to_delete.append(task.source_file)
+            for child_task in task.child_tasks.all():
+                child_ids.append(child_task.id)
+                if child_task.source_file:
+                    files_to_delete.append(child_task.source_file)
+
+        if child_ids:
+            nested_children = Task.objects.filter(parent_task_id__in=child_ids).only("source_file")
+            for child_task in nested_children:
+                if child_task.source_file:
+                    files_to_delete.append(child_task.source_file)
+
+        deleted_count, _ = Task.objects.filter(id__in=[task.id for task in tasks]).delete()
+
+    for source_file in files_to_delete:
+        try:
+            source_file.delete(save=False)
+        except FileNotFoundError:
+            continue
+
+    return deleted_count
+
+
 def _create_demo_tasks(*, room: Room, task_count: int, dataset_label: str) -> None:
     sample_iterator = cycle(DEMO_DATASET_SAMPLES)
     tasks = []
@@ -652,7 +744,8 @@ def _create_media_tasks(
     dataset_files: list,
     media_manifest: list[dict],
     source_type: str,
-) -> None:
+    start_item_number: int = 1,
+) -> list[Task]:
     dataset_files = _expand_dataset_files(
         dataset_mode=Room.DatasetType.IMAGE if source_type == Task.SourceType.IMAGE else Room.DatasetType.VIDEO,
         dataset_files=dataset_files,
@@ -661,20 +754,22 @@ def _create_media_tasks(
     # For video datasets we fan out one uploaded video into many image tasks
     # (frames), because the rest of the labeling pipeline operates on Task rows.
     manifest_by_name = {item["name"]: item for item in media_manifest if item.get("name")}
-    next_item_number = 1
+    next_item_number = start_item_number
+    created_tasks: list[Task] = []
 
     for dataset_file in dataset_files:
         file_name = Path(dataset_file.name).name
         metadata = manifest_by_name.get(file_name, {})
 
         if source_type == Task.SourceType.VIDEO:
-            next_item_number = _create_video_frame_tasks(
+            next_item_number, frame_tasks = _create_video_frame_tasks(
                 room=room,
                 dataset_label=dataset_label,
                 dataset_file=dataset_file,
                 metadata=metadata,
                 start_item_number=next_item_number,
             )
+            created_tasks.extend(frame_tasks)
             continue
 
         input_payload = {
@@ -687,7 +782,7 @@ def _create_media_tasks(
         if metadata.get("height"):
             input_payload["height"] = metadata["height"]
 
-        Task.objects.create(
+        task = Task.objects.create(
             room=room,
             source_type=source_type,
             workflow_stage=(
@@ -699,7 +794,10 @@ def _create_media_tasks(
             source_file=dataset_file,
             input_payload=input_payload,
         )
+        created_tasks.append(task)
         next_item_number += 1
+
+    return created_tasks
 
 
 def _create_video_frame_tasks(
@@ -709,7 +807,7 @@ def _create_video_frame_tasks(
     dataset_file,
     metadata: dict,
     start_item_number: int,
-) -> int:
+) -> tuple[int, list[Task]]:
     """
     Splits an uploaded video file into discrete frames (images) using ffmpeg.
     Each frame is then represented as a separate Image Task.
@@ -765,6 +863,7 @@ def _create_video_frame_tasks(
             raise ConflictError(f"Видео {video_name} не содержит кадров для разметки.")
 
         next_item_number = start_item_number
+        created_tasks: list[Task] = []
         for frame_index, frame_path in enumerate(frame_paths, start=1):
             frame_name = f"{Path(video_name).stem}_frame_{frame_index:06d}.jpg"
             frame_task = Task(
@@ -792,9 +891,10 @@ def _create_video_frame_tasks(
             )
             frame_task.source_file.save(frame_name, ContentFile(frame_path.read_bytes()), save=False)
             frame_task.save()
+            created_tasks.append(frame_task)
             next_item_number += 1
 
-        return next_item_number
+        return next_item_number, created_tasks
 
 
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
@@ -848,6 +948,8 @@ def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
 
 def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]) -> list:
     archive_members = []
+    archive_file_count = 0
+    total_uncompressed_size = 0
 
     if hasattr(dataset_file, "seek"):
         dataset_file.seek(0)
@@ -859,15 +961,27 @@ def _extract_archive_dataset_files(*, dataset_file, allowed_extensions: set[str]
                     continue
                 if archive_info.filename.startswith("__MACOSX/"):
                     continue
+                archive_file_count += 1
+                if archive_file_count > MAX_ARCHIVE_FILES:
+                    raise ConflictError(f"В ZIP-архиве слишком много файлов. Максимум: {MAX_ARCHIVE_FILES}.")
+                if archive_info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+                    max_mb = MAX_ARCHIVE_MEMBER_BYTES // (1024 * 1024)
+                    raise ConflictError(f"Файл {Path(archive_info.filename).name} в архиве больше {max_mb} МБ.")
+                total_uncompressed_size += archive_info.file_size
+                if total_uncompressed_size > MAX_ARCHIVE_TOTAL_BYTES:
+                    max_gb = MAX_ARCHIVE_TOTAL_BYTES // (1024 * 1024 * 1024)
+                    raise ConflictError(f"Суммарный размер файлов в ZIP-архиве больше {max_gb} ГБ.")
 
                 inner_name = Path(archive_info.filename).name
                 inner_suffix = Path(inner_name).suffix.lower()
                 if not inner_name or inner_name.startswith(".") or inner_suffix not in allowed_extensions:
                     continue
 
-                content = archive.read(archive_info)
-                content_type = mimetypes.guess_type(inner_name)[0] or "application/octet-stream"
-                archive_members.append(SimpleUploadedFile(inner_name, content, content_type=content_type))
+                spooled_file = tempfile.SpooledTemporaryFile(max_size=ARCHIVE_SPOOL_MEMORY_BYTES)
+                with archive.open(archive_info) as archive_member:
+                    shutil.copyfileobj(archive_member, spooled_file, length=1024 * 1024)
+                spooled_file.seek(0)
+                archive_members.append(File(spooled_file, name=inner_name))
     except zipfile.BadZipFile as exc:
         raise ConflictError("Загруженный архив не является корректным ZIP-файлом.") from exc
     finally:

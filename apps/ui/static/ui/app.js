@@ -21752,6 +21752,11 @@
     approved: "\u041E\u0434\u043E\u0431\u0440\u0435\u043D\u043E",
     rejected: "\u041E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u043E"
   };
+  var taskStatusLabels = {
+    pending: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
+    in_progress: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435",
+    submitted: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430"
+  };
   var datasetModeLabels = {
     demo: "Demo JSON",
     json: "JSON",
@@ -21860,7 +21865,7 @@
   }
   function formatApiError(data, fallbackStatus) {
     if (!data) {
-      return `HTTP ${fallbackStatus}`;
+      return `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${fallbackStatus}`;
     }
     if (typeof data.detail === "string" && data.detail.trim()) {
       return data.detail;
@@ -21875,7 +21880,10 @@
         deadline: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D",
         title: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435",
         description: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435",
-        dataset_label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430"
+        dataset_label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
+        dataset_files: "\u0424\u0430\u0439\u043B\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
+        media_manifest: "\u041C\u0435\u0434\u0438\u0430-\u043C\u0430\u043D\u0438\u0444\u0435\u0441\u0442",
+        task_ids: "\u041E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430"
       };
       Object.entries(data).forEach(([key, value]) => {
         const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : apiFieldLabels[key] || key;
@@ -21889,7 +21897,7 @@
         return messages.join(" | ");
       }
     }
-    return `HTTP ${fallbackStatus}`;
+    return `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${fallbackStatus}`;
   }
   async function apiRequest(path, authUser, options = {}) {
     if (!authUser && !options.allowAnonymous) {
@@ -21954,9 +21962,9 @@
       try {
         data = JSON.parse(text);
       } catch (error) {
-        data = { detail: text || `HTTP ${response.status}` };
+        data = { detail: text || `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${response.status}` };
       }
-      throw new Error(data?.detail || `HTTP ${response.status}`);
+      throw new Error(data?.detail || `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${response.status}`);
     }
     const disposition = response.headers.get("content-disposition") || "";
     const filenameMatch = disposition.match(/filename="([^"]+)"/i);
@@ -21973,6 +21981,20 @@
   }
   function formatPercent(value) {
     return `${Number(value || 0).toFixed(1)}%`;
+  }
+  function formatFileSize(bytes) {
+    const size = Number(bytes || 0);
+    if (!Number.isFinite(size) || size <= 0) {
+      return "0 \u0411";
+    }
+    const units = ["\u0411", "\u041A\u0411", "\u041C\u0411", "\u0413\u0411", "\u0422\u0411"];
+    let value = size;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
   }
   function formatDate(value) {
     if (!value) {
@@ -22060,6 +22082,12 @@
     }
     return membershipLabels[status] || status;
   }
+  function translateTaskStatus(status) {
+    if (!status) {
+      return "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u043E";
+    }
+    return taskStatusLabels[status] || status;
+  }
   function translateReviewOutcome(outcome) {
     if (outcome === "accepted") {
       return "\u041F\u0440\u0438\u043D\u044F\u0442\u0430";
@@ -22098,6 +22126,21 @@
       return "\u0420\u0430\u0441\u043F\u043E\u0437\u043D\u0430\u0432\u0430\u043D\u0438\u0435 \u0442\u0435\u043A\u0441\u0442\u0430";
     }
     return "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430";
+  }
+  function isArchiveFile(file) {
+    const name = file.name.toLowerCase();
+    return name.endsWith(".zip") || file.type === "application/zip" || file.type === "application/x-zip-compressed";
+  }
+  function getMediaMetadataFiles(files, datasetMode) {
+    if (datasetMode !== "image" && datasetMode !== "video") {
+      return [];
+    }
+    return files.filter((file) => !isArchiveFile(file));
+  }
+  function getTaskItemNumber(task) {
+    const rawValue = task?.input_payload?.item_number;
+    const value = Number(rawValue);
+    return Number.isFinite(value) && value > 0 ? value : null;
   }
   function pickRandomLabelColor() {
     return labelColorPool[Math.floor(Math.random() * labelColorPool.length)];
@@ -22231,12 +22274,16 @@
     if (!files.length) {
       return "\u0424\u0430\u0439\u043B\u044B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u044B.";
     }
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const archiveCount = files.filter((file) => isArchiveFile(file)).length;
+    const sizePart = `\u043E\u0431\u0449\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0440 ${formatFileSize(totalSize)}`;
+    const archivePart = archiveCount ? `ZIP: ${archiveCount}` : "";
     if (files.length === 1) {
-      return `\u0412\u044B\u0431\u0440\u0430\u043D \u0444\u0430\u0439\u043B: ${files[0].name}`;
+      return `\u0412\u044B\u0431\u0440\u0430\u043D \u0444\u0430\u0439\u043B: ${files[0].name} \xB7 ${sizePart}`;
     }
     const preview = files.slice(0, 3).map((file) => file.name).join(", ");
     const suffix = files.length > 3 ? ` \u0438 \u0435\u0449\u0435 ${files.length - 3}` : "";
-    return `\u0412\u044B\u0431\u0440\u0430\u043D\u043E ${files.length} \u0444\u0430\u0439\u043B\u043E\u0432: ${preview}${suffix}`;
+    return [`\u0412\u044B\u0431\u0440\u0430\u043D\u043E ${files.length} \u0444\u0430\u0439\u043B\u043E\u0432 \xB7 ${sizePart}`, archivePart, `${preview}${suffix}`].filter(Boolean).join(" \xB7 ");
   }
   function readImageMetadata(file) {
     return new Promise((resolve, reject) => {
@@ -22280,11 +22327,12 @@
     });
   }
   async function buildMediaManifest(files, datasetMode) {
+    const metadataFiles = getMediaMetadataFiles(files, datasetMode);
     if (datasetMode === "image") {
-      return Promise.all(files.map((file) => readImageMetadata(file)));
+      return Promise.all(metadataFiles.map((file) => readImageMetadata(file)));
     }
     if (datasetMode === "video") {
-      return Promise.all(files.map((file) => readVideoMetadata(file)));
+      return Promise.all(metadataFiles.map((file) => readVideoMetadata(file)));
     }
     return [];
   }
@@ -23831,10 +23879,12 @@
   function RoomDetailPage() {
     const { bootstrap: bootstrap2, authUser, api, addToast, clearToasts } = useApp();
     const roomId = bootstrap2.room_id;
+    const datasetFileInputRef = (0, import_react.useRef)(null);
     const [dashboard, setDashboard] = (0, import_react.useState)(null);
     const [loading, setLoading] = (0, import_react.useState)(true);
     const [annotatorSearch, setAnnotatorSearch] = (0, import_react.useState)("");
     const [reviewSearch, setReviewSearch] = (0, import_react.useState)("");
+    const [datasetTaskSearch, setDatasetTaskSearch] = (0, import_react.useState)("");
     const [selectedAnnotatorUserId, setSelectedAnnotatorUserId] = (0, import_react.useState)(null);
     const [selectedRole, setSelectedRole] = (0, import_react.useState)("");
     const [selectedQuota, setSelectedQuota] = (0, import_react.useState)("");
@@ -23848,6 +23898,12 @@
     const [inviteBusy, setInviteBusy] = (0, import_react.useState)(false);
     const [selectedExportFormat, setSelectedExportFormat] = (0, import_react.useState)("native_json");
     const [joinRequestBusyId, setJoinRequestBusyId] = (0, import_react.useState)(null);
+    const [datasetTasks, setDatasetTasks] = (0, import_react.useState)([]);
+    const [selectedDatasetTaskIds, setSelectedDatasetTaskIds] = (0, import_react.useState)([]);
+    const [datasetUploadFiles, setDatasetUploadFiles] = (0, import_react.useState)([]);
+    const [datasetTasksLoading, setDatasetTasksLoading] = (0, import_react.useState)(false);
+    const [datasetUploadBusy, setDatasetUploadBusy] = (0, import_react.useState)(false);
+    const [datasetDeleteBusy, setDatasetDeleteBusy] = (0, import_react.useState)(false);
     const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
     const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
     const [manageSectionOpen, setManageSectionOpen] = (0, import_react.useState)(() => readStoredDisclosureState(manageSectionStorageKey, false));
@@ -23888,6 +23944,28 @@
         setReviewTasksLoading(false);
       }
     }
+    async function loadDatasetTasks(nextRoomId = roomId) {
+      if (!nextRoomId) {
+        setDatasetTasks([]);
+        setSelectedDatasetTaskIds([]);
+        return [];
+      }
+      setDatasetTasksLoading(true);
+      try {
+        const tasks = await api(`/api/v1/rooms/${nextRoomId}/dataset/tasks/`);
+        const nextTasks = tasks || [];
+        setDatasetTasks(nextTasks);
+        setSelectedDatasetTaskIds((current) => current.filter((taskId) => nextTasks.some((task) => task.id === taskId)));
+        return nextTasks;
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setDatasetTasks([]);
+        setSelectedDatasetTaskIds([]);
+        return [];
+      } finally {
+        setDatasetTasksLoading(false);
+      }
+    }
     function getManageSectionSummary(currentDashboard) {
       if (!currentDashboard) {
         return "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438, \u0434\u043E\u0441\u0442\u0443\u043F \u0438 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0430 \u0441\u043E\u0431\u0440\u0430\u043D\u044B \u0432 \u043E\u0434\u043D\u043E\u043C \u0440\u0430\u0437\u0434\u0435\u043B\u0435.";
@@ -23921,6 +23999,13 @@
       try {
         const nextDashboard = await api(`/api/v1/rooms/${roomId}/dashboard/`);
         setDashboard(nextDashboard);
+        if (nextDashboard.actor.can_edit_room && nextDashboard.room.dataset_type === "image" && manageSectionOpen) {
+          await loadDatasetTasks(roomId);
+        } else {
+          setDatasetTasksLoading(false);
+          setDatasetTasks([]);
+          setSelectedDatasetTaskIds([]);
+        }
         if (nextDashboard.actor.can_review && reviewSectionOpen) {
           await loadReviewTasks(roomId);
         } else {
@@ -23951,6 +24036,14 @@
         loadReviewTasks();
       }
     }, [dashboard?.actor.can_review, reviewSectionOpen]);
+    (0, import_react.useEffect)(() => {
+      if (!dashboard?.actor.can_edit_room || dashboard.room.dataset_type !== "image" || !manageSectionOpen) {
+        return;
+      }
+      if (!datasetTasks.length && !datasetTasksLoading) {
+        loadDatasetTasks();
+      }
+    }, [dashboard?.actor.can_edit_room, dashboard?.room.dataset_type, manageSectionOpen]);
     const filteredAnnotators = (dashboard?.annotators || []).filter((annotator) => {
       const searchTerm = annotatorSearch.trim().toLowerCase();
       if (!searchTerm) {
@@ -23979,6 +24072,25 @@
       }
       return [`\u0437\u0430\u0434\u0430\u0447\u0430 ${task.id}`, task.source_name, translateSourceType(task.source_type), task.status].join(" ").toLowerCase().includes(searchTerm);
     });
+    const filteredDatasetTasks = datasetTasks.filter((task) => {
+      const searchTerm = datasetTaskSearch.trim().toLowerCase();
+      if (!searchTerm) {
+        return true;
+      }
+      return [
+        `\u0437\u0430\u0434\u0430\u0447\u0430 ${task.id}`,
+        `#${task.id}`,
+        task.source_name,
+        getTaskItemNumber(task),
+        translateWorkflowStage(task.workflow_stage),
+        translateTaskStatus(task.status)
+      ].join(" ").toLowerCase().includes(searchTerm);
+    });
+    const displayedDatasetTasks = filteredDatasetTasks.slice(0, 300);
+    const selectedDatasetTaskCount = selectedDatasetTaskIds.length;
+    const allDisplayedDatasetTasksSelected = Boolean(
+      displayedDatasetTasks.length && displayedDatasetTasks.every((task) => selectedDatasetTaskIds.includes(task.id))
+    );
     (0, import_react.useEffect)(() => {
       if (!dashboard?.actor.can_review) {
         return;
@@ -24100,6 +24212,76 @@
         setQuotaBusy(false);
       }
     }
+    function handleDatasetTaskToggle(taskId) {
+      setSelectedDatasetTaskIds(
+        (current) => current.includes(taskId) ? current.filter((item) => item !== taskId) : [...current, taskId]
+      );
+    }
+    function handleDatasetSelectDisplayed() {
+      if (allDisplayedDatasetTasksSelected) {
+        const displayedIds = new Set(displayedDatasetTasks.map((task) => task.id));
+        setSelectedDatasetTaskIds((current) => current.filter((taskId) => !displayedIds.has(taskId)));
+        return;
+      }
+      setSelectedDatasetTaskIds((current) => Array.from(/* @__PURE__ */ new Set([...current, ...displayedDatasetTasks.map((task) => task.id)])));
+    }
+    async function handleDatasetUpload() {
+      if (!roomId || !datasetUploadFiles.length) {
+        addToast("\u0412\u044B\u0431\u0435\u0440\u0438 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0434\u043B\u044F \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438.", "error");
+        return;
+      }
+      clearToasts();
+      setDatasetUploadBusy(true);
+      try {
+        const mediaManifest = await buildMediaManifest(datasetUploadFiles, "image");
+        const payload = new FormData();
+        datasetUploadFiles.forEach((file) => payload.append("dataset_files", file));
+        if (mediaManifest.length) {
+          payload.append("media_manifest", JSON.stringify(mediaManifest));
+        }
+        const result = await api(`/api/v1/rooms/${roomId}/dataset/upload/`, {
+          method: "POST",
+          formData: payload
+        });
+        addToast(`\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432: ${result.added_count}.`, "success");
+        setDatasetUploadFiles([]);
+        if (datasetFileInputRef.current) {
+          datasetFileInputRef.current.value = "";
+        }
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setDatasetUploadBusy(false);
+      }
+    }
+    async function handleDatasetDelete() {
+      if (!roomId || !selectedDatasetTaskIds.length) {
+        addToast("\u0412\u044B\u0431\u0435\u0440\u0438 \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430 \u0434\u043B\u044F \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u044F.", "error");
+        return;
+      }
+      const shouldDelete = window.confirm(
+        `\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u044B\u0435 \u043E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430 (${selectedDatasetTaskIds.length})? \u0421\u0432\u044F\u0437\u0430\u043D\u043D\u044B\u0435 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0442\u043E\u0436\u0435 \u0431\u0443\u0434\u0443\u0442 \u0443\u0434\u0430\u043B\u0435\u043D\u044B.`
+      );
+      if (!shouldDelete) {
+        return;
+      }
+      clearToasts();
+      setDatasetDeleteBusy(true);
+      try {
+        const result = await api(`/api/v1/rooms/${roomId}/dataset/delete/`, {
+          method: "POST",
+          body: { task_ids: selectedDatasetTaskIds }
+        });
+        addToast(`\u0423\u0434\u0430\u043B\u0435\u043D\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432: ${result.deleted_count}.`, "success");
+        setSelectedDatasetTaskIds([]);
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setDatasetDeleteBusy(false);
+      }
+    }
     async function handleRemoveAnnotator() {
       if (!roomId || !activeAnnotator) {
         return;
@@ -24191,6 +24373,7 @@
     const hasRoomManagementActions = Boolean(
       dashboard && (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
     );
+    const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--room", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
@@ -24309,6 +24492,127 @@
                           dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
                           dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
                         ] })
+                      ] })
+                    ] }) : null,
+                    canManageDataset ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--dataset", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "\u0424\u043E\u0442\u043E \u0438 ZIP" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-manager-upload", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "input",
+                            {
+                              ref: datasetFileInputRef,
+                              type: "file",
+                              accept: datasetModeConfig.image.accept,
+                              multiple: true,
+                              onChange: (event) => setDatasetUploadFiles(Array.from(event.currentTarget.files || []))
+                            }
+                          )
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: summarizeSelectedFiles(datasetUploadFiles) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "button",
+                          {
+                            className: "btn btn--primary",
+                            type: "button",
+                            disabled: datasetUploadBusy || !datasetUploadFiles.length,
+                            onClick: handleDatasetUpload,
+                            children: datasetUploadBusy ? "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C..." : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443"
+                          }
+                        )
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-manager-toolbar", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field panel-search", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0438\u0441\u043A \u043F\u043E \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0443" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "input",
+                            {
+                              value: datasetTaskSearch,
+                              type: "text",
+                              placeholder: "\u0424\u0430\u0439\u043B, \u043D\u043E\u043C\u0435\u0440 \u0438\u043B\u0438 ID",
+                              onChange: (event) => setDatasetTaskSearch(event.currentTarget.value)
+                            }
+                          )
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-manager-toolbar__actions", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "button",
+                            {
+                              className: "btn btn--muted btn--compact",
+                              type: "button",
+                              disabled: !displayedDatasetTasks.length,
+                              onClick: handleDatasetSelectDisplayed,
+                              children: allDisplayedDatasetTasksSelected ? "\u0421\u043D\u044F\u0442\u044C \u0432\u044B\u0431\u043E\u0440" : "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043F\u043E\u043A\u0430\u0437\u0430\u043D\u043D\u044B\u0435"
+                            }
+                          ),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "button",
+                            {
+                              className: "btn btn--danger btn--compact",
+                              type: "button",
+                              disabled: datasetDeleteBusy || !selectedDatasetTaskCount,
+                              onClick: handleDatasetDelete,
+                              children: datasetDeleteBusy ? "\u0423\u0434\u0430\u043B\u044F\u0435\u043C..." : `\u0423\u0434\u0430\u043B\u0438\u0442\u044C (${selectedDatasetTaskCount})`
+                            }
+                          )
+                        ] })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack dataset-manager-summary", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0441\u0435\u0433\u043E \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: datasetTasks.length })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E \u0444\u0438\u043B\u044C\u0442\u0440\u0443" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: filteredDatasetTasks.length })
+                        ] })
+                      ] }),
+                      datasetTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u043E\u0441\u0442\u0430\u0432 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." }) : !datasetTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0439." }) : !filteredDatasetTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E \u044D\u0442\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dataset-task-list", "aria-label": "\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", children: displayedDatasetTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "dataset-task-row", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "input",
+                            {
+                              type: "checkbox",
+                              checked: selectedDatasetTaskIds.includes(task.id),
+                              onChange: () => handleDatasetTaskToggle(task.id)
+                            }
+                          ),
+                          task.source_file_url ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                            "img",
+                            {
+                              className: "dataset-task-row__thumb",
+                              src: task.source_file_url,
+                              alt: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 ${task.id}`,
+                              loading: "lazy"
+                            }
+                          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dataset-task-row__thumb dataset-task-row__thumb--empty", "aria-hidden": "true" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dataset-task-row__meta", children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                              "#",
+                              task.id,
+                              " \xB7 \u2116 ",
+                              getTaskItemNumber(task) || "?",
+                              " \xB7 ",
+                              translateTaskStatus(task.status),
+                              " \xB7",
+                              " ",
+                              task.submitted_annotations_count,
+                              " \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A"
+                            ] })
+                          ] })
+                        ] }, task.id)) }),
+                        filteredDatasetTasks.length > displayedDatasetTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-note", children: [
+                          "\u041F\u043E\u043A\u0430\u0437\u0430\u043D\u044B \u043F\u0435\u0440\u0432\u044B\u0435 ",
+                          displayedDatasetTasks.length,
+                          " \u0438\u0437 ",
+                          filteredDatasetTasks.length,
+                          ". \u0423\u0442\u043E\u0447\u043D\u0438 \u043F\u043E\u0438\u0441\u043A, \u0447\u0442\u043E\u0431\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u043D\u0430\u0439\u0442\u0438 \u043D\u0443\u0436\u043D\u044B\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F."
+                        ] }) : null
                       ] })
                     ] }) : null,
                     dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [

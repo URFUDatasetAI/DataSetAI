@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.labeling.models import Task, TaskAssignment
 from apps.rooms.models import Room, RoomJoinRequest, RoomLabel, RoomMembership, RoomPin
 from apps.rooms.services import get_supported_export_formats, validate_dataset_upload
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
@@ -46,6 +47,91 @@ class MediaManifestItemSerializer(serializers.Serializer):
     height = serializers.IntegerField(required=False, min_value=1)
     duration = serializers.FloatField(required=False, min_value=0)
     frame_rate = serializers.IntegerField(required=False, min_value=1)
+
+
+class RoomDatasetTaskSerializer(serializers.ModelSerializer):
+    room_id = serializers.IntegerField(read_only=True)
+    parent_task_id = serializers.IntegerField(read_only=True)
+    source_file_url = serializers.SerializerMethodField()
+    assignments_count = serializers.SerializerMethodField()
+    submitted_annotations_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Task
+        fields = (
+            "id",
+            "room_id",
+            "parent_task_id",
+            "status",
+            "current_round",
+            "validation_score",
+            "input_payload",
+            "source_type",
+            "workflow_stage",
+            "source_name",
+            "source_file_url",
+            "assignments_count",
+            "submitted_annotations_count",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_source_file_url(self, obj):
+        if not obj.source_file:
+            return None
+        request = self.context.get("request")
+        if request is None:
+            return obj.source_file.url
+        return request.build_absolute_uri(obj.source_file.url)
+
+    def get_assignments_count(self, obj):
+        if hasattr(obj, "assignments_count_value"):
+            return obj.assignments_count_value
+        return obj.assignments.filter(round_number=obj.current_round).count()
+
+    def get_submitted_annotations_count(self, obj):
+        if hasattr(obj, "submitted_annotations_count_value"):
+            return obj.submitted_annotations_count_value
+        return obj.annotations.filter(
+            assignment__round_number=obj.current_round,
+            assignment__status=TaskAssignment.Status.SUBMITTED,
+        ).count()
+
+
+class RoomDatasetUploadSerializer(serializers.Serializer):
+    dataset_files = serializers.ListField(
+        child=serializers.FileField(allow_empty_file=False),
+        allow_empty=False,
+        write_only=True,
+    )
+    media_manifest = JsonStringField(required=False)
+
+    def validate(self, attrs):
+        dataset_files = list(attrs.get("dataset_files") or [])
+        media_manifest = attrs.get("media_manifest")
+
+        try:
+            validate_dataset_upload(dataset_mode=Room.DatasetType.IMAGE, dataset_files=dataset_files)
+        except ConflictError as exc:
+            raise serializers.ValidationError({"dataset_files": str(exc)}) from exc
+
+        if media_manifest in (None, ""):
+            attrs["media_manifest"] = []
+        else:
+            if not isinstance(media_manifest, list):
+                raise serializers.ValidationError({"media_manifest": "Манифест медиа должен быть JSON-массивом."})
+            serializer = MediaManifestItemSerializer(data=media_manifest, many=True)
+            serializer.is_valid(raise_exception=True)
+            attrs["media_manifest"] = serializer.validated_data
+
+        return attrs
+
+
+class RoomDatasetDeleteSerializer(serializers.Serializer):
+    task_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
 
 
 class RoomCreateSerializer(serializers.Serializer):
