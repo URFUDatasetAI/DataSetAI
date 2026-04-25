@@ -7,7 +7,7 @@
         <div class="page-topbar__copy">
             <span class="eyebrow">Комнаты</span>
             <h1>Доступные комнаты</h1>
-            <p>Создайте комнату или войдите в нее, используя ID и пароль. Также можно выбрать комнату из списка доступных.</p>
+            <p>Создайте комнату или откройте комнату из списка доступных. Для новых участников используйте invite-ссылку комнаты.</p>
         </div>
         <div class="room-toolbar-stack">
             <div class="room-create-card">
@@ -17,24 +17,6 @@
                     <p>Откроется полная форма с выбором названия, описания и прочих параметров и загрузкой датасета.</p>
                 </div>
                 <a id="rooms-create-link" class="btn btn--primary room-create-card__action" href="/rooms/create/">Создать комнату</a>
-            </div>
-            <div class="room-toolbar-card room-toolbar-card--join">
-                <div class="room-toolbar-card__intro">
-                    <span class="header-note">Вход в комнату</span>
-                    <strong>Или войдите в уже существующую комнату</strong>
-                    <p>Укажите ID комнаты и пароль доступа.</p>
-                </div>
-                <form id="rooms-access-form" class="room-toolbar">
-                    <label class="inline-field">
-                        <span>ID комнаты</span>
-                        <input id="rooms-room-id" type="number" min="1" placeholder="Например, 1">
-                    </label>
-                    <label class="inline-field">
-                        <span>Пароль комнаты</span>
-                        <input id="rooms-room-password" type="password" placeholder="Пароль">
-                    </label>
-                    <button id="rooms-enter-btn" class="btn btn--muted" type="submit" disabled>Войти в комнату</button>
-                </form>
             </div>
         </div>
     </section>

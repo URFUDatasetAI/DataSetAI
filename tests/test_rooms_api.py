@@ -54,6 +54,7 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["title"], "New room")
         self.assertEqual(response.data["created_by_id"], self.customer.id)
+        self.assertEqual(response.data["default_assignment_quota"], 12)
 
     def test_customer_can_create_room_with_cross_validation_settings(self):
         response = self.client.post(
@@ -63,6 +64,7 @@ class RoomsApiTests(APITestCase):
                 "cross_validation_enabled": True,
                 "cross_validation_annotators_count": 3,
                 "cross_validation_similarity_threshold": 85,
+                "default_assignment_quota": 50,
             },
             format="json",
             **self.auth(self.customer),
@@ -72,6 +74,7 @@ class RoomsApiTests(APITestCase):
         self.assertTrue(response.data["cross_validation_enabled"])
         self.assertEqual(response.data["cross_validation_annotators_count"], 3)
         self.assertEqual(response.data["cross_validation_similarity_threshold"], 85)
+        self.assertEqual(response.data["default_assignment_quota"], 50)
 
     def test_customer_can_invite_annotator(self):
         room = make_room(customer=self.customer, title="Room 1")
@@ -98,6 +101,7 @@ class RoomsApiTests(APITestCase):
                 "dataset_label": "Updated dataset",
                 "password_changed": True,
                 "password": "new-secret",
+                "default_assignment_quota": 42,
             },
             format="json",
             **self.auth(self.customer),
@@ -108,6 +112,7 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(room.title, "Updated room")
         self.assertEqual(room.description, "After update")
         self.assertEqual(room.dataset_label, "Updated dataset")
+        self.assertEqual(room.default_assignment_quota, 42)
         self.assertTrue(room.check_access_password("new-secret"))
 
     def test_non_owner_cannot_update_room_metadata(self):
@@ -183,7 +188,7 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(role_response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_admin_can_set_annotator_assignment_quota(self):
-        room = make_room(customer=self.customer, title="Quota room")
+        room = make_room(customer=self.customer, title="Quota room", default_assignment_quota=8)
         invite_annotator(
             room=room,
             annotator=self.admin_user,
@@ -211,6 +216,33 @@ class RoomsApiTests(APITestCase):
         self.assertTrue(dashboard_response.data["actor"]["can_assign_quotas"])
         annotator_payload = next(item for item in dashboard_response.data["annotators"] if item["user_id"] == self.annotator.id)
         self.assertEqual(annotator_payload["task_quota"], 3)
+        self.assertEqual(annotator_payload["custom_task_quota"], 3)
+        self.assertEqual(annotator_payload["quota_source"], "custom")
+
+    def test_admin_can_clear_custom_quota_back_to_room_default(self):
+        room = make_room(customer=self.customer, title="Default quota room", default_assignment_quota=36)
+        invite_annotator(
+            room=room,
+            annotator=self.admin_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.ADMIN,
+        )
+        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        RoomAssignmentQuota.objects.create(room=room, user=self.annotator, task_quota=5)
+
+        response = self.client.post(
+            reverse("room-assignment-quota", kwargs={"room_id": room.id, "user_id": self.annotator.id}),
+            {"task_quota": None},
+            format="json",
+            **self.auth(self.admin_user),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(RoomAssignmentQuota.objects.filter(room=room, user=self.annotator).exists())
+        self.assertEqual(response.data["task_quota"], 36)
+        self.assertIsNone(response.data["custom_task_quota"])
+        self.assertEqual(response.data["quota_source"], "default")
 
     def test_annotator_sees_only_invited_rooms(self):
         visible_room = make_room(customer=self.customer, title="Visible room")
@@ -290,39 +322,6 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         membership = RoomMembership.objects.get(room=room, user=self.annotator)
         self.assertEqual(membership.status, RoomMembership.Status.JOINED)
-
-    def test_invited_user_can_enter_room_by_id_and_password(self):
-        room = make_room(customer=self.customer, title="Password room")
-        invite_annotator(room=room, annotator=self.annotator, invited_by=self.customer)
-        room.set_access_password("demo123")
-        room.save(update_fields=["access_password_hash", "updated_at"])
-
-        response = self.client.post(
-            reverse("room-access"),
-            {"room_id": room.id, "password": "demo123"},
-            format="json",
-            **self.auth(self.annotator),
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["redirect_url"], f"/rooms/{room.id}/")
-        membership = RoomMembership.objects.get(room=room, user=self.annotator)
-        self.assertEqual(membership.status, RoomMembership.Status.JOINED)
-
-    def test_non_member_cannot_enter_room_by_id_even_with_password(self):
-        room = make_room(customer=self.customer, title="Protected room")
-        room.set_access_password("demo123")
-        room.save(update_fields=["access_password_hash", "updated_at"])
-
-        response = self.client.post(
-            reverse("room-access"),
-            {"room_id": room.id, "password": "demo123"},
-            format="json",
-            **self.auth(self.annotator),
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertFalse(RoomMembership.objects.filter(room=room, user=self.annotator).exists())
 
     def test_user_can_request_access_by_invite_link_and_owner_can_approve(self):
         room = make_room(customer=self.customer, title="Invite room")

@@ -186,6 +186,36 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(restored_next.status_code, status.HTTP_200_OK)
         self.assertEqual(restored_next.data["id"], first_task.id)
 
+    def test_room_default_assignment_quota_caps_new_tasks(self):
+        quota_room = make_room(
+            customer=self.customer,
+            title="Default quota labeling room",
+            owner_is_annotator=False,
+            default_assignment_quota=1,
+        )
+        invite_annotator(room=quota_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        first_task = make_task(room=quota_room, payload={"text": "default quota first"})
+        make_task(room=quota_room, payload={"text": "default quota second"})
+
+        first_next = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": quota_room.id}),
+            **self.auth(self.annotator),
+        )
+        first_submit = self.client.post(
+            reverse("task-submit", kwargs={"task_id": first_task.id}),
+            {"result_payload": {"label": "done"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        quota_blocked = self.client.get(
+            reverse("room-next-task", kwargs={"room_id": quota_room.id}),
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(first_next.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_submit.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(quota_blocked.status_code, status.HTTP_204_NO_CONTENT)
+
     def test_unjoined_annotator_cannot_get_next_task(self):
         response = self.client.get(
             reverse("room-next-task", kwargs={"room_id": self.room.id}),

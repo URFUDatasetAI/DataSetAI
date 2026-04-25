@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rooms.api.v1.serializers import (
-    RoomAccessSerializer,
     RoomAssignmentQuotaSerializer,
     RoomDatasetDeleteSerializer,
     RoomDatasetTaskSerializer,
@@ -28,7 +27,6 @@ from apps.rooms.selectors import (
     build_room_invite_preview,
     build_room_dashboard,
     get_room_assignment_quota_state,
-    get_room_by_id,
     get_room_by_invite_token,
     get_room_for_owner,
     get_visible_room,
@@ -62,8 +60,8 @@ from apps.users.models import User
 Rooms API surface.
 
 Important split:
-- RoomAccessView is the "enter room by id/password" flow used by the UI
-- RoomJoinView is the explicit join endpoint for already visible rooms
+- Invite links / join requests are the public access path.
+- RoomJoinView is the explicit join endpoint for already visible rooms.
 """
 
 
@@ -365,51 +363,12 @@ class MyRoomListView(APIView):
         return Response(serializer.data)
 
 
-class RoomAccessView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        serializer = RoomAccessSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        room = get_room_by_id(room_id=serializer.validated_data["room_id"])
-        password = serializer.validated_data.get("password", "")
-
-        if room.created_by_id != request.user.id:
-            membership = room.memberships.filter(user=request.user).first()
-            if membership is None:
-                return Response(
-                    {
-                        "detail": "Доступ по ID комнаты доступен только участникам. Используйте invite-ссылку и дождитесь одобрения.",
-                    },
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-
-            membership = join_room(room=room, annotator=request.user, password=password)
-            record_room_visit(room=room, user=request.user)
-            return Response(
-                {
-                    "room": RoomSerializer(room, context={"request": request}).data,
-                    "membership": RoomMembershipSerializer(membership).data,
-                    "redirect_url": f"/rooms/{room.id}/",
-                }
-            )
-
-        record_room_visit(room=room, user=request.user)
-        return Response(
-            {
-                "room": RoomSerializer(room, context={"request": request}).data,
-                "redirect_url": f"/rooms/{room.id}/",
-            }
-        )
-
-
 class RoomJoinView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, room_id: int):
-        # Join flow is intentionally stricter than RoomAccessView: the room must
-        # already be visible to the actor (owner or invited member).
+        # Join flow is intentionally scoped to rooms the actor can already see
+        # through ownership, membership, or an approved invite flow.
         room = get_visible_room(room_id=room_id, user=request.user)
         serializer = RoomJoinSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

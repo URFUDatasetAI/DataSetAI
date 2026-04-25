@@ -163,14 +163,15 @@ def get_room_assignment_quota_state(
     quota_by_user_id: dict[int, int | None] | None = None,
 ) -> dict:
     if quota_by_user_id is None:
-        task_quota = (
+        custom_task_quota = (
             RoomAssignmentQuota.objects.filter(room=room, user=user)
             .values_list("task_quota", flat=True)
             .first()
         )
     else:
-        task_quota = quota_by_user_id.get(user.id)
+        custom_task_quota = quota_by_user_id.get(user.id)
 
+    task_quota = custom_task_quota if custom_task_quota is not None else room.default_assignment_quota
     quota_used = get_room_assignment_quota_usage(room=room, user=user)
     quota_remaining = None if task_quota is None else max(task_quota - quota_used, 0)
     quota_progress_percent = (
@@ -180,6 +181,8 @@ def get_room_assignment_quota_state(
     )
     return {
         "task_quota": task_quota,
+        "custom_task_quota": custom_task_quota,
+        "quota_source": "custom" if custom_task_quota is not None else ("default" if task_quota is not None else "none"),
         "quota_used": quota_used,
         "quota_remaining": quota_remaining,
         "quota_exhausted": quota_remaining == 0 if task_quota is not None else False,
@@ -305,6 +308,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "cross_validation_annotators_count": room.cross_validation_annotators_count,
             "cross_validation_similarity_threshold": room.cross_validation_similarity_threshold,
             "owner_is_annotator": room.owner_is_annotator,
+            "default_assignment_quota": room.default_assignment_quota,
             "deadline": room.deadline.isoformat() if room.deadline else None,
             "has_password": room.has_password,
             "is_pinned": RoomPin.objects.filter(room=room, user=actor).exists(),
@@ -362,12 +366,8 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             annotator=actor,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        actor_remaining = (
-            actor_quota_state["quota_remaining"]
-            if actor_quota_state["quota_remaining"] is not None
-            else max(total_tasks - actor_completed, 0)
-        )
-        actor_progress = round((actor_completed / total_tasks) * 100, 1) if total_tasks else 0.0
+        actor_remaining = actor_quota_state["quota_remaining"]
+        actor_progress = actor_quota_state["quota_progress_percent"]
         activity = build_activity_series(
             annotations_qs=Annotation.objects.filter(task__room=room, annotator=actor),
         )
@@ -401,12 +401,8 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             annotator=user,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        user_remaining = (
-            user_quota_state["quota_remaining"]
-            if user_quota_state["quota_remaining"] is not None
-            else max(total_tasks - user_completed, 0)
-        )
-        user_progress = round((user_completed / total_tasks) * 100, 1) if total_tasks else 0.0
+        user_remaining = user_quota_state["quota_remaining"]
+        user_progress = user_quota_state["quota_progress_percent"]
 
         annotators.append(
             {
@@ -441,12 +437,8 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             annotator=owner,
             status=TaskAssignment.Status.IN_PROGRESS,
         ).count()
-        owner_remaining = (
-            owner_quota_state["quota_remaining"]
-            if owner_quota_state["quota_remaining"] is not None
-            else max(total_tasks - owner_completed, 0)
-        )
-        owner_progress = round((owner_completed / total_tasks) * 100, 1) if total_tasks else 0.0
+        owner_remaining = owner_quota_state["quota_remaining"]
+        owner_progress = owner_quota_state["quota_progress_percent"]
         annotators.append(
             {
                 "user_id": owner.id,

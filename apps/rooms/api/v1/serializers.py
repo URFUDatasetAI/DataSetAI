@@ -143,6 +143,7 @@ class RoomCreateSerializer(serializers.Serializer):
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100, default=80)
     owner_is_annotator = serializers.BooleanField(required=False, default=True)
+    default_assignment_quota = serializers.IntegerField(required=False, min_value=0, allow_null=True)
     annotation_workflow = serializers.ChoiceField(
         choices=Room.AnnotationWorkflow.values,
         required=False,
@@ -246,6 +247,7 @@ class RoomUpdateSerializer(serializers.Serializer):
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
     owner_is_annotator = serializers.BooleanField(required=False)
+    default_assignment_quota = serializers.IntegerField(required=False, min_value=0, allow_null=True)
 
     def validate_deadline(self, value):
         if value is None:
@@ -343,6 +345,7 @@ class RoomSerializer(serializers.ModelSerializer):
             "cross_validation_annotators_count",
             "cross_validation_similarity_threshold",
             "owner_is_annotator",
+            "default_assignment_quota",
             "deadline",
             "created_by_id",
             "membership_status",
@@ -494,13 +497,8 @@ class RoomAssignmentQuotaSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if "task_quota" not in attrs:
-            raise serializers.ValidationError({"task_quota": "Укажи значение квоты или null, чтобы снять квоту."})
+            raise serializers.ValidationError({"task_quota": "Укажи значение квоты или null, чтобы вернуться к стандартной квоте комнаты."})
         return attrs
-
-
-class RoomAccessSerializer(serializers.Serializer):
-    room_id = serializers.IntegerField(min_value=1)
-    password = serializers.CharField(required=False, allow_blank=True)
 
 
 class RoomJoinSerializer(serializers.Serializer):

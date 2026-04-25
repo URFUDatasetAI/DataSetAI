@@ -85,6 +85,7 @@ type RoomItem = {
   cross_validation_annotators_count: number;
   cross_validation_similarity_threshold: number;
   owner_is_annotator: boolean;
+  default_assignment_quota: number | null;
   deadline: string | null;
   created_by_id: number;
   membership_status: string | null;
@@ -134,9 +135,11 @@ type DashboardAnnotator = {
   joined_at: string | null;
   completed_tasks: number;
   in_progress_tasks: number;
-  remaining_tasks: number;
+  remaining_tasks: number | null;
   progress_percent: number;
   task_quota: number | null;
+  custom_task_quota: number | null;
+  quota_source: "custom" | "default" | "none";
   quota_used: number;
   quota_remaining: number | null;
   quota_exhausted: boolean;
@@ -168,6 +171,7 @@ type RoomDashboard = {
     cross_validation_annotators_count: number;
     cross_validation_similarity_threshold: number;
     owner_is_annotator: boolean;
+    default_assignment_quota: number | null;
     deadline: string | null;
     has_password: boolean;
     is_pinned: boolean;
@@ -208,9 +212,11 @@ type RoomDashboard = {
   annotator_stats?: {
     completed_tasks: number;
     in_progress_tasks: number;
-    remaining_tasks: number;
+    remaining_tasks: number | null;
     progress_percent: number;
     task_quota: number | null;
+    custom_task_quota: number | null;
+    quota_source: "custom" | "default" | "none";
     quota_used: number;
     quota_remaining: number | null;
     quota_exhausted: boolean;
@@ -1770,8 +1776,6 @@ function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
-  const [roomId, setRoomId] = useState("");
-  const [password, setPassword] = useState("");
 
   function sortRooms(list: RoomItem[]) {
     return [...list].sort((left, right) => {
@@ -1829,24 +1833,6 @@ function RoomsPage() {
     loadRooms();
   }, []);
 
-  async function handleDirectEnter() {
-    clearToasts();
-    try {
-      const response = await api<{ redirect_url: string }>("/api/v1/rooms/access/", {
-        method: "POST",
-        body: {
-          room_id: Number(roomId),
-          password,
-        },
-      });
-      window.location.href = response.redirect_url;
-    } catch (error) {
-      addToast(getErrorMessage(error), "error");
-    } finally {
-      setPinBusyRoomId(null);
-    }
-  }
-
   async function handleTogglePin(event: React.MouseEvent<HTMLButtonElement>, room: RoomItem) {
     event.preventDefault();
     event.stopPropagation();
@@ -1894,7 +1880,7 @@ function RoomsPage() {
         <div className="page-topbar__copy">
           <span className="eyebrow">Комнаты</span>
           <h1>Доступные комнаты</h1>
-          <p>Создайте комнату или войдите в нее, используя ID и пароль. Также можно выбрать комнату из списка доступных.</p>
+          <p>Создайте комнату или откройте комнату из списка доступных. Для новых участников используйте invite-ссылку комнаты.</p>
         </div>
         <div className="room-toolbar-stack">
           <div className="room-create-card">
@@ -1906,31 +1892,6 @@ function RoomsPage() {
             <a className="btn btn--primary room-create-card__action" href="/rooms/create/">
               Создать комнату
             </a>
-          </div>
-          <div className="room-toolbar-card room-toolbar-card--join">
-            <div className="room-toolbar-card__intro">
-              <span className="header-note">Вход в комнату</span>
-              <strong>Или войдите в уже существующую комнату</strong>
-              <p>Укажите ID комнаты и пароль доступа.</p>
-            </div>
-            <div className="room-toolbar">
-              <label className="inline-field">
-                <span>ID комнаты</span>
-                <input value={roomId} type="number" min="1" placeholder="Например, 1" onChange={(event) => setRoomId(event.currentTarget.value)} />
-              </label>
-              <label className="inline-field">
-                <span>Пароль комнаты</span>
-                <input value={password} type="password" placeholder="Пароль" onChange={(event) => setPassword(event.currentTarget.value)} />
-              </label>
-              <button
-                className={`btn ${roomId.trim().length ? "btn--primary" : "btn--muted"}`}
-                type="button"
-                disabled={!roomId.trim().length}
-                onClick={handleDirectEnter}
-              >
-                Войти в комнату
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -1957,7 +1918,6 @@ function RoomsPage() {
                   key={room.id}
                   className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
                   onClick={() => {
-                    setRoomId(String(room.id));
                     window.location.href = `/rooms/${room.id}/`;
                   }}
                 >
@@ -2380,6 +2340,7 @@ function RoomCreatePage() {
   const [crossValidationCount, setCrossValidationCount] = useState("2");
   const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
+  const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
   const [datasetMode, setDatasetMode] = useState("demo");
   const [annotationWorkflow, setAnnotationWorkflow] = useState("standard");
   const [datasetLabel, setDatasetLabel] = useState("Тестовый датасет");
@@ -2427,6 +2388,7 @@ function RoomCreatePage() {
         .map((item) => Number(item.trim()))
         .filter((item) => Number.isInteger(item) && item > 0);
       const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+      const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
 
       if (datasetMode !== "demo" && !selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
@@ -2438,6 +2400,13 @@ function RoomCreatePage() {
 
       if (crossValidationEnabled && Number(crossValidationCount) < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (
+        normalizedDefaultQuota !== null &&
+        (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
+      ) {
+        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
       }
 
       if (hasCreateTextLimitError) {
@@ -2462,6 +2431,9 @@ function RoomCreatePage() {
       payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
       payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
       payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
+      if (normalizedDefaultQuota !== null) {
+        payload.append("default_assignment_quota", String(normalizedDefaultQuota));
+      }
       normalizedAnnotatorIds.forEach((item) => payload.append("annotator_ids", String(item)));
       selectedFiles.forEach((file) => payload.append("dataset_files", file));
 
@@ -2577,6 +2549,18 @@ function RoomCreatePage() {
                 <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
                 <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
               </span>
+            </label>
+            <label className="field">
+              <span>Стандартная квота задач</span>
+              <input
+                value={defaultAssignmentQuota}
+                name="default_assignment_quota"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="По количеству задач"
+                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+              />
             </label>
             <label className="field">
               <span>Количество независимых исполнителей (n)</span>
@@ -2723,6 +2707,7 @@ function RoomEditPage() {
   const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = useState("2");
   const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = useState("80");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
+  const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
   const [initialHasPassword, setInitialHasPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -2747,6 +2732,7 @@ function RoomEditPage() {
         setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
         setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
         setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
+        setDefaultAssignmentQuota(nextRoom.default_assignment_quota == null ? "" : String(nextRoom.default_assignment_quota));
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -2776,6 +2762,7 @@ function RoomEditPage() {
       const passwordChanged = (!passwordEnabled && initialHasPassword) || Boolean(nextPassword);
       const nextCrossValidationCount = Math.max(Number(crossValidationAnnotatorsCount || 0), 0);
       const nextCrossValidationThreshold = clamp(Number(crossValidationSimilarityThreshold || 0), 1, 100);
+      const nextDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
 
       if (passwordEnabled && !initialHasPassword && !nextPassword) {
         throw new Error("Укажи пароль, чтобы включить защиту комнаты.");
@@ -2783,6 +2770,13 @@ function RoomEditPage() {
 
       if (crossValidationEnabled && nextCrossValidationCount < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (
+        nextDefaultQuota !== null &&
+        (!Number.isFinite(nextDefaultQuota) || nextDefaultQuota < 0 || !Number.isInteger(nextDefaultQuota))
+      ) {
+        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
       }
 
       if (hasEditTextLimitError) {
@@ -2806,6 +2800,7 @@ function RoomEditPage() {
           cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
           cross_validation_similarity_threshold: nextCrossValidationThreshold,
           owner_is_annotator: ownerIsAnnotator,
+          default_assignment_quota: nextDefaultQuota,
         },
       });
       addToast(`Настройки комнаты #${roomId} обновлены.`, "success");
@@ -2825,7 +2820,7 @@ function RoomEditPage() {
         <div className="page-topbar__copy">
           <span className="eyebrow">Редактирование комнаты</span>
           <h1>Настройки комнаты</h1>
-          <p>Обнови название, описание, дедлайн, название датасета и доступ по паролю без изменения самих задач и файлов.</p>
+          <p>Обнови название, описание, дедлайн, квоты и параметры разметки без изменения самих задач и файлов.</p>
         </div>
       </section>
 
@@ -2876,6 +2871,17 @@ function RoomEditPage() {
                 className={datasetLabelTooLong ? "field__control--invalid" : ""}
                 aria-invalid={datasetLabelTooLong}
                 onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Стандартная квота задач</span>
+              <input
+                value={defaultAssignmentQuota}
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Не задана"
+                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
               />
             </label>
             <label className="field">
@@ -2971,8 +2977,8 @@ function RoomEditPage() {
                 : "После сохранения доступ в комнату будет открыт без пароля."}
             </div>
             <div className="panel-note room-edit-note">
-              Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Перекрестную разметку можно
-              включить или перенастроить здесь, не меняя сам состав задач.
+              Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Перекрестную разметку и стандартную квоту можно
+              перенастроить здесь, не меняя сам состав задач.
             </div>
           </div>
 
@@ -3210,8 +3216,8 @@ function RoomDetailPage() {
   }, [activeAnnotator?.user_id, activeAnnotator?.role]);
 
   useEffect(() => {
-    setSelectedQuota(activeAnnotator?.task_quota == null ? "" : String(activeAnnotator.task_quota));
-  }, [activeAnnotator?.user_id, activeAnnotator?.task_quota]);
+    setSelectedQuota(activeAnnotator?.custom_task_quota == null ? "" : String(activeAnnotator.custom_task_quota));
+  }, [activeAnnotator?.user_id, activeAnnotator?.custom_task_quota]);
 
   const filteredReviewTasks = reviewTasks.filter((task) => {
     const matchesAnnotator = !selectedAnnotatorUserId || (task.annotator_ids || []).includes(selectedAnnotatorUserId);
@@ -3380,7 +3386,7 @@ function RoomDetailPage() {
       });
       addToast(
         nextQuota === null
-          ? `Квота пользователя #${activeAnnotator.user_id} снята.`
+          ? `Пользователь #${activeAnnotator.user_id} вернется к стандартной квоте комнаты.`
           : `Квота пользователя #${activeAnnotator.user_id} обновлена.`,
         "success"
       );
@@ -3671,7 +3677,15 @@ function RoomDetailPage() {
                 </div>
                 <div className="summary-row">
                   <span>Осталось</span>
-                  <strong>{dashboard.annotator_stats?.remaining_tasks || 0}</strong>
+                  <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
+                </div>
+                <div className="summary-row">
+                  <span>Квота</span>
+                  <strong>
+                    {dashboard.annotator_stats?.task_quota == null
+                      ? "Не задана"
+                      : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
+                  </strong>
                 </div>
                 <div className="summary-row">
                   <span>Мой прогресс</span>
@@ -3716,10 +3730,14 @@ function RoomDetailPage() {
                             <span>Сценарий разметки</span>
                             <strong>{translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard")}</strong>
                           </article>
+                          <article className="room-settings-panel__lock">
+                            <span>Стандартная квота</span>
+                            <strong>{dashboard.room.default_assignment_quota == null ? "Не задана" : dashboard.room.default_assignment_quota}</strong>
+                          </article>
                         </div>
                         <div className="room-settings-panel__footer">
                           <p className="panel-note room-settings-panel__note">
-                            Название, описание, дедлайн, пароль и параметры перекрестной разметки редактируются на отдельной странице, чтобы основной экран комнаты не перегружался.
+                            Название, описание, дедлайн, пароль, стандартная квота и параметры перекрестной разметки редактируются на отдельной странице, чтобы основной экран комнаты не перегружался.
                           </p>
                           <div className="role-assignment-box__actions">
                             {dashboard.actor.can_edit_room ? (
@@ -4009,10 +4027,10 @@ function RoomDetailPage() {
                           <div className="annotator-row__brief">
                             <div>{formatPercent(annotator.progress_percent)}</div>
                             <div>
-                              {annotator.completed_tasks} из {dashboard.overview.total_tasks}
+                              отправлено: {annotator.completed_tasks}
                             </div>
                             <div>
-                              {annotator.task_quota == null ? "квота: без лимита" : `квота: ${annotator.quota_used}/${annotator.task_quota}`}
+                              {annotator.task_quota == null ? "квота не задана" : `квота: ${annotator.quota_used}/${annotator.task_quota}`}
                             </div>
                           </div>
                         </button>
@@ -4057,14 +4075,16 @@ function RoomDetailPage() {
                       </div>
                       <div className="summary-row">
                         <span>Осталось</span>
-                        <strong>{activeAnnotator.remaining_tasks}</strong>
+                        <strong>{activeAnnotator.remaining_tasks == null ? "Не задано" : activeAnnotator.remaining_tasks}</strong>
                       </div>
                       <div className="summary-row">
                         <span>Квота</span>
                         <strong>
                           {activeAnnotator.task_quota == null
-                            ? "Без лимита"
-                            : `${activeAnnotator.quota_used} из ${activeAnnotator.task_quota}`}
+                            ? "Не задана"
+                            : `${activeAnnotator.quota_used} из ${activeAnnotator.task_quota}${
+                                activeAnnotator.quota_source === "default" ? " · стандартная" : ""
+                              }`}
                         </strong>
                       </div>
                       <div className="summary-row">
@@ -4093,7 +4113,11 @@ function RoomDetailPage() {
                             type="number"
                             min="0"
                             step="1"
-                            placeholder="Без лимита"
+                            placeholder={
+                              dashboard.room.default_assignment_quota == null
+                                ? "Без стандартной квоты"
+                                : `Стандартная: ${dashboard.room.default_assignment_quota}`
+                            }
                             onChange={(event) => setSelectedQuota(event.currentTarget.value)}
                           />
                         </label>
@@ -5757,11 +5781,12 @@ function RoomWorkPage() {
           ? "Отправленные разметки"
           : "Режим ревью";
   const completedTasks = dashboard?.annotator_stats?.completed_tasks ?? dashboard?.overview.completed_tasks ?? 0;
-  const totalTasks = dashboard?.overview.total_tasks ?? 0;
   const remainingTasks = dashboard?.annotator_stats?.remaining_tasks ?? dashboard?.overview.remaining_tasks ?? null;
+  const quotaUsed = dashboard?.annotator_stats?.quota_used ?? completedTasks;
+  const quotaTarget = dashboard?.annotator_stats?.task_quota ?? null;
   const quotaLabel =
     dashboard?.annotator_stats?.task_quota == null
-      ? "Без лимита"
+      ? "Не задана"
       : `${dashboard.annotator_stats.quota_used}/${dashboard.annotator_stats.task_quota}`;
   const taskWidth = Number(currentTask?.input_payload?.width || currentTask?.input_payload?.source_width || 0);
   const taskHeight = Number(currentTask?.input_payload?.height || currentTask?.input_payload?.source_height || 0);
@@ -6334,18 +6359,26 @@ function RoomWorkPage() {
               JSON
             </button>
           </div>
-          {workspaceMode === "review" ? null : (
-            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
-              {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
-                  {skipping ? "Пропускаем..." : "Пропустить"}
+          <div
+            className={`room-editor__action-group room-editor__action-group--submit ${workspaceMode === "review" ? "is-placeholder" : ""}`}
+            aria-label="Действия с задачей"
+            aria-hidden={workspaceMode === "review"}
+          >
+            {workspaceMode === "review" ? (
+              <span className="room-editor__submit-placeholder">Действия</span>
+            ) : (
+              <>
+                {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
+                    {skipping ? "Пропускаем..." : "Пропустить"}
+                  </button>
+                ) : null}
+                <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                  {submitButtonLabel}
                 </button>
-              ) : null}
-              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-                {submitButtonLabel}
-              </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -6355,16 +6388,16 @@ function RoomWorkPage() {
             <section className="editor-sidepanel editor-sidepanel--task-meta">
               <div className="editor-sidepanel__head">
                 <span className="editor-panel__title">Задача</span>
-                {totalTasks ? <span className="editor-chip editor-chip--ghost">{completedTasks}/{totalTasks}</span> : null}
+                {quotaTarget == null ? null : <span className="editor-chip editor-chip--ghost">{quotaUsed}/{quotaTarget}</span>}
               </div>
               <div className="room-editor__meta-stack">
                 <div className="room-editor__metric-row">
-                  <span>Готово</span>
-                  <strong>{totalTasks ? `${completedTasks}/${totalTasks}` : completedTasks}</strong>
+                  <span>Использовано</span>
+                  <strong>{quotaTarget == null ? quotaUsed : `${quotaUsed}/${quotaTarget}`}</strong>
                 </div>
                 <div className="room-editor__metric-row">
                   <span>Осталось</span>
-                  <strong>{remainingTasks == null ? "Неизвестно" : remainingTasks}</strong>
+                  <strong>{remainingTasks == null ? "Не задано" : remainingTasks}</strong>
                 </div>
                 <div className="room-editor__metric-row">
                   <span>Квота</span>

@@ -2463,8 +2463,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor__action-group--submit {
+    flex: 0 0 276px;
+    width: 276px;
+    justify-content: flex-end;
     border-color: rgba(255, 201, 25, 0.28);
     background: rgba(255, 201, 25, 0.08);
+}
+
+.room-editor__action-group--submit.is-placeholder {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.room-editor__submit-placeholder {
+    min-width: 112px;
 }
 
 .room-editor__tabs {
@@ -2477,7 +2489,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor__submit {
-    min-width: 112px;
+    min-width: 136px;
+}
+
+.room-editor__topbar .btn {
+    white-space: nowrap;
 }
 
 .room-editor__body,
@@ -3195,6 +3211,16 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
     .room-editor__action-group {
         flex-wrap: wrap;
+    }
+
+    .room-editor__action-group--submit {
+        flex: 1 1 100%;
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .room-editor__action-group--submit.is-placeholder {
+        display: none;
     }
 
     .editor-toolbar {
