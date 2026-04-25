@@ -1,4 +1,3 @@
-from django.db.models import F
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,8 +19,9 @@ from apps.labeling.selectors import (
     REVIEW_FILTER_FINAL,
     REVIEW_FILTER_VALUES,
     get_current_submitted_assignment_for_annotator,
-    get_task_current_round_review_annotations,
-    get_task_current_round_review_counts,
+    get_task_review_annotations,
+    get_task_review_counts,
+    get_task_review_outcome,
     get_task_for_review,
     get_task_or_404,
     get_task_review_state,
@@ -140,7 +140,6 @@ class RoomReviewTaskListView(APIView):
             get_room_final_tasks_queryset(room=room)
             .filter(
                 annotations__isnull=False,
-                annotations__assignment__round_number=F("current_round"),
                 annotations__assignment__status=TaskAssignment.Status.SUBMITTED,
             )
             .prefetch_related("annotations", "assignments")
@@ -165,11 +164,11 @@ class TaskReviewDetailView(APIView):
             id=task.id
         )
         review_state = get_task_review_state(task=task)
-        consensus_available = review_state == REVIEW_FILTER_FINAL
-        review_outcome = "accepted" if consensus_available else "incomplete"
-        counts = get_task_current_round_review_counts(task=task)
+        review_outcome = get_task_review_outcome(task=task)
+        consensus_available = review_outcome == "accepted"
+        counts = get_task_review_counts(task=task)
         serialized_annotations = []
-        for annotation in get_task_current_round_review_annotations(task=task):
+        for annotation in get_task_review_annotations(task=task):
             annotation_outcome = "pending"
             if consensus_available and task.consensus_payload is not None:
                 annotation_consensus = evaluate_annotation_against_consensus(
@@ -178,6 +177,8 @@ class TaskReviewDetailView(APIView):
                     similarity_threshold=task.room.cross_validation_similarity_threshold,
                 )
                 annotation_outcome = "accepted" if annotation_consensus["accepted"] else "rejected"
+            elif review_outcome == "rejected":
+                annotation_outcome = "rejected"
             serialized_annotations.append(
                 {
                     **AnnotationSerializer(annotation).data,

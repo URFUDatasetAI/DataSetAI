@@ -1,9 +1,8 @@
 from rest_framework import serializers
 
 from apps.labeling.selectors import (
-    REVIEW_FILTER_FINAL,
-    REVIEW_FILTER_INCOMPLETE,
-    get_task_current_round_review_counts,
+    get_task_review_counts,
+    get_task_review_outcome,
     get_task_review_state,
 )
 from apps.labeling.models import Annotation, Task, TaskAssignment
@@ -187,12 +186,13 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
         return request.build_absolute_uri(obj.source_file.url)
 
     def get_annotations_count(self, obj):
-        return get_task_current_round_review_counts(task=obj)["submitted_annotations_count"]
+        return get_task_review_counts(task=obj)["submitted_annotations_count"]
 
     def get_annotator_ids(self, obj):
+        review_round_number = get_task_review_counts(task=obj).get("review_round_number")
         return list(
             obj.annotations.filter(
-                assignment__round_number=obj.current_round,
+                assignment__round_number=review_round_number or obj.current_round,
                 assignment__status=TaskAssignment.Status.SUBMITTED,
             )
             .order_by()
@@ -204,18 +204,13 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
         return get_task_review_state(task=obj)
 
     def get_required_annotations_count(self, obj):
-        return get_task_current_round_review_counts(task=obj)["required_annotations_count"]
+        return get_task_review_counts(task=obj)["required_annotations_count"]
 
     def get_submitted_annotations_count(self, obj):
-        return get_task_current_round_review_counts(task=obj)["submitted_annotations_count"]
+        return get_task_review_counts(task=obj)["submitted_annotations_count"]
 
     def get_review_outcome(self, obj):
-        review_state = get_task_review_state(task=obj)
-        if review_state == REVIEW_FILTER_FINAL:
-            return "accepted"
-        if review_state == REVIEW_FILTER_INCOMPLETE:
-            return "incomplete"
-        return "pending"
+        return get_task_review_outcome(task=obj)
 
 
 class ReviewAnnotationSerializer(AnnotationSerializer):

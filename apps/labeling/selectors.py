@@ -67,6 +67,21 @@ def get_task_current_round_review_counts(*, task: Task) -> dict:
     }
 
 
+def task_has_reviewable_submitted_annotations(*, task: Task) -> bool:
+    return Annotation.objects.filter(
+        task=task,
+        assignment__status=TaskAssignment.Status.SUBMITTED,
+    ).exists()
+
+
+def task_has_current_round_review_annotations(*, task: Task) -> bool:
+    return Annotation.objects.filter(
+        task=task,
+        assignment__round_number=task.current_round,
+        assignment__status=TaskAssignment.Status.SUBMITTED,
+    ).exists()
+
+
 def get_task_review_state(*, task: Task) -> str:
     if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
         return REVIEW_FILTER_FINAL
@@ -75,15 +90,67 @@ def get_task_review_state(*, task: Task) -> str:
     if counts["submitted_annotations_count"] > 0:
         return REVIEW_FILTER_INCOMPLETE
 
+    if task.status == Task.Status.PENDING and task_has_reviewable_submitted_annotations(task=task):
+        return REVIEW_FILTER_FINAL
+
     return "pending"
 
 
-def get_task_current_round_review_annotations(*, task: Task):
+def get_task_review_outcome(*, task: Task) -> str:
+    review_state = get_task_review_state(task=task)
+    if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
+        return "accepted"
+    if review_state == REVIEW_FILTER_FINAL:
+        return "rejected"
+    if review_state == REVIEW_FILTER_INCOMPLETE:
+        return "incomplete"
+    return "pending"
+
+
+def get_task_review_round_number(*, task: Task) -> int | None:
+    if task_has_current_round_review_annotations(task=task):
+        return task.current_round
+    return (
+        Annotation.objects.filter(
+            task=task,
+            assignment__status=TaskAssignment.Status.SUBMITTED,
+        )
+        .order_by("-assignment__round_number", "-submitted_at", "-id")
+        .values_list("assignment__round_number", flat=True)
+        .first()
+    )
+
+
+def get_task_review_counts(*, task: Task) -> dict:
+    counts = get_task_current_round_review_counts(task=task)
+    review_round_number = get_task_review_round_number(task=task)
+    if review_round_number is None or review_round_number == task.current_round:
+        return {
+            **counts,
+            "review_round_number": review_round_number or task.current_round,
+        }
+
+    return {
+        **counts,
+        "review_round_number": review_round_number,
+        "submitted_annotations_count": Annotation.objects.filter(
+            task=task,
+            assignment__round_number=review_round_number,
+            assignment__status=TaskAssignment.Status.SUBMITTED,
+        ).count(),
+    }
+
+
+def get_task_review_annotations(*, task: Task):
+    review_round_number = get_task_review_round_number(task=task)
+    if review_round_number is None:
+        return Annotation.objects.none()
+
     return (
         Annotation.objects.select_related("annotator", "assignment")
         .filter(
             task=task,
-            assignment__round_number=task.current_round,
+            assignment__round_number=review_round_number,
             assignment__status=TaskAssignment.Status.SUBMITTED,
         )
         .order_by("-submitted_at", "-id")
