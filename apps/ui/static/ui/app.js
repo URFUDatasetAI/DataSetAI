@@ -25474,7 +25474,10 @@
       element.className = `media-bbox${isTextTranscriptionTask() || isReadOnly() ? " media-bbox--readonly" : ""}`;
       element.innerHTML = `
       <span class="media-bbox__label"></span>
-      <i class="media-bbox__resize-handle" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--top-left" data-resize-corner="top-left" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--top-right" data-resize-corner="top-right" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--bottom-left" data-resize-corner="bottom-left" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--bottom-right" data-resize-corner="bottom-right" aria-hidden="true"></i>
     `;
       if (isTextTranscriptionTask() || isReadOnly()) {
         element.tabIndex = -1;
@@ -25485,8 +25488,14 @@
       element.addEventListener("pointerdown", (event) => {
         startDragging(event, annotation);
       });
-      element.querySelector(".media-bbox__resize-handle")?.addEventListener("pointerdown", (event) => {
-        startResizing(event, annotation);
+      element.querySelectorAll("[data-resize-corner]").forEach((handle) => {
+        const corner = handle.dataset.resizeCorner;
+        if (!corner) {
+          return;
+        }
+        handle.addEventListener("pointerdown", (event) => {
+          startResizing(event, annotation, corner);
+        });
       });
       element.addEventListener("click", (event) => {
         event.preventDefault();
@@ -25605,7 +25614,67 @@
         moved: false
       };
     }
-    function startResizing(event, annotation) {
+    function getResizedPointsForCorner({
+      referencePoints,
+      corner,
+      mode,
+      deltaX,
+      deltaY,
+      naturalWidth,
+      naturalHeight
+    }) {
+      const [startXMin, startYMin, startXMax, startYMax] = referencePoints;
+      const startWidth = startXMax - startXMin;
+      const startHeight = startYMax - startYMin;
+      const minWidth = 1;
+      const minHeight = 1;
+      const isLeftCorner = corner === "top-left" || corner === "bottom-left";
+      const isTopCorner = corner === "top-left" || corner === "top-right";
+      if (mode === "move") {
+        const maxX = Math.max(naturalWidth - startWidth, 0);
+        const maxY = Math.max(naturalHeight - startHeight, 0);
+        const nextXMin = clampValue(startXMin + deltaX, 0, maxX);
+        const nextYMin = clampValue(startYMin + deltaY, 0, maxY);
+        return [nextXMin, nextYMin, nextXMin + startWidth, nextYMin + startHeight];
+      }
+      if (mode === "square") {
+        const anchorX = isLeftCorner ? startXMax : startXMin;
+        const anchorY = isTopCorner ? startYMax : startYMin;
+        const draggedX = (isLeftCorner ? startXMin : startXMax) + deltaX;
+        const draggedY = (isTopCorner ? startYMin : startYMax) + deltaY;
+        const desiredWidth = Math.abs(draggedX - anchorX);
+        const desiredHeight = Math.abs(draggedY - anchorY);
+        const maxWidth = Math.max(isLeftCorner ? anchorX : naturalWidth - anchorX, minWidth);
+        const maxHeight = Math.max(isTopCorner ? anchorY : naturalHeight - anchorY, minHeight);
+        const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
+        const nextSize = clampValue(
+          Math.abs(deltaX) >= Math.abs(deltaY) ? desiredWidth : desiredHeight,
+          minWidth,
+          maxSquare
+        );
+        const nextXMin = isLeftCorner ? anchorX - nextSize : anchorX;
+        const nextYMin = isTopCorner ? anchorY - nextSize : anchorY;
+        const nextXMax = isLeftCorner ? anchorX : anchorX + nextSize;
+        const nextYMax = isTopCorner ? anchorY : anchorY + nextSize;
+        return [nextXMin, nextYMin, nextXMax, nextYMax];
+      }
+      let nextXMin = startXMin;
+      let nextYMin = startYMin;
+      let nextXMax = startXMax;
+      let nextYMax = startYMax;
+      if (isLeftCorner) {
+        nextXMin = clampValue(startXMin + deltaX, 0, startXMax - minWidth);
+      } else {
+        nextXMax = clampValue(startXMax + deltaX, startXMin + minWidth, naturalWidth);
+      }
+      if (isTopCorner) {
+        nextYMin = clampValue(startYMin + deltaY, 0, startYMax - minHeight);
+      } else {
+        nextYMax = clampValue(startYMax + deltaY, startYMin + minHeight, naturalHeight);
+      }
+      return [nextXMin, nextYMin, nextXMax, nextYMax];
+    }
+    function startResizing(event, annotation, corner) {
       if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
@@ -25621,6 +25690,7 @@
       beginPointerInteraction(event.pointerId);
       editor.resizeState = {
         annotation,
+        corner,
         startClientX: event.clientX,
         startClientY: event.clientY,
         originalPoints: [...annotation.points],
@@ -25686,40 +25756,16 @@
         }
         const deltaX = (clientX - editor.resizeState.referenceClientX) * metrics.scaleToNaturalX;
         const deltaY = (clientY - editor.resizeState.referenceClientY) * metrics.scaleToNaturalY;
-        const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.referencePoints;
-        const startWidth = startXMax - startXMin;
-        const startHeight = startYMax - startYMin;
-        const minWidth = 1;
-        const minHeight = 1;
-        const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
-        const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
-        let nextXMin = startXMin;
-        let nextYMin = startYMin;
-        let nextWidth = clampValue(startWidth + deltaX, minWidth, maxWidth);
-        let nextHeight = clampValue(startHeight + deltaY, minHeight, maxHeight);
-        if (nextMode === "move") {
-          const maxX = Math.max((metrics.naturalWidth || 0) - startWidth, 0);
-          const maxY = Math.max((metrics.naturalHeight || 0) - startHeight, 0);
-          nextXMin = clampValue(startXMin + deltaX, 0, maxX);
-          nextYMin = clampValue(startYMin + deltaY, 0, maxY);
-          nextWidth = startWidth;
-          nextHeight = startHeight;
-        } else if (nextMode === "square") {
-          const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
-          const useX = Math.abs(deltaX) >= Math.abs(deltaY);
-          const sizeFromX = clampValue(startWidth + deltaX, minWidth, maxSquare);
-          const sizeFromY = clampValue(startHeight + deltaY, minHeight, maxSquare);
-          const nextSize = clampValue(useX ? sizeFromX : sizeFromY, minWidth, maxSquare);
-          nextWidth = nextSize;
-          nextHeight = nextSize;
-        }
         editor.resizeState.moved = editor.resizeState.moved || Math.abs(clientX - editor.resizeState.startClientX) > 3 || Math.abs(clientY - editor.resizeState.startClientY) > 3;
-        editor.resizeState.annotation.points = [
-          nextXMin,
-          nextYMin,
-          nextXMin + nextWidth,
-          nextYMin + nextHeight
-        ];
+        editor.resizeState.annotation.points = getResizedPointsForCorner({
+          referencePoints: editor.resizeState.referencePoints,
+          corner: editor.resizeState.corner,
+          mode: nextMode,
+          deltaX,
+          deltaY,
+          naturalWidth: metrics.naturalWidth || 0,
+          naturalHeight: metrics.naturalHeight || 0
+        });
         renderActiveBox(editor.resizeState.annotation, metrics);
         return;
       }

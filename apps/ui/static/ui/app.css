@@ -4696,8 +4696,6 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .media-bbox__resize-handle {
     position: absolute;
-    right: -8px;
-    bottom: -8px;
     width: 18px;
     height: 18px;
     border-radius: 999px;
@@ -4708,8 +4706,31 @@ input[type="file"]::-webkit-file-upload-button:hover {
     transform: none;
     transition: none;
     animation: none;
-    cursor: nwse-resize;
     z-index: 2;
+}
+
+.media-bbox__resize-handle--top-left {
+    left: -8px;
+    top: -8px;
+    cursor: nwse-resize;
+}
+
+.media-bbox__resize-handle--top-right {
+    right: -8px;
+    top: -8px;
+    cursor: nesw-resize;
+}
+
+.media-bbox__resize-handle--bottom-left {
+    left: -8px;
+    bottom: -8px;
+    cursor: nesw-resize;
+}
+
+.media-bbox__resize-handle--bottom-right {
+    right: -8px;
+    bottom: -8px;
+    cursor: nwse-resize;
 }
 
 .media-bbox:hover .media-bbox__resize-handle,
