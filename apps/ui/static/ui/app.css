@@ -4580,6 +4580,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-canvas {
+    display: inline-grid;
     max-width: 100%;
     max-height: 100%;
     isolation: isolate;
@@ -4592,6 +4593,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-stage__asset {
+    grid-area: 1 / 1;
     max-width: 100%;
     max-height: 100%;
     width: auto;
@@ -4611,6 +4613,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-overlay {
+    grid-area: 1 / 1;
+    position: relative;
+    inset: auto;
+    width: auto;
+    height: auto;
+    align-self: stretch;
+    justify-self: stretch;
     border-radius: 0;
     box-shadow: none;
     z-index: 2;
