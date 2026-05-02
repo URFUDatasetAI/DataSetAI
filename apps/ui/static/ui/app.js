@@ -24938,7 +24938,9 @@
       baseCanvasWidth: 0,
       baseCanvasHeight: 0,
       isPanKeyActive: false,
-      readOnly: false
+      readOnly: false,
+      geometryObserver: null,
+      geometryFrame: null
     };
     function getLabels() {
       return options.getLabels() || [];
@@ -25181,15 +25183,29 @@
       }
       updateStageInteractionState();
     }
-    function captureBaseCanvasSize() {
+    function captureBaseCanvasSize(forceUnzoomedMeasure = false) {
       if (!editor.mediaElement) {
         return false;
       }
-      if (editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
+      if (!forceUnzoomedMeasure && editor.zoomLevel > 1 && editor.baseCanvasWidth > 0 && editor.baseCanvasHeight > 0) {
         return true;
+      }
+      const wrapper = editor.wrapperElement;
+      const shouldMeasureUnzoomed = Boolean(forceUnzoomedMeasure && editor.zoomLevel > 1 && wrapper);
+      const previousWidth = wrapper?.style.width || "";
+      const previousHeight = wrapper?.style.height || "";
+      if (shouldMeasureUnzoomed && wrapper) {
+        wrapper.classList.remove("media-canvas--zoom-ready");
+        wrapper.style.width = "";
+        wrapper.style.height = "";
       }
       const width = editor.mediaElement.clientWidth || editor.mediaElement.getBoundingClientRect().width;
       const height = editor.mediaElement.clientHeight || editor.mediaElement.getBoundingClientRect().height;
+      if (shouldMeasureUnzoomed && wrapper) {
+        wrapper.classList.add("media-canvas--zoom-ready");
+        wrapper.style.width = previousWidth;
+        wrapper.style.height = previousHeight;
+      }
       if (!width || !height) {
         return false;
       }
@@ -25266,10 +25282,49 @@
       });
     }
     function handleStageResize() {
-      if (editor.zoomLevel <= 1) {
-        captureBaseCanvasSize();
+      scheduleGeometryRefresh(true);
+    }
+    function scheduleGeometryRefresh(cancelInteraction = false) {
+      if (cancelInteraction) {
+        cancelActiveInteraction();
       }
-      renderBoxes();
+      if (editor.geometryFrame !== null) {
+        window.cancelAnimationFrame(editor.geometryFrame);
+      }
+      editor.geometryFrame = window.requestAnimationFrame(() => {
+        editor.geometryFrame = window.requestAnimationFrame(() => {
+          editor.geometryFrame = null;
+          syncCanvasViewport();
+        });
+      });
+    }
+    function disconnectGeometryObserver() {
+      editor.geometryObserver?.disconnect();
+      editor.geometryObserver = null;
+      if (editor.geometryFrame !== null) {
+        window.cancelAnimationFrame(editor.geometryFrame);
+        editor.geometryFrame = null;
+      }
+    }
+    function observeCanvasGeometry() {
+      disconnectGeometryObserver();
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
+      const observer = new ResizeObserver(() => {
+        scheduleGeometryRefresh(true);
+      });
+      observer.observe(options.mediaStage);
+      if (editor.wrapperElement) {
+        observer.observe(editor.wrapperElement);
+      }
+      if (editor.mediaElement) {
+        observer.observe(editor.mediaElement);
+      }
+      if (editor.overlayElement) {
+        observer.observe(editor.overlayElement);
+      }
+      editor.geometryObserver = observer;
     }
     function handleStageWheel(event) {
       if (!event.ctrlKey || !editor.mediaElement || !editor.wrapperElement) {
@@ -25287,6 +25342,7 @@
         return;
       }
       if (editor.zoomLevel > 1) {
+        captureBaseCanvasSize(true);
         applyZoom(editor.zoomLevel, { preserveViewport: false, force: true });
         return;
       }
@@ -25438,13 +25494,15 @@
       element.remove();
       editor.boxElements.delete(localId);
     }
-    function updateBoxElement(element, annotation, scaleX, scaleY) {
+    function updateBoxElement(element, annotation, naturalWidth, naturalHeight) {
       const label = getLabelById(annotation.label_id);
       const [xMin, yMin, xMax, yMax] = annotation.points;
-      element.style.left = `${xMin * scaleX}px`;
-      element.style.top = `${yMin * scaleY}px`;
-      element.style.width = `${Math.max((xMax - xMin) * scaleX, 1)}px`;
-      element.style.height = `${Math.max((yMax - yMin) * scaleY, 1)}px`;
+      const safeWidth = naturalWidth > 0 ? naturalWidth : Math.max(xMax, 1);
+      const safeHeight = naturalHeight > 0 ? naturalHeight : Math.max(yMax, 1);
+      element.style.left = `${xMin / safeWidth * 100}%`;
+      element.style.top = `${yMin / safeHeight * 100}%`;
+      element.style.width = `${(xMax - xMin) / safeWidth * 100}%`;
+      element.style.height = `${(yMax - yMin) / safeHeight * 100}%`;
       element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
       const labelNode = element.firstElementChild instanceof HTMLSpanElement ? element.firstElementChild : null;
       if (labelNode) {
@@ -25459,14 +25517,12 @@
         removeBoxElement(annotation.local_id);
         return;
       }
-      const scale = overlayScale || getOverlayScale();
-      const scaleX = metrics ? metrics.naturalWidth > 0 ? metrics.width / metrics.naturalWidth : 1 : scale.scaleX;
-      const scaleY = metrics ? metrics.naturalHeight > 0 ? metrics.height / metrics.naturalHeight : 1 : scale.scaleY;
+      const naturalSize = metrics ? { width: metrics.naturalWidth, height: metrics.naturalHeight } : getNaturalSize();
       const element = editor.boxElements.get(annotation.local_id) || createBoxElement(annotation);
       if (element.parentNode !== editor.overlayElement) {
         editor.overlayElement.appendChild(element);
       }
-      updateBoxElement(element, annotation, scaleX, scaleY);
+      updateBoxElement(element, annotation, naturalSize.width, naturalSize.height);
     }
     function createBoxElement(annotation) {
       const element = document.createElement("button");
@@ -25474,7 +25530,10 @@
       element.className = `media-bbox${isTextTranscriptionTask() || isReadOnly() ? " media-bbox--readonly" : ""}`;
       element.innerHTML = `
       <span class="media-bbox__label"></span>
-      <i class="media-bbox__resize-handle" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--top-left" data-resize-corner="top-left" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--top-right" data-resize-corner="top-right" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--bottom-left" data-resize-corner="bottom-left" aria-hidden="true"></i>
+      <i class="media-bbox__resize-handle media-bbox__resize-handle--bottom-right" data-resize-corner="bottom-right" aria-hidden="true"></i>
     `;
       if (isTextTranscriptionTask() || isReadOnly()) {
         element.tabIndex = -1;
@@ -25485,8 +25544,14 @@
       element.addEventListener("pointerdown", (event) => {
         startDragging(event, annotation);
       });
-      element.querySelector(".media-bbox__resize-handle")?.addEventListener("pointerdown", (event) => {
-        startResizing(event, annotation);
+      element.querySelectorAll("[data-resize-corner]").forEach((handle) => {
+        const corner = handle.dataset.resizeCorner;
+        if (!corner) {
+          return;
+        }
+        handle.addEventListener("pointerdown", (event) => {
+          startResizing(event, annotation, corner);
+        });
       });
       element.addEventListener("click", (event) => {
         event.preventDefault();
@@ -25508,7 +25573,6 @@
       if (!editor.overlayElement) {
         return;
       }
-      const overlayScale = getOverlayScale();
       const visibleIds = /* @__PURE__ */ new Set();
       editor.annotations.forEach((annotation) => {
         if (!isVisibleOnCurrentFrame(annotation)) {
@@ -25516,7 +25580,7 @@
           return;
         }
         visibleIds.add(annotation.local_id);
-        renderActiveBox(annotation, null, overlayScale);
+        renderActiveBox(annotation);
       });
       Array.from(editor.boxElements.keys()).forEach((localId) => {
         if (!visibleIds.has(localId)) {
@@ -25605,7 +25669,67 @@
         moved: false
       };
     }
-    function startResizing(event, annotation) {
+    function getResizedPointsForCorner({
+      referencePoints,
+      corner,
+      mode,
+      deltaX,
+      deltaY,
+      naturalWidth,
+      naturalHeight
+    }) {
+      const [startXMin, startYMin, startXMax, startYMax] = referencePoints;
+      const startWidth = startXMax - startXMin;
+      const startHeight = startYMax - startYMin;
+      const minWidth = 1;
+      const minHeight = 1;
+      const isLeftCorner = corner === "top-left" || corner === "bottom-left";
+      const isTopCorner = corner === "top-left" || corner === "top-right";
+      if (mode === "move") {
+        const maxX = Math.max(naturalWidth - startWidth, 0);
+        const maxY = Math.max(naturalHeight - startHeight, 0);
+        const nextXMin = clampValue(startXMin + deltaX, 0, maxX);
+        const nextYMin = clampValue(startYMin + deltaY, 0, maxY);
+        return [nextXMin, nextYMin, nextXMin + startWidth, nextYMin + startHeight];
+      }
+      if (mode === "square") {
+        const anchorX = isLeftCorner ? startXMax : startXMin;
+        const anchorY = isTopCorner ? startYMax : startYMin;
+        const draggedX = (isLeftCorner ? startXMin : startXMax) + deltaX;
+        const draggedY = (isTopCorner ? startYMin : startYMax) + deltaY;
+        const desiredWidth = Math.abs(draggedX - anchorX);
+        const desiredHeight = Math.abs(draggedY - anchorY);
+        const maxWidth = Math.max(isLeftCorner ? anchorX : naturalWidth - anchorX, minWidth);
+        const maxHeight = Math.max(isTopCorner ? anchorY : naturalHeight - anchorY, minHeight);
+        const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
+        const nextSize = clampValue(
+          Math.abs(deltaX) >= Math.abs(deltaY) ? desiredWidth : desiredHeight,
+          minWidth,
+          maxSquare
+        );
+        const nextXMin = isLeftCorner ? anchorX - nextSize : anchorX;
+        const nextYMin = isTopCorner ? anchorY - nextSize : anchorY;
+        const nextXMax = isLeftCorner ? anchorX : anchorX + nextSize;
+        const nextYMax = isTopCorner ? anchorY : anchorY + nextSize;
+        return [nextXMin, nextYMin, nextXMax, nextYMax];
+      }
+      let nextXMin = startXMin;
+      let nextYMin = startYMin;
+      let nextXMax = startXMax;
+      let nextYMax = startYMax;
+      if (isLeftCorner) {
+        nextXMin = clampValue(startXMin + deltaX, 0, startXMax - minWidth);
+      } else {
+        nextXMax = clampValue(startXMax + deltaX, startXMin + minWidth, naturalWidth);
+      }
+      if (isTopCorner) {
+        nextYMin = clampValue(startYMin + deltaY, 0, startYMax - minHeight);
+      } else {
+        nextYMax = clampValue(startYMax + deltaY, startYMin + minHeight, naturalHeight);
+      }
+      return [nextXMin, nextYMin, nextXMax, nextYMax];
+    }
+    function startResizing(event, annotation, corner) {
       if (isTextTranscriptionTask() || isReadOnly()) {
         return;
       }
@@ -25621,6 +25745,7 @@
       beginPointerInteraction(event.pointerId);
       editor.resizeState = {
         annotation,
+        corner,
         startClientX: event.clientX,
         startClientY: event.clientY,
         originalPoints: [...annotation.points],
@@ -25686,40 +25811,16 @@
         }
         const deltaX = (clientX - editor.resizeState.referenceClientX) * metrics.scaleToNaturalX;
         const deltaY = (clientY - editor.resizeState.referenceClientY) * metrics.scaleToNaturalY;
-        const [startXMin, startYMin, startXMax, startYMax] = editor.resizeState.referencePoints;
-        const startWidth = startXMax - startXMin;
-        const startHeight = startYMax - startYMin;
-        const minWidth = 1;
-        const minHeight = 1;
-        const maxWidth = Math.max((metrics.naturalWidth || 0) - startXMin, minWidth);
-        const maxHeight = Math.max((metrics.naturalHeight || 0) - startYMin, minHeight);
-        let nextXMin = startXMin;
-        let nextYMin = startYMin;
-        let nextWidth = clampValue(startWidth + deltaX, minWidth, maxWidth);
-        let nextHeight = clampValue(startHeight + deltaY, minHeight, maxHeight);
-        if (nextMode === "move") {
-          const maxX = Math.max((metrics.naturalWidth || 0) - startWidth, 0);
-          const maxY = Math.max((metrics.naturalHeight || 0) - startHeight, 0);
-          nextXMin = clampValue(startXMin + deltaX, 0, maxX);
-          nextYMin = clampValue(startYMin + deltaY, 0, maxY);
-          nextWidth = startWidth;
-          nextHeight = startHeight;
-        } else if (nextMode === "square") {
-          const maxSquare = Math.max(Math.min(maxWidth, maxHeight), minWidth);
-          const useX = Math.abs(deltaX) >= Math.abs(deltaY);
-          const sizeFromX = clampValue(startWidth + deltaX, minWidth, maxSquare);
-          const sizeFromY = clampValue(startHeight + deltaY, minHeight, maxSquare);
-          const nextSize = clampValue(useX ? sizeFromX : sizeFromY, minWidth, maxSquare);
-          nextWidth = nextSize;
-          nextHeight = nextSize;
-        }
         editor.resizeState.moved = editor.resizeState.moved || Math.abs(clientX - editor.resizeState.startClientX) > 3 || Math.abs(clientY - editor.resizeState.startClientY) > 3;
-        editor.resizeState.annotation.points = [
-          nextXMin,
-          nextYMin,
-          nextXMin + nextWidth,
-          nextYMin + nextHeight
-        ];
+        editor.resizeState.annotation.points = getResizedPointsForCorner({
+          referencePoints: editor.resizeState.referencePoints,
+          corner: editor.resizeState.corner,
+          mode: nextMode,
+          deltaX,
+          deltaY,
+          naturalWidth: metrics.naturalWidth || 0,
+          naturalHeight: metrics.naturalHeight || 0
+        });
         renderActiveBox(editor.resizeState.annotation, metrics);
         return;
       }
@@ -25929,6 +26030,7 @@
       options.mediaStage.addEventListener("pointercancel", finishPanning);
       options.mediaStage.addEventListener("wheel", handleStageWheel, { passive: false });
       window.addEventListener("resize", handleStageResize);
+      window.visualViewport?.addEventListener("resize", handleStageResize);
       window.addEventListener("keydown", handleKeyDown);
       window.addEventListener("keyup", handleKeyUp);
       window.addEventListener("blur", handleWindowBlur);
@@ -25947,6 +26049,7 @@
       options.mediaStage.removeEventListener("pointercancel", finishPanning);
       options.mediaStage.removeEventListener("wheel", handleStageWheel);
       window.removeEventListener("resize", handleStageResize);
+      window.visualViewport?.removeEventListener("resize", handleStageResize);
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
@@ -25954,6 +26057,7 @@
     }
     function reset(placeholderText) {
       finishPanning();
+      disconnectGeometryObserver();
       detachOverlayEvents(editor.overlayElement);
       editor.boxElements.forEach((element) => element.remove());
       editor.boxElements.clear();
@@ -25992,6 +26096,7 @@
         return;
       }
       finishPanning();
+      disconnectGeometryObserver();
       detachOverlayEvents(editor.overlayElement);
       clearDraft();
       endPointerInteraction();
@@ -26037,6 +26142,7 @@
       editor.wrapperElement = wrapper;
       editor.overlayElement = overlay;
       attachOverlayEvents();
+      observeCanvasGeometry();
       updateZoomControls();
       if (task.source_type === "image" && mediaElement instanceof HTMLImageElement && mediaElement.complete) {
         window.requestAnimationFrame(handleMediaReady);
@@ -26045,6 +26151,7 @@
     }
     function destroy() {
       finishPanning();
+      disconnectGeometryObserver();
       detachOverlayEvents(editor.overlayElement);
       detachPersistentEvents();
       endPointerInteraction();

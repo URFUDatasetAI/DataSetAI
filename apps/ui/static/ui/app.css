@@ -4580,6 +4580,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-canvas {
+    display: inline-grid;
     max-width: 100%;
     max-height: 100%;
     isolation: isolate;
@@ -4592,6 +4593,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-stage__asset {
+    grid-area: 1 / 1;
     max-width: 100%;
     max-height: 100%;
     width: auto;
@@ -4611,6 +4613,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-editor .media-overlay {
+    grid-area: 1 / 1;
+    position: relative;
+    inset: auto;
+    width: auto;
+    height: auto;
+    align-self: stretch;
+    justify-self: stretch;
     border-radius: 0;
     box-shadow: none;
     z-index: 2;
@@ -4696,8 +4705,6 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .media-bbox__resize-handle {
     position: absolute;
-    right: -8px;
-    bottom: -8px;
     width: 18px;
     height: 18px;
     border-radius: 999px;
@@ -4708,8 +4715,31 @@ input[type="file"]::-webkit-file-upload-button:hover {
     transform: none;
     transition: none;
     animation: none;
-    cursor: nwse-resize;
     z-index: 2;
+}
+
+.media-bbox__resize-handle--top-left {
+    left: -8px;
+    top: -8px;
+    cursor: nwse-resize;
+}
+
+.media-bbox__resize-handle--top-right {
+    right: -8px;
+    top: -8px;
+    cursor: nesw-resize;
+}
+
+.media-bbox__resize-handle--bottom-left {
+    left: -8px;
+    bottom: -8px;
+    cursor: nesw-resize;
+}
+
+.media-bbox__resize-handle--bottom-right {
+    right: -8px;
+    bottom: -8px;
+    cursor: nwse-resize;
 }
 
 .media-bbox:hover .media-bbox__resize-handle,
