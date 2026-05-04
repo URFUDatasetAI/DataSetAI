@@ -76,6 +76,24 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.data["cross_validation_similarity_threshold"], 85)
         self.assertEqual(response.data["default_assignment_quota"], 50)
 
+    def test_customer_can_create_room_with_review_voting_settings(self):
+        response = self.client.post(
+            reverse("room-list-create"),
+            {
+                "title": "Voting room",
+                "review_voting_enabled": True,
+                "review_votes_required": 3,
+                "review_acceptance_threshold": 67,
+            },
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data["review_voting_enabled"])
+        self.assertEqual(response.data["review_votes_required"], 3)
+        self.assertEqual(response.data["review_acceptance_threshold"], 67)
+
     def test_customer_can_invite_annotator(self):
         room = make_room(customer=self.customer, title="Room 1")
 
@@ -102,6 +120,9 @@ class RoomsApiTests(APITestCase):
                 "password_changed": True,
                 "password": "new-secret",
                 "default_assignment_quota": 42,
+                "review_voting_enabled": True,
+                "review_votes_required": 2,
+                "review_acceptance_threshold": 50,
             },
             format="json",
             **self.auth(self.customer),
@@ -113,6 +134,9 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(room.description, "After update")
         self.assertEqual(room.dataset_label, "Updated dataset")
         self.assertEqual(room.default_assignment_quota, 42)
+        self.assertTrue(room.review_voting_enabled)
+        self.assertEqual(room.review_votes_required, 2)
+        self.assertEqual(room.review_acceptance_threshold, 50)
         self.assertTrue(room.check_access_password("new-secret"))
 
     def test_non_owner_cannot_update_room_metadata(self):

@@ -36,6 +36,7 @@ class Task(TimeStampedModel):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         IN_PROGRESS = "in_progress", "In progress"
+        IN_REVIEW = "in_review", "In review"
         SUBMITTED = "submitted", "Submitted"
 
     class SourceType(models.TextChoices):
@@ -149,3 +150,32 @@ class TaskAssignment(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Assignment task={self.task_id} annotator={self.annotator_id} round={self.round_number}"
+
+
+class ValidationVote(TimeStampedModel):
+    class Decision(models.TextChoices):
+        APPROVE = "approve", "Approve"
+        REJECT = "reject", "Reject"
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="validation_votes")
+    voter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="validation_votes",
+    )
+    round_number = models.PositiveIntegerField(default=1)
+    decision = models.CharField(max_length=16, choices=Decision.choices)
+    comment = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("task_id", "round_number", "voter_id")
+        constraints = [
+            models.UniqueConstraint(fields=("task", "round_number", "voter"), name="unique_validation_vote_round_voter"),
+        ]
+        indexes = [
+            models.Index(fields=("task", "round_number", "decision"), name="labeling_vv_task_ro_2df2a5_idx"),
+            models.Index(fields=("voter", "decision"), name="labeling_vv_voter_1d19f7_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"ValidationVote task={self.task_id} voter={self.voter_id} round={self.round_number}"

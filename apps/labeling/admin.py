@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
 
 
 @admin.register(Task)
@@ -18,3 +18,9 @@ class TaskAssignmentAdmin(admin.ModelAdmin):
 @admin.register(Annotation)
 class AnnotationAdmin(admin.ModelAdmin):
     list_display = ("id", "task", "annotator", "assignment", "submitted_at")
+
+
+@admin.register(ValidationVote)
+class ValidationVoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "task", "voter", "round_number", "decision", "created_at")
+    list_filter = ("decision", "round_number")

@@ -12,6 +12,7 @@ from apps.labeling.api.v1.serializers import (
     ReviewTaskDetailSerializer,
     ReviewTaskListItemSerializer,
     TaskSerializer,
+    ValidationVoteSubmitSerializer,
 )
 from apps.labeling.consensus import evaluate_annotation_against_consensus
 from apps.labeling.models import TaskAssignment
@@ -25,6 +26,7 @@ from apps.labeling.selectors import (
     get_task_for_review,
     get_task_or_404,
     get_task_review_state,
+    get_task_validation_vote_summary,
     list_current_submitted_assignments_for_annotator,
 )
 from apps.labeling.services import (
@@ -34,6 +36,7 @@ from apps.labeling.services import (
     return_task_annotation_for_revision,
     skip_task_for_annotator,
     submit_annotation,
+    submit_validation_vote,
     update_submitted_annotation,
 )
 from apps.labeling.workflows import get_room_final_tasks_queryset
@@ -165,12 +168,13 @@ class TaskReviewDetailView(APIView):
         )
         review_state = get_task_review_state(task=task)
         review_outcome = get_task_review_outcome(task=task)
-        consensus_available = review_outcome == "accepted"
+        consensus_available = task.consensus_payload is not None and review_outcome in ("accepted", "validation")
         counts = get_task_review_counts(task=task)
+        vote_summary = get_task_validation_vote_summary(task=task, reviewer=request.user)
         serialized_annotations = []
         for annotation in get_task_review_annotations(task=task):
             annotation_outcome = "pending"
-            if consensus_available and task.consensus_payload is not None:
+            if review_outcome == "accepted" and task.consensus_payload is not None:
                 annotation_consensus = evaluate_annotation_against_consensus(
                     annotation_payload=annotation.result_payload,
                     consensus_payload=task.consensus_payload,
@@ -189,13 +193,31 @@ class TaskReviewDetailView(APIView):
             "task": task,
             "consensus_payload": task.consensus_payload if consensus_available else None,
             "consensus_available": consensus_available,
-            "can_reject_all": consensus_available,
+            "can_reject_all": review_outcome == "accepted",
             "review_state": review_state,
             **counts,
+            **vote_summary,
             "annotations": serialized_annotations,
             "review_outcome": review_outcome,
         }
         return Response(ReviewTaskDetailSerializer(payload, context={"request": request}).data)
+
+
+class TaskValidationVoteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id: int):
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        serializer = ValidationVoteSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        submit_validation_vote(
+            task=task,
+            reviewer=request.user,
+            decision=serializer.validated_data["decision"],
+            comment=serializer.validated_data.get("comment", ""),
+        )
+        refreshed_task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        return Response(TaskSerializer(refreshed_task, context={"request": request}).data)
 
 
 class TaskRejectView(APIView):

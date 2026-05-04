@@ -21742,7 +21742,7 @@
     customer: "\u0417\u0430\u043A\u0430\u0437\u0447\u0438\u043A",
     annotator: "\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C",
     admin: "\u0410\u0434\u043C\u0438\u043D",
-    tester: "\u0418\u043D\u0441\u043F\u0435\u043A\u0442\u043E\u0440"
+    tester: "\u0420\u0435\u0432\u044C\u044E\u0435\u0440"
   };
   var membershipLabels = {
     owner: "\u0412\u043B\u0430\u0434\u0435\u043B\u0435\u0446",
@@ -21755,6 +21755,7 @@
   var taskStatusLabels = {
     pending: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
     in_progress: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435",
+    in_review: "\u041D\u0430 \u0440\u0435\u0432\u044C\u044E",
     submitted: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430"
   };
   var datasetModeLabels = {
@@ -21883,7 +21884,9 @@
         dataset_label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
         dataset_files: "\u0424\u0430\u0439\u043B\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
         media_manifest: "\u041C\u0435\u0434\u0438\u0430-\u043C\u0430\u043D\u0438\u0444\u0435\u0441\u0442",
-        task_ids: "\u041E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430"
+        task_ids: "\u041E\u0431\u044A\u0435\u043A\u0442\u044B \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
+        review_votes_required: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F",
+        review_acceptance_threshold: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F"
       };
       Object.entries(data).forEach(([key, value]) => {
         const fieldName = key === "non_field_errors" ? "\u041E\u0448\u0438\u0431\u043A\u0430" : apiFieldLabels[key] || key;
@@ -22097,6 +22100,9 @@
     }
     if (outcome === "incomplete") {
       return "\u041D\u0435\u043F\u043E\u043B\u043D\u0430\u044F";
+    }
+    if (outcome === "validation") {
+      return "\u041D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0438";
     }
     return "\u041E\u0436\u0438\u0434\u0430\u0435\u0442 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438";
   }
@@ -23247,6 +23253,9 @@
     const [crossValidationEnabled, setCrossValidationEnabled] = (0, import_react.useState)(false);
     const [crossValidationCount, setCrossValidationCount] = (0, import_react.useState)("2");
     const [crossValidationThreshold, setCrossValidationThreshold] = (0, import_react.useState)("80");
+    const [reviewVotingEnabled, setReviewVotingEnabled] = (0, import_react.useState)(false);
+    const [reviewVotesRequired, setReviewVotesRequired] = (0, import_react.useState)("1");
+    const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = (0, import_react.useState)("100");
     const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
     const [defaultAssignmentQuota, setDefaultAssignmentQuota] = (0, import_react.useState)("");
     const [datasetMode, setDatasetMode] = (0, import_react.useState)("demo");
@@ -23289,6 +23298,8 @@
         const normalizedAnnotatorIds = annotatorIds.split(",").map((item) => Number(item.trim())).filter((item) => Number.isInteger(item) && item > 0);
         const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
         const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+        const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
+        const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
         if (datasetMode !== "demo" && !selectedFiles.length) {
           throw new Error("\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u0430\u0439\u043B\u043E\u0432 \u0434\u043B\u044F \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u0442\u0438\u043F\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430.");
         }
@@ -23297,6 +23308,9 @@
         }
         if (crossValidationEnabled && Number(crossValidationCount) < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (reviewVotingEnabled && (!Number.isFinite(normalizedReviewVotesRequired) || normalizedReviewVotesRequired < 1 || normalizedReviewVotesRequired > 20 || !Number.isInteger(normalizedReviewVotesRequired))) {
+          throw new Error("\u0414\u043B\u044F \u043F\u0443\u043B\u0430 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438 \u0443\u043A\u0430\u0436\u0438 \u043E\u0442 1 \u0434\u043E 20 \u0433\u043E\u043B\u043E\u0441\u043E\u0432.");
         }
         if (normalizedDefaultQuota !== null && (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))) {
           throw new Error("\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u0446\u0435\u043B\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C 0 \u0438\u043B\u0438 \u0431\u043E\u043B\u044C\u0448\u0435.");
@@ -23319,6 +23333,9 @@
         payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
         payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
         payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
+        payload.append("review_voting_enabled", reviewVotingEnabled ? "true" : "false");
+        payload.append("review_votes_required", String(normalizedReviewVotesRequired));
+        payload.append("review_acceptance_threshold", String(normalizedReviewAcceptanceThreshold));
         payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
         if (normalizedDefaultQuota !== null) {
           payload.append("default_assignment_quota", String(normalizedDefaultQuota));
@@ -23440,6 +23457,13 @@
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: reviewVotingEnabled, name: "review_voting_enabled", type: "checkbox", onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked) })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
@@ -23488,6 +23512,36 @@
                 max: "100",
                 disabled: !crossValidationEnabled,
                 onChange: (event) => setCrossValidationThreshold(event.currentTarget.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: reviewVotesRequired,
+                name: "review_votes_required",
+                type: "number",
+                min: "1",
+                max: "20",
+                disabled: !reviewVotingEnabled,
+                onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: reviewAcceptanceThreshold,
+                name: "review_acceptance_threshold",
+                type: "number",
+                min: "1",
+                max: "100",
+                disabled: !reviewVotingEnabled,
+                onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
               }
             )
           ] }),
@@ -23592,6 +23646,9 @@
     const [crossValidationEnabled, setCrossValidationEnabled] = (0, import_react.useState)(false);
     const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = (0, import_react.useState)("2");
     const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = (0, import_react.useState)("80");
+    const [reviewVotingEnabled, setReviewVotingEnabled] = (0, import_react.useState)(false);
+    const [reviewVotesRequired, setReviewVotesRequired] = (0, import_react.useState)("1");
+    const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = (0, import_react.useState)("100");
     const [ownerIsAnnotator, setOwnerIsAnnotator] = (0, import_react.useState)(true);
     const [defaultAssignmentQuota, setDefaultAssignmentQuota] = (0, import_react.useState)("");
     const [initialHasPassword, setInitialHasPassword] = (0, import_react.useState)(false);
@@ -23615,6 +23672,9 @@
           setCrossValidationEnabled(Boolean(nextRoom.cross_validation_enabled));
           setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
           setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
+          setReviewVotingEnabled(Boolean(nextRoom.review_voting_enabled));
+          setReviewVotesRequired(String(Number(nextRoom.review_votes_required || 1)));
+          setReviewAcceptanceThreshold(String(Number(nextRoom.review_acceptance_threshold || 100)));
           setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
           setDefaultAssignmentQuota(nextRoom.default_assignment_quota == null ? "" : String(nextRoom.default_assignment_quota));
         } catch (error) {
@@ -23641,12 +23701,17 @@
         const passwordChanged = !passwordEnabled && initialHasPassword || Boolean(nextPassword);
         const nextCrossValidationCount = Math.max(Number(crossValidationAnnotatorsCount || 0), 0);
         const nextCrossValidationThreshold = clamp(Number(crossValidationSimilarityThreshold || 0), 1, 100);
+        const nextReviewVotesRequired = Number(reviewVotesRequired || 1);
+        const nextReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
         const nextDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
         if (passwordEnabled && !initialHasPassword && !nextPassword) {
           throw new Error("\u0423\u043A\u0430\u0436\u0438 \u043F\u0430\u0440\u043E\u043B\u044C, \u0447\u0442\u043E\u0431\u044B \u0432\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u0437\u0430\u0449\u0438\u0442\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u044B.");
         }
         if (crossValidationEnabled && nextCrossValidationCount < 2) {
           throw new Error("\u0414\u043B\u044F \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0443\u043A\u0430\u0436\u0438 \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0443\u0445 \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439.");
+        }
+        if (reviewVotingEnabled && (!Number.isFinite(nextReviewVotesRequired) || nextReviewVotesRequired < 1 || nextReviewVotesRequired > 20 || !Number.isInteger(nextReviewVotesRequired))) {
+          throw new Error("\u0414\u043B\u044F \u043F\u0443\u043B\u0430 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438 \u0443\u043A\u0430\u0436\u0438 \u043E\u0442 1 \u0434\u043E 20 \u0433\u043E\u043B\u043E\u0441\u043E\u0432.");
         }
         if (nextDefaultQuota !== null && (!Number.isFinite(nextDefaultQuota) || nextDefaultQuota < 0 || !Number.isInteger(nextDefaultQuota))) {
           throw new Error("\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0434\u043E\u043B\u0436\u043D\u0430 \u0431\u044B\u0442\u044C \u0446\u0435\u043B\u044B\u043C \u0447\u0438\u0441\u043B\u043E\u043C 0 \u0438\u043B\u0438 \u0431\u043E\u043B\u044C\u0448\u0435.");
@@ -23669,6 +23734,9 @@
             cross_validation_enabled: crossValidationEnabled,
             cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
             cross_validation_similarity_threshold: nextCrossValidationThreshold,
+            review_voting_enabled: reviewVotingEnabled,
+            review_votes_required: nextReviewVotesRequired,
+            review_acceptance_threshold: nextReviewAcceptanceThreshold,
             owner_is_annotator: ownerIsAnnotator,
             default_assignment_quota: nextDefaultQuota
           }
@@ -23791,6 +23859,20 @@
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  checked: reviewVotingEnabled,
+                  type: "checkbox",
+                  onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked)
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
@@ -23829,6 +23911,34 @@
                 max: "100",
                 disabled: !crossValidationEnabled,
                 onChange: (event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: reviewVotesRequired,
+                type: "number",
+                min: "1",
+                max: "20",
+                disabled: !reviewVotingEnabled,
+                onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                value: reviewAcceptanceThreshold,
+                type: "number",
+                min: "1",
+                max: "100",
+                disabled: !reviewVotingEnabled,
+                onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
               }
             )
           ] }),
@@ -23927,7 +24037,7 @@
       }
       setReviewTasksLoading(true);
       try {
-        const tasks = await api(`/api/v1/rooms/${nextRoomId}/review/tasks/`);
+        const tasks = await api(`/api/v1/rooms/${nextRoomId}/review/tasks/?filter=validation`);
         const nextTasks = tasks || [];
         setReviewTasks(nextTasks);
         return nextTasks;
@@ -24828,10 +24938,7 @@
                         ] }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "annotator-row__brief", children: [
                           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: translateReviewOutcome(task.review_outcome) }),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                            task.annotations_count,
-                            " \u0430\u043D\u043D\u043E\u0442\u0430\u0446."
-                          ] })
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: task.review_outcome === "validation" ? `${task.validation_votes_count}/${task.validation_votes_required} \u0433\u043E\u043B\u043E\u0441\u043E\u0432` : `${task.annotations_count} \u0430\u043D\u043D\u043E\u0442\u0430\u0446.` })
                         ] })
                       ]
                     },
@@ -24863,6 +24970,14 @@
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0445\u043E\u0434\u0441\u0442\u0432\u043E" }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: reviewDetail.task.validation_score == null ? "\u041D\u0435 \u0440\u0430\u0441\u0441\u0447\u0438\u0442\u0430\u043D\u043E" : `${reviewDetail.task.validation_score}%` })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u0430" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_votes_count}/${reviewDetail.validation_votes_required}` })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430 / \u043F\u0440\u043E\u0442\u0438\u0432" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_approve_votes_count}/${reviewDetail.validation_reject_votes_count}` })
                     ] }),
                     reviewDetail.task.source_file_url ? reviewDetail.task.source_type === "image" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { className: "review-task-preview", src: reviewDetail.task.source_file_url, alt: reviewDetail.task.source_name || `task-${reviewDetail.task.id}` }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", { className: "review-task-preview", src: reviewDetail.task.source_file_url, controls: true, preload: "metadata" }) : null
                   ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0441\u043B\u0435\u0432\u0430." })
@@ -26205,7 +26320,7 @@
     const [selectedReviewTaskId, setSelectedReviewTaskId] = (0, import_react.useState)(null);
     const [reviewDetail, setReviewDetail] = (0, import_react.useState)(null);
     const [selectedReviewSource, setSelectedReviewSource] = (0, import_react.useState)("consensus");
-    const [reviewFilter, setReviewFilter] = (0, import_react.useState)("final");
+    const [reviewFilter, setReviewFilter] = (0, import_react.useState)("validation");
     const [reviewActionBusy, setReviewActionBusy] = (0, import_react.useState)(null);
     const [skipping, setSkipping] = (0, import_react.useState)(false);
     const [editorState, setEditorState] = (0, import_react.useState)({
@@ -26658,6 +26773,26 @@
         setReviewActionBusy(null);
       }
     }
+    async function handleValidationVote(decision) {
+      if (!reviewDetail?.task.id || !reviewDetail.can_vote) {
+        return;
+      }
+      clearToasts();
+      setReviewActionBusy(`vote-${decision}`);
+      try {
+        await api(`/api/v1/tasks/${reviewDetail.task.id}/validation-vote/`, {
+          method: "POST",
+          body: { decision }
+        });
+        await refreshDashboardSnapshot();
+        addToast(decision === "approve" ? `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.` : `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.`, "success");
+        await activateWorkspaceMode("review", { taskId: reviewDetail.task.id });
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setReviewActionBusy(null);
+      }
+    }
     async function handleRejectTask() {
       if (!reviewDetail?.task.id) {
         return;
@@ -26835,17 +26970,40 @@
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateReviewOutcome(task.review_outcome) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("small", { children: [
-                    task.submitted_annotations_count,
-                    "/",
-                    task.required_annotations_count || 0,
-                    " \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A"
-                  ] })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: task.review_outcome === "validation" ? `${task.validation_votes_count}/${task.validation_votes_required} \u0433\u043E\u043B\u043E\u0441\u043E\u0432` : `${task.submitted_annotations_count}/${task.required_annotations_count || 0} \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A` })
                 ]
               },
               task.id
             )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043D\u0435\u0442 \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u0432, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u043D\u0443\u0436\u043D\u043E \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u0432 \u0440\u0435\u0436\u0438\u043C\u0435 \u0440\u0435\u0432\u044C\u044E." }) }),
             reviewDetail ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__section", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "editor-sidepanel__label", children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-stack", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u0442\u0443\u0441" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateReviewOutcome(reviewDetail.review_outcome) })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u0430" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_votes_count}/${reviewDetail.validation_votes_required}` })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430 / \u043F\u0440\u043E\u0442\u0438\u0432" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_approve_votes_count}/${reviewDetail.validation_reject_votes_count}` })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                      reviewDetail.validation_acceptance_threshold,
+                      "%"
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u0433\u043E\u043B\u043E\u0441" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: reviewDetail.actor_validation_vote === "approve" ? "\u041F\u0440\u0438\u043D\u044F\u0442\u044C" : reviewDetail.actor_validation_vote === "reject" ? "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C" : "\u041D\u0435 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043B" })
+                  ] })
+                ] })
+              ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__section", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__label", children: [
                   "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \xB7 ",
@@ -26880,6 +27038,28 @@
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__actions", children: [
+                reviewDetail.can_vote ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: "btn btn--primary btn--compact",
+                      type: "button",
+                      disabled: Boolean(reviewActionBusy),
+                      onClick: () => handleValidationVote("approve"),
+                      children: reviewActionBusy === "vote-approve" ? "\u0413\u043E\u043B\u043E\u0441\u0443\u0435\u043C..." : "\u041F\u0440\u0438\u043D\u044F\u0442\u044C"
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: "btn btn--danger btn--compact",
+                      type: "button",
+                      disabled: Boolean(reviewActionBusy),
+                      onClick: () => handleValidationVote("reject"),
+                      children: reviewActionBusy === "vote-reject" ? "\u0413\u043E\u043B\u043E\u0441\u0443\u0435\u043C..." : "\u041E\u0442\u043A\u043B\u043E\u043D\u0438\u0442\u044C"
+                    }
+                  )
+                ] }) : null,
                 selectedReviewAnnotation ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
@@ -26900,6 +27080,15 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: mediaToolRef, className: isMediaTask || workspaceMode === "review" ? "editor-toolbar" : "editor-toolbar hidden", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-toolbar__frame", children: [
               workspaceMode === "review" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__review-filters", role: "group", "aria-label": "\u0424\u0438\u043B\u044C\u0442\u0440 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0438", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: `room-editor__filter-chip ${reviewFilter === "validation" ? "is-active" : ""}`,
+                    type: "button",
+                    onClick: () => handleReviewFilterChange("validation"),
+                    children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435"
+                  }
+                ),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
