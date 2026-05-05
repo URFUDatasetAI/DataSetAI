@@ -27,7 +27,7 @@ class Task(TimeStampedModel):
     
     Attributes:
         input_payload: JSON field storing dynamic properties like coordinates, original text, etc.
-        status: The current progression of the task (pending, in_progress, submitted).
+        status: The current progression of the task (pending, in_progress, in_review, submitted).
         current_round: Tracks the number of consensus-rounds this task has been through.
         validation_score: Cross-validation match rate (if applicable).
         consensus_payload: Final converged result once enough reviewers agree.

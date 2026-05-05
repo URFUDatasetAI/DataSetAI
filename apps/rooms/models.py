@@ -144,7 +144,7 @@ class RoomMembership(TimeStampedModel):
     Possible roles:
     - ANNOTATOR: Fills out tasks.
     - ADMIN: Manages room settings and invites.
-    - TESTER: Special role for verifying functionalities.
+    - TESTER: Reviewer role for validating submitted annotations.
     """
     class Status(models.TextChoices):
         INVITED = "invited", "Invited"

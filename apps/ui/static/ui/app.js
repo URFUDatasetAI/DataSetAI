@@ -24973,11 +24973,19 @@
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u0430" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_votes_count}/${reviewDetail.validation_votes_required}` })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                        reviewDetail.validation_votes_count,
+                        "/",
+                        reviewDetail.validation_votes_required
+                      ] })
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430 / \u043F\u0440\u043E\u0442\u0438\u0432" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_approve_votes_count}/${reviewDetail.validation_reject_votes_count}` })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                        reviewDetail.validation_approve_votes_count,
+                        "/",
+                        reviewDetail.validation_reject_votes_count
+                      ] })
                     ] }),
                     reviewDetail.task.source_file_url ? reviewDetail.task.source_type === "image" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { className: "review-task-preview", src: reviewDetail.task.source_file_url, alt: reviewDetail.task.source_name || `task-${reviewDetail.task.id}` }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", { className: "review-task-preview", src: reviewDetail.task.source_file_url, controls: true, preload: "metadata" }) : null
                   ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0440\u0430\u0437\u043C\u0435\u0447\u0435\u043D\u043D\u044B\u0439 \u043E\u0431\u044A\u0435\u043A\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0441\u043B\u0435\u0432\u0430." })
@@ -25784,15 +25792,8 @@
         moved: false
       };
     }
-    function getResizedPointsForCorner({
-      referencePoints,
-      corner,
-      mode,
-      deltaX,
-      deltaY,
-      naturalWidth,
-      naturalHeight
-    }) {
+    function getResizedPointsForCorner(options2) {
+      const { referencePoints, corner, mode, deltaX, deltaY, naturalWidth, naturalHeight } = options2;
       const [startXMin, startYMin, startXMax, startYMax] = referencePoints;
       const startWidth = startXMax - startXMin;
       const startHeight = startYMax - startYMin;
@@ -25803,9 +25804,9 @@
       if (mode === "move") {
         const maxX = Math.max(naturalWidth - startWidth, 0);
         const maxY = Math.max(naturalHeight - startHeight, 0);
-        const nextXMin = clampValue(startXMin + deltaX, 0, maxX);
-        const nextYMin = clampValue(startYMin + deltaY, 0, maxY);
-        return [nextXMin, nextYMin, nextXMin + startWidth, nextYMin + startHeight];
+        const nextXMin2 = clampValue(startXMin + deltaX, 0, maxX);
+        const nextYMin2 = clampValue(startYMin + deltaY, 0, maxY);
+        return [nextXMin2, nextYMin2, nextXMin2 + startWidth, nextYMin2 + startHeight];
       }
       if (mode === "square") {
         const anchorX = isLeftCorner ? startXMax : startXMin;
@@ -25822,11 +25823,11 @@
           minWidth,
           maxSquare
         );
-        const nextXMin = isLeftCorner ? anchorX - nextSize : anchorX;
-        const nextYMin = isTopCorner ? anchorY - nextSize : anchorY;
-        const nextXMax = isLeftCorner ? anchorX : anchorX + nextSize;
-        const nextYMax = isTopCorner ? anchorY : anchorY + nextSize;
-        return [nextXMin, nextYMin, nextXMax, nextYMax];
+        const nextXMin2 = isLeftCorner ? anchorX - nextSize : anchorX;
+        const nextYMin2 = isTopCorner ? anchorY - nextSize : anchorY;
+        const nextXMax2 = isLeftCorner ? anchorX : anchorX + nextSize;
+        const nextYMax2 = isTopCorner ? anchorY : anchorY + nextSize;
+        return [nextXMin2, nextYMin2, nextXMax2, nextYMax2];
       }
       let nextXMin = startXMin;
       let nextYMin = startYMin;
@@ -26785,7 +26786,10 @@
           body: { decision }
         });
         await refreshDashboardSnapshot();
-        addToast(decision === "approve" ? `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.` : `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.`, "success");
+        addToast(
+          decision === "approve" ? `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.` : `\u0413\u043E\u043B\u043E\u0441 \u0437\u0430 \u043E\u0442\u043A\u043B\u043E\u043D\u0435\u043D\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438 #${reviewDetail.task.id} \u0443\u0447\u0442\u0451\u043D.`,
+          "success"
+        );
         await activateWorkspaceMode("review", { taskId: reviewDetail.task.id });
       } catch (error) {
         addToast(getErrorMessage(error), "error");
@@ -26985,11 +26989,19 @@
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u0430" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_votes_count}/${reviewDetail.validation_votes_required}` })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                      reviewDetail.validation_votes_count,
+                      "/",
+                      reviewDetail.validation_votes_required
+                    ] })
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430 / \u043F\u0440\u043E\u0442\u0438\u0432" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: `${reviewDetail.validation_approve_votes_count}/${reviewDetail.validation_reject_votes_count}` })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                      reviewDetail.validation_approve_votes_count,
+                      "/",
+                      reviewDetail.validation_reject_votes_count
+                    ] })
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-editor__meta-row", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433" }),

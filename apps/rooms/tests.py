@@ -165,7 +165,7 @@ class RoomListCreateViewTests(TestCase):
                 "title": "Updated room",
                 "description": "Fresh description",
                 "dataset_label": "Vision batch",
-                "deadline": "2026-05-01T09:30:00Z",
+                "deadline": (timezone.now() + timezone.timedelta(days=7)).isoformat(),
                 "has_password": True,
                 "password": "new-secret",
                 "cross_validation_enabled": True,
