@@ -27,3 +27,4 @@
 - Идеи, которые ещё не стали задачами, должны жить в `AGENTS/ideas/`, а не растворяться в чатах.
 
 Если времени мало, сначала прочитай [AGENTS/current-state.md](AGENTS/current-state.md), затем выбери один релевантный файл из [AGENTS/context/](AGENTS/context/README.md), и только потом иди в код.
+
