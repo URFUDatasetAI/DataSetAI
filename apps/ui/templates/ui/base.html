@@ -13,7 +13,7 @@
             } catch (error) {
                 storedTheme = null;
             }
-            var preferredTheme = storedTheme || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+            var preferredTheme = storedTheme || "dark";
             document.documentElement.dataset.theme = preferredTheme;
         })();
     </script>
