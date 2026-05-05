@@ -84,6 +84,9 @@ type RoomItem = {
   cross_validation_enabled: boolean;
   cross_validation_annotators_count: number;
   cross_validation_similarity_threshold: number;
+  review_voting_enabled: boolean;
+  review_votes_required: number;
+  review_acceptance_threshold: number;
   owner_is_annotator: boolean;
   default_assignment_quota: number | null;
   deadline: string | null;
@@ -170,6 +173,9 @@ type RoomDashboard = {
     cross_validation_enabled: boolean;
     cross_validation_annotators_count: number;
     cross_validation_similarity_threshold: number;
+    review_voting_enabled: boolean;
+    review_votes_required: number;
+    review_acceptance_threshold: number;
     owner_is_annotator: boolean;
     default_assignment_quota: number | null;
     deadline: string | null;
@@ -257,6 +263,13 @@ type ReviewTaskListItem = {
   required_annotations_count: number;
   submitted_annotations_count: number;
   review_outcome: string;
+  validation_votes_required: number;
+  validation_acceptance_threshold: number;
+  validation_votes_count: number;
+  validation_approve_votes_count: number;
+  validation_reject_votes_count: number;
+  actor_validation_vote: string | null;
+  can_vote: boolean;
   updated_at: string;
 };
 
@@ -325,6 +338,13 @@ type ReviewTaskDetail = {
   review_state: string;
   required_annotations_count: number;
   submitted_annotations_count: number;
+  validation_votes_required: number;
+  validation_acceptance_threshold: number;
+  validation_votes_count: number;
+  validation_approve_votes_count: number;
+  validation_reject_votes_count: number;
+  actor_validation_vote: string | null;
+  can_vote: boolean;
   annotations: AnnotationItem[];
   review_outcome: string;
 };
@@ -397,7 +417,7 @@ const roleLabels: Record<string, string> = {
   customer: "Заказчик",
   annotator: "Исполнитель",
   admin: "Админ",
-  tester: "Инспектор",
+  tester: "Ревьюер",
 };
 
 const membershipLabels: Record<string, string> = {
@@ -412,6 +432,7 @@ const membershipLabels: Record<string, string> = {
 const taskStatusLabels: Record<string, string> = {
   pending: "Ожидает разметки",
   in_progress: "В работе",
+  in_review: "На ревью",
   submitted: "Отправлена",
 };
 
@@ -566,6 +587,8 @@ function formatApiError(data: any, fallbackStatus: number) {
       dataset_files: "Файлы датасета",
       media_manifest: "Медиа-манифест",
       task_ids: "Объекты датасета",
+      review_votes_required: "Голосов для решения",
+      review_acceptance_threshold: "Порог принятия",
     };
     Object.entries(data).forEach(([key, value]) => {
       const fieldName = key === "non_field_errors" ? "Ошибка" : apiFieldLabels[key] || key;
@@ -820,6 +843,9 @@ function translateReviewOutcome(outcome: string | null | undefined) {
   }
   if (outcome === "incomplete") {
     return "Неполная";
+  }
+  if (outcome === "validation") {
+    return "На голосовании";
   }
   return "Ожидает проверки";
 }
@@ -2339,6 +2365,9 @@ function RoomCreatePage() {
   const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
   const [crossValidationCount, setCrossValidationCount] = useState("2");
   const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
+  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(false);
+  const [reviewVotesRequired, setReviewVotesRequired] = useState("1");
+  const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = useState("100");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
   const [datasetMode, setDatasetMode] = useState("demo");
@@ -2389,6 +2418,8 @@ function RoomCreatePage() {
         .filter((item) => Number.isInteger(item) && item > 0);
       const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
       const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+      const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
+      const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
 
       if (datasetMode !== "demo" && !selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
@@ -2400,6 +2431,16 @@ function RoomCreatePage() {
 
       if (crossValidationEnabled && Number(crossValidationCount) < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (
+        reviewVotingEnabled &&
+        (!Number.isFinite(normalizedReviewVotesRequired) ||
+          normalizedReviewVotesRequired < 1 ||
+          normalizedReviewVotesRequired > 20 ||
+          !Number.isInteger(normalizedReviewVotesRequired))
+      ) {
+        throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
       }
 
       if (
@@ -2430,6 +2471,9 @@ function RoomCreatePage() {
       payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
       payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
       payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
+      payload.append("review_voting_enabled", reviewVotingEnabled ? "true" : "false");
+      payload.append("review_votes_required", String(normalizedReviewVotesRequired));
+      payload.append("review_acceptance_threshold", String(normalizedReviewAcceptanceThreshold));
       payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
       if (normalizedDefaultQuota !== null) {
         payload.append("default_assignment_quota", String(normalizedDefaultQuota));
@@ -2544,6 +2588,13 @@ function RoomCreatePage() {
               </span>
             </label>
             <label className="field field--checkbox">
+              <span>Пул валидации</span>
+              <span className="field--checkbox__control">
+                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
+              </span>
+            </label>
+            <label className="field field--checkbox">
               <span>Создатель в разметке</span>
               <span className="field--checkbox__control">
                 <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
@@ -2584,6 +2635,30 @@ function RoomCreatePage() {
                 max="100"
                 disabled={!crossValidationEnabled}
                 onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Голосов для решения</span>
+              <input
+                value={reviewVotesRequired}
+                name="review_votes_required"
+                type="number"
+                min="1"
+                max="20"
+                disabled={!reviewVotingEnabled}
+                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Порог принятия (%)</span>
+              <input
+                value={reviewAcceptanceThreshold}
+                name="review_acceptance_threshold"
+                type="number"
+                min="1"
+                max="100"
+                disabled={!reviewVotingEnabled}
+                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
               />
             </label>
             <label className="field">
@@ -2706,6 +2781,9 @@ function RoomEditPage() {
   const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
   const [crossValidationAnnotatorsCount, setCrossValidationAnnotatorsCount] = useState("2");
   const [crossValidationSimilarityThreshold, setCrossValidationSimilarityThreshold] = useState("80");
+  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(false);
+  const [reviewVotesRequired, setReviewVotesRequired] = useState("1");
+  const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = useState("100");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
   const [initialHasPassword, setInitialHasPassword] = useState(false);
@@ -2731,6 +2809,9 @@ function RoomEditPage() {
         setCrossValidationEnabled(Boolean(nextRoom.cross_validation_enabled));
         setCrossValidationAnnotatorsCount(String(Math.max(Number(nextRoom.cross_validation_annotators_count || 1), 2)));
         setCrossValidationSimilarityThreshold(String(Number(nextRoom.cross_validation_similarity_threshold || 80)));
+        setReviewVotingEnabled(Boolean(nextRoom.review_voting_enabled));
+        setReviewVotesRequired(String(Number(nextRoom.review_votes_required || 1)));
+        setReviewAcceptanceThreshold(String(Number(nextRoom.review_acceptance_threshold || 100)));
         setOwnerIsAnnotator(Boolean(nextRoom.owner_is_annotator));
         setDefaultAssignmentQuota(nextRoom.default_assignment_quota == null ? "" : String(nextRoom.default_assignment_quota));
       } catch (error) {
@@ -2762,6 +2843,8 @@ function RoomEditPage() {
       const passwordChanged = (!passwordEnabled && initialHasPassword) || Boolean(nextPassword);
       const nextCrossValidationCount = Math.max(Number(crossValidationAnnotatorsCount || 0), 0);
       const nextCrossValidationThreshold = clamp(Number(crossValidationSimilarityThreshold || 0), 1, 100);
+      const nextReviewVotesRequired = Number(reviewVotesRequired || 1);
+      const nextReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
       const nextDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
 
       if (passwordEnabled && !initialHasPassword && !nextPassword) {
@@ -2770,6 +2853,16 @@ function RoomEditPage() {
 
       if (crossValidationEnabled && nextCrossValidationCount < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+
+      if (
+        reviewVotingEnabled &&
+        (!Number.isFinite(nextReviewVotesRequired) ||
+          nextReviewVotesRequired < 1 ||
+          nextReviewVotesRequired > 20 ||
+          !Number.isInteger(nextReviewVotesRequired))
+      ) {
+        throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
       }
 
       if (
@@ -2799,6 +2892,9 @@ function RoomEditPage() {
           cross_validation_enabled: crossValidationEnabled,
           cross_validation_annotators_count: crossValidationEnabled ? nextCrossValidationCount : 1,
           cross_validation_similarity_threshold: nextCrossValidationThreshold,
+          review_voting_enabled: reviewVotingEnabled,
+          review_votes_required: nextReviewVotesRequired,
+          review_acceptance_threshold: nextReviewAcceptanceThreshold,
           owner_is_annotator: ownerIsAnnotator,
           default_assignment_quota: nextDefaultQuota,
         },
@@ -2914,6 +3010,17 @@ function RoomEditPage() {
               </span>
             </label>
             <label className="field field--checkbox">
+              <span>Пул валидации</span>
+              <span className="field--checkbox__control">
+                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                <input
+                  checked={reviewVotingEnabled}
+                  type="checkbox"
+                  onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)}
+                />
+              </span>
+            </label>
+            <label className="field field--checkbox">
               <span>Создатель в разметке</span>
               <span className="field--checkbox__control">
                 <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
@@ -2944,6 +3051,28 @@ function RoomEditPage() {
                 max="100"
                 disabled={!crossValidationEnabled}
                 onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Голосов для решения</span>
+              <input
+                value={reviewVotesRequired}
+                type="number"
+                min="1"
+                max="20"
+                disabled={!reviewVotingEnabled}
+                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Порог принятия (%)</span>
+              <input
+                value={reviewAcceptanceThreshold}
+                type="number"
+                min="1"
+                max="100"
+                disabled={!reviewVotingEnabled}
+                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
               />
             </label>
             <label className="field field--full">
@@ -3058,7 +3187,7 @@ function RoomDetailPage() {
 
     setReviewTasksLoading(true);
     try {
-      const tasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${nextRoomId}/review/tasks/`);
+      const tasks = await api<ReviewTaskListItem[]>(`/api/v1/rooms/${nextRoomId}/review/tasks/?filter=validation`);
       const nextTasks = tasks || [];
       setReviewTasks(nextTasks);
       return nextTasks;
@@ -4181,7 +4310,11 @@ function RoomDetailPage() {
                         </div>
                         <div className="annotator-row__brief">
                           <div>{translateReviewOutcome(task.review_outcome)}</div>
-                          <div>{task.annotations_count} аннотац.</div>
+                          <div>
+                            {task.review_outcome === "validation"
+                              ? `${task.validation_votes_count}/${task.validation_votes_required} голосов`
+                              : `${task.annotations_count} аннотац.`}
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -4214,6 +4347,18 @@ function RoomDetailPage() {
                     <div className="summary-row">
                       <span>Сходство</span>
                       <strong>{reviewDetail.task.validation_score == null ? "Не рассчитано" : `${reviewDetail.task.validation_score}%`}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Голоса</span>
+                      <strong>
+                        {reviewDetail.validation_votes_count}/{reviewDetail.validation_votes_required}
+                      </strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>За / против</span>
+                      <strong>
+                        {reviewDetail.validation_approve_votes_count}/{reviewDetail.validation_reject_votes_count}
+                      </strong>
                     </div>
                     {reviewDetail.task.source_file_url ? (
                       reviewDetail.task.source_type === "image" ? (
@@ -5847,7 +5992,7 @@ function RoomWorkPage() {
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
   const [selectedReviewSource, setSelectedReviewSource] = useState<"consensus" | number>("consensus");
-  const [reviewFilter, setReviewFilter] = useState<"final" | "incomplete">("final");
+  const [reviewFilter, setReviewFilter] = useState<"validation" | "final" | "incomplete">("validation");
   const [reviewActionBusy, setReviewActionBusy] = useState<string | null>(null);
   const [skipping, setSkipping] = useState(false);
   const [editorState, setEditorState] = useState({
@@ -6250,7 +6395,7 @@ function RoomWorkPage() {
     }
   }
 
-  async function handleReviewFilterChange(nextFilter: "final" | "incomplete") {
+  async function handleReviewFilterChange(nextFilter: "validation" | "final" | "incomplete") {
     if (reviewFilter === nextFilter) {
       return;
     }
@@ -6408,6 +6553,33 @@ function RoomWorkPage() {
       await refreshDashboardSnapshot();
       addToast(`Задача #${reviewDetail.task.id} возвращена автору на исправление.`, "success");
       await activateWorkspaceMode("review");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setReviewActionBusy(null);
+    }
+  }
+
+  async function handleValidationVote(decision: "approve" | "reject") {
+    if (!reviewDetail?.task.id || !reviewDetail.can_vote) {
+      return;
+    }
+
+    clearToasts();
+    setReviewActionBusy(`vote-${decision}`);
+    try {
+      await api(`/api/v1/tasks/${reviewDetail.task.id}/validation-vote/`, {
+        method: "POST",
+        body: { decision },
+      });
+      await refreshDashboardSnapshot();
+      addToast(
+        decision === "approve"
+          ? `Голос за принятие задачи #${reviewDetail.task.id} учтён.`
+          : `Голос за отклонение задачи #${reviewDetail.task.id} учтён.`,
+        "success"
+      );
+      await activateWorkspaceMode("review", { taskId: reviewDetail.task.id });
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     } finally {
@@ -6632,7 +6804,9 @@ function RoomWorkPage() {
                       <strong>{task.source_name || `Задача #${task.id}`}</strong>
                       <span>{translateReviewOutcome(task.review_outcome)}</span>
                       <small>
-                        {task.submitted_annotations_count}/{task.required_annotations_count || 0} разметок
+                        {task.review_outcome === "validation"
+                          ? `${task.validation_votes_count}/${task.validation_votes_required} голосов`
+                          : `${task.submitted_annotations_count}/${task.required_annotations_count || 0} разметок`}
                       </small>
                     </button>
                   ))
@@ -6643,6 +6817,42 @@ function RoomWorkPage() {
 
               {reviewDetail ? (
                 <>
+                  <div className="editor-sidepanel__section">
+                    <div className="editor-sidepanel__label">Голосование</div>
+                    <div className="room-editor__meta-stack">
+                      <div className="room-editor__meta-row">
+                        <span>Статус</span>
+                        <strong>{translateReviewOutcome(reviewDetail.review_outcome)}</strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>Голоса</span>
+                        <strong>
+                          {reviewDetail.validation_votes_count}/{reviewDetail.validation_votes_required}
+                        </strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>За / против</span>
+                        <strong>
+                          {reviewDetail.validation_approve_votes_count}/{reviewDetail.validation_reject_votes_count}
+                        </strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>Порог</span>
+                        <strong>{reviewDetail.validation_acceptance_threshold}%</strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>Мой голос</span>
+                        <strong>
+                          {reviewDetail.actor_validation_vote === "approve"
+                            ? "Принять"
+                            : reviewDetail.actor_validation_vote === "reject"
+                              ? "Отклонить"
+                              : "Не голосовал"}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="editor-sidepanel__section">
                     <div className="editor-sidepanel__label">
                       Источник разметки · {reviewDetail.submitted_annotations_count}/{reviewDetail.required_annotations_count || 0}
@@ -6671,6 +6881,26 @@ function RoomWorkPage() {
                   </div>
 
                   <div className="editor-sidepanel__actions">
+                    {reviewDetail.can_vote ? (
+                      <>
+                        <button
+                          className="btn btn--primary btn--compact"
+                          type="button"
+                          disabled={Boolean(reviewActionBusy)}
+                          onClick={() => handleValidationVote("approve")}
+                        >
+                          {reviewActionBusy === "vote-approve" ? "Голосуем..." : "Принять"}
+                        </button>
+                        <button
+                          className="btn btn--danger btn--compact"
+                          type="button"
+                          disabled={Boolean(reviewActionBusy)}
+                          onClick={() => handleValidationVote("reject")}
+                        >
+                          {reviewActionBusy === "vote-reject" ? "Голосуем..." : "Отклонить"}
+                        </button>
+                      </>
+                    ) : null}
                     {selectedReviewAnnotation ? (
                       <button
                         className="btn btn--secondary btn--compact"
@@ -6705,6 +6935,13 @@ function RoomWorkPage() {
               <div className="editor-toolbar__frame">
                 {workspaceMode === "review" ? (
                   <div className="room-editor__review-filters" role="group" aria-label="Фильтр проверки">
+                    <button
+                      className={`room-editor__filter-chip ${reviewFilter === "validation" ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleReviewFilterChange("validation")}
+                    >
+                      Голосование
+                    </button>
                     <button
                       className={`room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`}
                       type="button"

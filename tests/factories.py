@@ -21,6 +21,9 @@ def make_room(
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
+    review_voting_enabled: bool = False,
+    review_votes_required: int = 1,
+    review_acceptance_threshold: int = 100,
     owner_is_annotator: bool = True,
     default_assignment_quota: int | None = None,
 ) -> Room:
@@ -33,6 +36,9 @@ def make_room(
         cross_validation_enabled=cross_validation_enabled,
         cross_validation_annotators_count=cross_validation_annotators_count,
         cross_validation_similarity_threshold=cross_validation_similarity_threshold,
+        review_voting_enabled=review_voting_enabled,
+        review_votes_required=review_votes_required,
+        review_acceptance_threshold=review_acceptance_threshold,
         owner_is_annotator=owner_is_annotator,
         default_assignment_quota=default_assignment_quota,
     )

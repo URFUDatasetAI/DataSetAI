@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
 from apps.rooms.models import RoomAssignmentQuota, RoomMembership
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
@@ -835,6 +835,188 @@ class LabelingApiTests(APITestCase):
 
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.data["task"]["id"], task.id)
+
+    def test_review_voting_pool_holds_image_until_reviewer_approval(self):
+        review_room = make_room(
+            customer=self.customer,
+            title="Voting review room",
+            dataset_type="image",
+            owner_is_annotator=False,
+            review_voting_enabled=True,
+            review_votes_required=1,
+            review_acceptance_threshold=100,
+        )
+        invite_annotator(room=review_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(
+            room=review_room,
+            annotator=self.tester_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.TESTER,
+        )
+        label = review_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = make_task(
+            room=review_room,
+            payload={"width": 640, "height": 480, "source_name": "vote.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="vote.jpg",
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": review_room.id}), **self.auth(self.annotator))
+        submit_response = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [10, 10, 100, 100],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        task.refresh_from_db()
+        validation_list_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "validation"},
+            **self.auth(self.tester_user),
+        )
+        vote_response = self.client.post(
+            reverse("task-validation-vote", kwargs={"task_id": task.id}),
+            {"decision": ValidationVote.Decision.APPROVE},
+            format="json",
+            **self.auth(self.tester_user),
+        )
+
+        self.assertEqual(submit_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(task.status, Task.Status.IN_REVIEW)
+        self.assertIsNotNone(task.consensus_payload)
+        self.assertEqual(validation_list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in validation_list_response.data], [task.id])
+        self.assertEqual(validation_list_response.data[0]["review_outcome"], "validation")
+        self.assertTrue(validation_list_response.data[0]["can_vote"])
+        self.assertEqual(vote_response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+        self.assertTrue(
+            ValidationVote.objects.filter(
+                task=task,
+                voter=self.tester_user,
+                decision=ValidationVote.Decision.APPROVE,
+            ).exists()
+        )
+
+    def test_review_voting_rejects_image_into_next_round(self):
+        review_room = make_room(
+            customer=self.customer,
+            title="Voting reject room",
+            dataset_type="image",
+            owner_is_annotator=False,
+            review_voting_enabled=True,
+            review_votes_required=1,
+            review_acceptance_threshold=100,
+        )
+        invite_annotator(room=review_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(
+            room=review_room,
+            annotator=self.tester_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.TESTER,
+        )
+        label = review_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = make_task(
+            room=review_room,
+            payload={"width": 640, "height": 480, "source_name": "vote-reject.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="vote-reject.jpg",
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": review_room.id}), **self.auth(self.annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [10, 10, 100, 100],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        vote_response = self.client.post(
+            reverse("task-validation-vote", kwargs={"task_id": task.id}),
+            {"decision": ValidationVote.Decision.REJECT},
+            format="json",
+            **self.auth(self.tester_user),
+        )
+
+        self.assertEqual(vote_response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.PENDING)
+        self.assertEqual(task.current_round, 2)
+        self.assertIsNone(task.consensus_payload)
+
+    def test_reviewer_cannot_vote_for_own_annotation(self):
+        review_room = make_room(
+            customer=self.customer,
+            title="Self vote room",
+            dataset_type="image",
+            owner_is_annotator=True,
+            review_voting_enabled=True,
+            review_votes_required=1,
+        )
+        label = review_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = make_task(
+            room=review_room,
+            payload={"width": 640, "height": 480, "source_name": "self-vote.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="self-vote.jpg",
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": review_room.id}), **self.auth(self.customer))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [10, 10, 100, 100],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.customer),
+        )
+        response = self.client.post(
+            reverse("task-validation-vote", kwargs={"task_id": task.id}),
+            {"decision": ValidationVote.Decision.APPROVE},
+            format="json",
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
     def test_tester_cannot_get_next_task_for_labeling(self):
         tester_room = make_room(customer=self.customer, title="Tester labeling room")

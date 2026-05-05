@@ -8,11 +8,12 @@
 - Cross-validation больше не только “равномерная раздача по людям”: в кодовой базе уже живёт deterministic grouped distribution с fallback на legacy strategy.
 - Владелец комнаты теперь не обязан быть annotator: это управляется `Room.owner_is_annotator` и затрагивает доступ, eligible pools и room payload-ы.
 - `room-work` развивается как отдельная fullscreen рабочая поверхность, а не как секция длинной страницы комнаты. Этот shell больше не annotator-only: внутри него теперь должны жить и очередь задач, и редактирование своих submit-ов, и reviewer-native проверка.
+- Для комнат можно включать optional validation voting pool: финальная принятая разметка сначала попадает в ручное голосование reviewer-ов, если `Room.review_voting_enabled=True`.
 
 ## Current Priorities
 
 1. Не вносить регрессии в room lifecycle: create/edit room, invite links, join requests, pinning, recency sorting, member roles, access.
-2. Сохранять корректность labeling pipeline: task assignment, submit, consensus, review/reject, repeat rounds, export.
+2. Сохранять корректность labeling pipeline: task assignment, submit, consensus, validation voting, review/reject, repeat rounds, export.
 3. Дожимать `room-work` до состояния настоящего редактора: стабильный fullscreen workspace, быстрый pointer UX, единый stage для annotate/edit/review и масштабируемость под новые сценарии разметки.
 4. Удерживать grouped cross-validation и `owner_is_annotator` согласованными между backend, selectors, tests и UI payload-ами.
 5. Не ломать Django/React bootstrap split при любых UI-экспериментах.
@@ -25,6 +26,8 @@
 - Квота разметчика внутри комнаты считается от эффективного лимита: `RoomAssignmentQuota.task_quota`, если задан персональный override, иначе `Room.default_assignment_quota`. Отсутствие персонального override больше не означает unlimited, если у комнаты есть стандартная квота. Квоту выполненной работы расходуют только assignments текущего раунда в статусах `in_progress`/`submitted`; skipped assignments и старые отклонённые раунды её не занимают.
 - Пропуск media-задачи представлен как `TaskAssignment.Status.SKIPPED`: skipped assignments не считаются как нужные cross-validation submissions, но занимают слот просмотра новых изображений относительно квоты annotator-а. Когда новых слотов нет, assignment flow должен заново предлагать этому annotator-у его skipped-задачи; если skipped-задачу уже submitted-нул другой annotator в текущем раунде, она освобождает слот и не должна снова выдаваться исходному пропустившему.
 - Review различает `final` и `incomplete` задачи. `final` включает как accepted consensus, так и уже rejected старые раунды; `incomplete` - только текущий раунд, где есть submissions, но их меньше нужного числа. Неполные cross-validation задачи показывают только per-annotator submissions без consensus и позволяют вернуть на исправление только одну выбранную разметку.
+- Если `Room.review_voting_enabled=True`, accepted consensus на final-stage задаче переводит task в `Task.Status.IN_REVIEW`, а не сразу в export-ready `submitted`. Reviewer-ы голосуют через `ValidationVote`; approve quorum переводит задачу в `submitted`, reject quorum начинает следующий раунд. Reviewer не должен голосовать за собственную разметку текущего раунда.
+- Review-фильтры включают `validation`, `final` и `incomplete`. `validation` - очередь задач со сформированным consensus, ожидающих ручного голосования reviewer-ов.
 - Image dataset room не считается immutable после создания: владелец может дозагружать изображения/ZIP и удалять primary task rows через room dataset API; новые task rows должны продолжать `input_payload.item_number`, а удаление primary task удаляет связанные child tasks/разметки каскадом.
 - Прямой вход в комнату по ID+паролю убран из UI/API. Публичный путь доступа для новых участников - invite link / join request; список комнат показывает только уже доступные пользователю комнаты.
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
@@ -32,6 +35,7 @@
 - В `text_detect_text` финальным считается transcription stage, а не все task rows подряд.
 - `room-work` должен оставаться fullscreen shell без desktop page scroll; auxiliary chrome должен уходить во внутренний scroll, а не перекрывать media.
 - `room-work` теперь считается общей рабочей поверхностью для трёх режимов: `queue`, `submitted`, `review`. Новые review/edit сценарии нужно встраивать сюда, а не возвращать обратно на room detail page.
+- В `room-work` review mode обязан поддерживать validation voting queue alongside final/incomplete review.
 - Workspace editor-а задаётся layout-ом, а не размером текущего изображения/видео.
 - Границы media должны быть привязаны к реальному media/overlay и клиппиться вместе с ним.
 
@@ -48,6 +52,7 @@
 - В room domain добавлен `Room.owner_is_annotator`, который меняет policy и room payload semantics.
 - Список комнат уже живёт с pin ordering через `RoomPin.sort_order` и recency через `RoomVisit.last_accessed_at`.
 - `room-work` уже вынесен в отдельный fullscreen shell вместо прежнего page-section подхода.
+- Добавлен optional validation voting pool на уровне комнаты: владелец включает его при create/edit, reviewer-ы принимают или отклоняют финальную consensus-разметку голосованием.
 
 ## Where To Look First
 

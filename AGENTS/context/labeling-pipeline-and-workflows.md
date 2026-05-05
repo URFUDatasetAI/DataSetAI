@@ -29,6 +29,8 @@
 - Assignment flow делает строгий pass по назначенным annotator-ам, а потом rescue-pass для задач без `revision_target_annotator`, если у пользователя ещё есть квота и строгих задач больше нет. Rescue-pass нужен, чтобы зависшие rejected-задачи могли быть перехвачены, но он всё равно обязан уважать `required_reviews_per_item` и не создавать лишние разметки в одном раунде.
 - Неполный cross-validation review - это не проваленный consensus. Пока нужного числа submissions нет в текущем раунде, reviewer смотрит только разметки конкретных annotator-ов и может вернуть на исправление только одну выбранную submission.
 - Review-фильтр `final` включает два outcome-а: accepted consensus и rejected старые раунды после ручного/consensus отклонения. Для rejected-задач consensus недоступен, но прошлые submitted annotations остаются видимыми как rejected evidence.
+- Optional validation voting pool - это gate после accepted consensus на final-stage task, а не замена assignment consensus. При `Room.review_voting_enabled=True` такая задача становится `in_review`; export-ready статус появляется только после approve quorum. Reject quorum открывает следующий раунд и сохраняет обычную round semantics.
+- Reviewer-ы голосуют через `ValidationVote` в текущем раунде. Пользователь, который сам submitted-нул annotation в этом раунде, не должен голосовать за итог этой же задачи.
 
 ## What Refactors Must Preserve
 
