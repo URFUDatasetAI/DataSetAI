@@ -307,6 +307,9 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "cross_validation_enabled": room.cross_validation_enabled,
             "cross_validation_annotators_count": room.cross_validation_annotators_count,
             "cross_validation_similarity_threshold": room.cross_validation_similarity_threshold,
+            "review_voting_enabled": room.review_voting_enabled,
+            "review_votes_required": room.review_votes_required,
+            "review_acceptance_threshold": room.review_acceptance_threshold,
             "owner_is_annotator": room.owner_is_annotator,
             "default_assignment_quota": room.default_assignment_quota,
             "deadline": room.deadline.isoformat() if room.deadline else None,
@@ -334,7 +337,7 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
         "membership_role_options": [
             {"value": RoomMembership.Role.ANNOTATOR, "label": "Исполнитель"},
             {"value": RoomMembership.Role.ADMIN, "label": "Админ"},
-            {"value": RoomMembership.Role.TESTER, "label": "Инспектор"},
+            {"value": RoomMembership.Role.TESTER, "label": "Ревьюер"},
         ],
         "actor": {
             "id": actor.id,

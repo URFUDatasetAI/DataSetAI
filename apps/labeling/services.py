@@ -9,7 +9,7 @@ from apps.labeling.distribution import (
     get_task_assignment_pool_ids,
     get_task_designated_annotator_ids,
 )
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
 from apps.labeling.workflows import (
     build_task_input_payload_with_revision_target,
     get_task_is_final_stage,
@@ -180,9 +180,43 @@ def _delete_rejected_round_history(*, task: Task) -> None:
     TaskAssignment.objects.filter(task=task).exclude(round_number=task.current_round).delete()
 
 
+def _task_requires_manual_validation(*, task: Task) -> bool:
+    return bool(task.room.review_voting_enabled and get_task_is_final_stage(task=task))
+
+
+def _apply_consensus_to_task(
+    *,
+    task: Task,
+    consensus: dict,
+    submitted_assignments: list[TaskAssignment],
+) -> list[str]:
+    task.validation_score = consensus["score"]
+    if consensus["accepted"]:
+        if _task_requires_manual_validation(task=task):
+            task.status = Task.Status.IN_REVIEW
+        else:
+            task.status = Task.Status.SUBMITTED
+            _delete_rejected_round_history(task=task)
+        task.consensus_payload = consensus["consensus_payload"]
+    else:
+        task.status = Task.Status.PENDING
+        task.current_round += 1
+        task.consensus_payload = None
+
+    return [
+        "status",
+        "current_round",
+        "validation_score",
+        "consensus_payload",
+        "updated_at",
+    ]
+
+
 def get_submission_editability(*, task: Task, assignment: TaskAssignment) -> tuple[bool, str | None]:
     if assignment.status != TaskAssignment.Status.SUBMITTED or assignment.round_number != task.current_round:
         return False, "Эта версия разметки уже ушла в другой раунд и больше не редактируется."
+    if task.status == Task.Status.IN_REVIEW:
+        return False, "Разметка уже отправлена на голосование и временно недоступна для правки."
     if task.status == Task.Status.SUBMITTED:
         return False, "Задача уже финализирована и не может быть изменена без возврата на исправление."
     return True, None
@@ -487,29 +521,18 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
                 similarity_threshold=locked_task.room.cross_validation_similarity_threshold,
             )
 
-            locked_task.validation_score = consensus["score"]
-            if consensus["accepted"]:
-                locked_task.status = Task.Status.SUBMITTED
-                locked_task.consensus_payload = consensus["consensus_payload"]
-                _delete_rejected_round_history(task=locked_task)
-            else:
-                locked_task.status = Task.Status.PENDING
-                locked_task.current_round += 1
-                locked_task.consensus_payload = None
-
-            update_fields = [
-                "status",
-                "current_round",
-                "validation_score",
-                "consensus_payload",
-                "updated_at",
-            ]
+            update_fields = _apply_consensus_to_task(
+                task=locked_task,
+                consensus=consensus,
+                submitted_assignments=submitted_assignments,
+            )
             if revision_gate_cleared:
                 update_fields.insert(4, "input_payload")
             locked_task.save(update_fields=update_fields)
 
             if (
                 consensus["accepted"]
+                and locked_task.status == Task.Status.SUBMITTED
                 and is_text_detection_workflow(room=locked_task.room)
                 and locked_task.workflow_stage == Task.WorkflowStage.TEXT_DETECTION
                 and locked_task.consensus_payload is not None
@@ -575,28 +598,17 @@ def skip_task_for_annotator(*, task: Task, annotator: User) -> Task:
                 similarity_threshold=locked_task.room.cross_validation_similarity_threshold,
             )
 
-            locked_task.validation_score = consensus["score"]
-            if consensus["accepted"]:
-                locked_task.status = Task.Status.SUBMITTED
-                locked_task.consensus_payload = consensus["consensus_payload"]
-                _delete_rejected_round_history(task=locked_task)
-            else:
-                locked_task.status = Task.Status.PENDING
-                locked_task.current_round += 1
-                locked_task.consensus_payload = None
-
             locked_task.save(
-                update_fields=[
-                    "status",
-                    "current_round",
-                    "validation_score",
-                    "consensus_payload",
-                    "updated_at",
-                ]
+                update_fields=_apply_consensus_to_task(
+                    task=locked_task,
+                    consensus=consensus,
+                    submitted_assignments=submitted_assignments,
+                )
             )
 
             if (
                 consensus["accepted"]
+                and locked_task.status == Task.Status.SUBMITTED
                 and is_text_detection_workflow(room=locked_task.room)
                 and locked_task.workflow_stage == Task.WorkflowStage.TEXT_DETECTION
                 and locked_task.consensus_payload is not None
@@ -668,6 +680,79 @@ def update_submitted_annotation(*, task: Task, annotator: User, result_payload):
         return annotation
 
 
+def _delete_current_round_validation_votes(*, task: Task) -> None:
+    ValidationVote.objects.filter(task=task, round_number=task.current_round).delete()
+
+
+def _user_has_submitted_current_round_annotation(*, task: Task, user: User) -> bool:
+    return Annotation.objects.filter(
+        task=task,
+        annotator=user,
+        assignment__round_number=task.current_round,
+        assignment__status=TaskAssignment.Status.SUBMITTED,
+    ).exists()
+
+
+def _apply_validation_vote_decision(*, task: Task) -> None:
+    votes = list(ValidationVote.objects.filter(task=task, round_number=task.current_round).order_by("id"))
+    votes_count = len(votes)
+    if votes_count < task.room.review_votes_required:
+        task.save(update_fields=["updated_at"])
+        return
+
+    approve_count = sum(1 for vote in votes if vote.decision == ValidationVote.Decision.APPROVE)
+    approve_percent = round((approve_count / votes_count) * 100, 2) if votes_count else 0.0
+    if approve_percent >= task.room.review_acceptance_threshold:
+        task.status = Task.Status.SUBMITTED
+        _delete_rejected_round_history(task=task)
+        task.save(update_fields=["status", "updated_at"])
+        return
+
+    task.status = Task.Status.PENDING
+    task.current_round += 1
+    task.validation_score = None
+    task.consensus_payload = None
+    task.save(
+        update_fields=[
+            "status",
+            "current_round",
+            "validation_score",
+            "consensus_payload",
+            "updated_at",
+        ]
+    )
+
+
+def submit_validation_vote(*, task: Task, reviewer: User, decision: str, comment: str = "") -> ValidationVote:
+    if decision not in ValidationVote.Decision.values:
+        raise ConflictError("Неизвестное решение голосования.")
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("У тебя нет прав голосовать по проверке в этой комнате.")
+
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        if not can_review_room(room=locked_task.room, user=reviewer):
+            raise AccessDeniedError("У тебя нет прав голосовать по проверке в этой комнате.")
+        if not get_task_is_final_stage(task=locked_task):
+            raise ConflictError("Голосование доступно только для финального этапа задачи.")
+        if locked_task.status != Task.Status.IN_REVIEW or locked_task.consensus_payload is None:
+            raise ConflictError("Голосовать можно только по задачам, ожидающим ревью.")
+        if _user_has_submitted_current_round_annotation(task=locked_task, user=reviewer):
+            raise ConflictError("Нельзя голосовать за собственную разметку.")
+
+        vote, _ = ValidationVote.objects.update_or_create(
+            task=locked_task,
+            voter=reviewer,
+            round_number=locked_task.current_round,
+            defaults={
+                "decision": decision,
+                "comment": comment,
+            },
+        )
+        _apply_validation_vote_decision(task=locked_task)
+        return vote
+
+
 def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
     if not can_review_room(room=task.room, user=reviewer):
         raise AccessDeniedError("У тебя нет прав отклонять разметки в этой комнате.")
@@ -679,6 +764,7 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
         if locked_task.status != Task.Status.SUBMITTED:
             raise ConflictError("Отклонить можно только отправленные на проверку задачи.")
 
+        _delete_current_round_validation_votes(task=locked_task)
         locked_task.status = Task.Status.PENDING
         locked_task.current_round += 1
         locked_task.validation_score = None
@@ -725,6 +811,7 @@ def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator
 
         if locked_task.status != Task.Status.SUBMITTED or locked_task.consensus_payload is None:
             Annotation.objects.filter(assignment=target_assignment).delete()
+            _delete_current_round_validation_votes(task=locked_task)
             target_assignment.status = TaskAssignment.Status.IN_PROGRESS
             target_assignment.submitted_at = None
             target_assignment.save(update_fields=["status", "submitted_at", "updated_at"])

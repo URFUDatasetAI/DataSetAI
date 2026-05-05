@@ -1,7 +1,7 @@
 from django.db.models import F
 
 from apps.labeling.distribution import get_effective_reviews_for_task, get_task_assignment_pool_ids
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
 from apps.labeling.workflows import get_task_is_final_stage
 from apps.rooms.policies import can_annotate_room, can_review_room, get_room_membership
 from common.exceptions import NotFoundError
@@ -12,7 +12,8 @@ from common.exceptions import AccessDeniedError
 
 REVIEW_FILTER_FINAL = "final"
 REVIEW_FILTER_INCOMPLETE = "incomplete"
-REVIEW_FILTER_VALUES = (REVIEW_FILTER_FINAL, REVIEW_FILTER_INCOMPLETE)
+REVIEW_FILTER_VALIDATION = "validation"
+REVIEW_FILTER_VALUES = (REVIEW_FILTER_VALIDATION, REVIEW_FILTER_FINAL, REVIEW_FILTER_INCOMPLETE)
 
 
 def get_task_or_404(*, task_id: int) -> Task:
@@ -83,6 +84,9 @@ def task_has_current_round_review_annotations(*, task: Task) -> bool:
 
 
 def get_task_review_state(*, task: Task) -> str:
+    if task.status == Task.Status.IN_REVIEW and task.consensus_payload is not None:
+        return REVIEW_FILTER_VALIDATION
+
     if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
         return REVIEW_FILTER_FINAL
 
@@ -98,6 +102,8 @@ def get_task_review_state(*, task: Task) -> str:
 
 def get_task_review_outcome(*, task: Task) -> str:
     review_state = get_task_review_state(task=task)
+    if review_state == REVIEW_FILTER_VALIDATION:
+        return "validation"
     if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
         return "accepted"
     if review_state == REVIEW_FILTER_FINAL:
@@ -155,6 +161,46 @@ def get_task_review_annotations(*, task: Task):
         )
         .order_by("-submitted_at", "-id")
     )
+
+
+def get_task_validation_vote_summary(*, task: Task, reviewer=None) -> dict:
+    votes = list(
+        ValidationVote.objects.select_related("voter")
+        .filter(task=task, round_number=task.current_round)
+        .order_by("created_at", "id")
+    )
+    approve_count = sum(1 for vote in votes if vote.decision == ValidationVote.Decision.APPROVE)
+    reject_count = sum(1 for vote in votes if vote.decision == ValidationVote.Decision.REJECT)
+    actor_vote = None
+    if reviewer is not None:
+        actor_vote = next((vote for vote in votes if vote.voter_id == reviewer.id), None)
+
+    actor_has_current_annotation = False
+    if reviewer is not None:
+        actor_has_current_annotation = Annotation.objects.filter(
+            task=task,
+            annotator=reviewer,
+            assignment__round_number=task.current_round,
+            assignment__status=TaskAssignment.Status.SUBMITTED,
+        ).exists()
+
+    can_vote = bool(
+        reviewer is not None
+        and task.status == Task.Status.IN_REVIEW
+        and task.consensus_payload is not None
+        and not actor_has_current_annotation
+        and can_review_room(room=task.room, user=reviewer)
+    )
+
+    return {
+        "validation_votes_required": task.room.review_votes_required,
+        "validation_acceptance_threshold": task.room.review_acceptance_threshold,
+        "validation_votes_count": len(votes),
+        "validation_approve_votes_count": approve_count,
+        "validation_reject_votes_count": reject_count,
+        "actor_validation_vote": actor_vote.decision if actor_vote else None,
+        "can_vote": can_vote,
+    }
 
 
 def get_current_submitted_assignment_for_annotator(*, task_id: int, annotator) -> TaskAssignment:

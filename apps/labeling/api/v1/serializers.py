@@ -4,8 +4,9 @@ from apps.labeling.selectors import (
     get_task_review_counts,
     get_task_review_outcome,
     get_task_review_state,
+    get_task_validation_vote_summary,
 )
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
 from apps.labeling.services import get_submission_editability
 
 
@@ -39,6 +40,11 @@ class TaskSerializer(serializers.ModelSerializer):
         if request is None:
             return obj.source_file.url
         return request.build_absolute_uri(obj.source_file.url)
+
+
+class ValidationVoteSubmitSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=ValidationVote.Decision.values)
+    comment = serializers.CharField(required=False, allow_blank=True, max_length=2000, trim_whitespace=True)
 
 
 class BoundingBoxAnnotationSerializer(serializers.Serializer):
@@ -156,6 +162,13 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     required_annotations_count = serializers.SerializerMethodField()
     submitted_annotations_count = serializers.SerializerMethodField()
     review_outcome = serializers.SerializerMethodField()
+    validation_votes_required = serializers.SerializerMethodField()
+    validation_acceptance_threshold = serializers.SerializerMethodField()
+    validation_votes_count = serializers.SerializerMethodField()
+    validation_approve_votes_count = serializers.SerializerMethodField()
+    validation_reject_votes_count = serializers.SerializerMethodField()
+    actor_validation_vote = serializers.SerializerMethodField()
+    can_vote = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -174,6 +187,13 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "required_annotations_count",
             "submitted_annotations_count",
             "review_outcome",
+            "validation_votes_required",
+            "validation_acceptance_threshold",
+            "validation_votes_count",
+            "validation_approve_votes_count",
+            "validation_reject_votes_count",
+            "actor_validation_vote",
+            "can_vote",
             "updated_at",
         )
 
@@ -212,6 +232,36 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     def get_review_outcome(self, obj):
         return get_task_review_outcome(task=obj)
 
+    def _get_vote_summary(self, obj):
+        cache = self.context.setdefault("_validation_vote_summary_by_task_id", {})
+        if obj.id in cache:
+            return cache[obj.id]
+        request = self.context.get("request")
+        reviewer = getattr(request, "user", None)
+        cache[obj.id] = get_task_validation_vote_summary(task=obj, reviewer=reviewer)
+        return cache[obj.id]
+
+    def get_validation_votes_required(self, obj):
+        return self._get_vote_summary(obj)["validation_votes_required"]
+
+    def get_validation_acceptance_threshold(self, obj):
+        return self._get_vote_summary(obj)["validation_acceptance_threshold"]
+
+    def get_validation_votes_count(self, obj):
+        return self._get_vote_summary(obj)["validation_votes_count"]
+
+    def get_validation_approve_votes_count(self, obj):
+        return self._get_vote_summary(obj)["validation_approve_votes_count"]
+
+    def get_validation_reject_votes_count(self, obj):
+        return self._get_vote_summary(obj)["validation_reject_votes_count"]
+
+    def get_actor_validation_vote(self, obj):
+        return self._get_vote_summary(obj)["actor_validation_vote"]
+
+    def get_can_vote(self, obj):
+        return self._get_vote_summary(obj)["can_vote"]
+
 
 class ReviewAnnotationSerializer(AnnotationSerializer):
     review_outcome = serializers.CharField()
@@ -228,6 +278,13 @@ class ReviewTaskDetailSerializer(serializers.Serializer):
     review_state = serializers.CharField()
     required_annotations_count = serializers.IntegerField()
     submitted_annotations_count = serializers.IntegerField()
+    validation_votes_required = serializers.IntegerField()
+    validation_acceptance_threshold = serializers.IntegerField()
+    validation_votes_count = serializers.IntegerField()
+    validation_approve_votes_count = serializers.IntegerField()
+    validation_reject_votes_count = serializers.IntegerField()
+    actor_validation_vote = serializers.CharField(allow_null=True)
+    can_vote = serializers.BooleanField()
     annotations = ReviewAnnotationSerializer(many=True)
     review_outcome = serializers.CharField()
 

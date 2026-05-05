@@ -10,6 +10,7 @@ from apps.labeling.api.v1.views import (
     TaskReviewDetailView,
     TaskSkipView,
     TaskSubmitView,
+    TaskValidationVoteView,
 )
 
 
@@ -21,6 +22,7 @@ urlpatterns = [
     path("tasks/<int:task_id>/submit/", TaskSubmitView.as_view(), name="task-submit"),
     path("tasks/<int:task_id>/my-submission/", TaskMySubmissionView.as_view(), name="task-my-submission"),
     path("tasks/<int:task_id>/review/", TaskReviewDetailView.as_view(), name="task-review-detail"),
+    path("tasks/<int:task_id>/validation-vote/", TaskValidationVoteView.as_view(), name="task-validation-vote"),
     path("tasks/<int:task_id>/reject/", TaskRejectView.as_view(), name="task-reject"),
     path("tasks/<int:task_id>/return-for-revision/", TaskReturnForRevisionView.as_view(), name="task-return-for-revision"),
 ]

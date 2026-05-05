@@ -142,6 +142,9 @@ class RoomCreateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False, default=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100, default=80)
+    review_voting_enabled = serializers.BooleanField(required=False, default=False)
+    review_votes_required = serializers.IntegerField(required=False, min_value=1, max_value=20, default=1)
+    review_acceptance_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100, default=100)
     owner_is_annotator = serializers.BooleanField(required=False, default=True)
     default_assignment_quota = serializers.IntegerField(required=False, min_value=0, allow_null=True)
     annotation_workflow = serializers.ChoiceField(
@@ -246,6 +249,9 @@ class RoomUpdateSerializer(serializers.Serializer):
     cross_validation_enabled = serializers.BooleanField(required=False)
     cross_validation_annotators_count = serializers.IntegerField(required=False, min_value=1, max_value=20)
     cross_validation_similarity_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
+    review_voting_enabled = serializers.BooleanField(required=False)
+    review_votes_required = serializers.IntegerField(required=False, min_value=1, max_value=20)
+    review_acceptance_threshold = serializers.IntegerField(required=False, min_value=1, max_value=100)
     owner_is_annotator = serializers.BooleanField(required=False)
     default_assignment_quota = serializers.IntegerField(required=False, min_value=0, allow_null=True)
 
@@ -344,6 +350,9 @@ class RoomSerializer(serializers.ModelSerializer):
             "cross_validation_enabled",
             "cross_validation_annotators_count",
             "cross_validation_similarity_threshold",
+            "review_voting_enabled",
+            "review_votes_required",
+            "review_acceptance_threshold",
             "owner_is_annotator",
             "default_assignment_quota",
             "deadline",

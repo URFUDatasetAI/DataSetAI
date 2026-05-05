@@ -113,6 +113,9 @@ def create_room(
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,
     cross_validation_similarity_threshold: int = 80,
+    review_voting_enabled: bool = False,
+    review_votes_required: int = 1,
+    review_acceptance_threshold: int = 100,
     owner_is_annotator: bool = True,
     default_assignment_quota=UNSET,
     annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
@@ -153,6 +156,9 @@ def create_room(
             cross_validation_enabled=cross_validation_enabled,
             cross_validation_annotators_count=cross_validation_annotators_count,
             cross_validation_similarity_threshold=cross_validation_similarity_threshold,
+            review_voting_enabled=review_voting_enabled,
+            review_votes_required=review_votes_required,
+            review_acceptance_threshold=review_acceptance_threshold,
             owner_is_annotator=owner_is_annotator,
             default_assignment_quota=None if default_assignment_quota is UNSET else default_assignment_quota,
         )
@@ -507,6 +513,9 @@ def update_room(
     cross_validation_enabled=UNSET,
     cross_validation_annotators_count=UNSET,
     cross_validation_similarity_threshold=UNSET,
+    review_voting_enabled=UNSET,
+    review_votes_required=UNSET,
+    review_acceptance_threshold=UNSET,
     owner_is_annotator=UNSET,
     default_assignment_quota=UNSET,
 ) -> Room:
@@ -550,6 +559,18 @@ def update_room(
     ):
         room.cross_validation_similarity_threshold = cross_validation_similarity_threshold
         update_fields.append("cross_validation_similarity_threshold")
+
+    if review_voting_enabled is not UNSET and room.review_voting_enabled != review_voting_enabled:
+        room.review_voting_enabled = review_voting_enabled
+        update_fields.append("review_voting_enabled")
+
+    if review_votes_required is not UNSET and room.review_votes_required != review_votes_required:
+        room.review_votes_required = review_votes_required
+        update_fields.append("review_votes_required")
+
+    if review_acceptance_threshold is not UNSET and room.review_acceptance_threshold != review_acceptance_threshold:
+        room.review_acceptance_threshold = review_acceptance_threshold
+        update_fields.append("review_acceptance_threshold")
 
     if owner_is_annotator is not UNSET and room.owner_is_annotator != owner_is_annotator:
         room.owner_is_annotator = owner_is_annotator

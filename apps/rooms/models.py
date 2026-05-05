@@ -75,6 +75,9 @@ class Room(TimeStampedModel):
     cross_validation_enabled = models.BooleanField(default=False)
     cross_validation_annotators_count = models.PositiveSmallIntegerField(default=1)
     cross_validation_similarity_threshold = models.PositiveSmallIntegerField(default=80)
+    review_voting_enabled = models.BooleanField(default=False)
+    review_votes_required = models.PositiveSmallIntegerField(default=1)
+    review_acceptance_threshold = models.PositiveSmallIntegerField(default=100)
     owner_is_annotator = models.BooleanField(default=True)
     default_assignment_quota = models.PositiveIntegerField(null=True, blank=True)
     created_by = models.ForeignKey(
@@ -141,7 +144,7 @@ class RoomMembership(TimeStampedModel):
     Possible roles:
     - ANNOTATOR: Fills out tasks.
     - ADMIN: Manages room settings and invites.
-    - TESTER: Special role for verifying functionalities.
+    - TESTER: Reviewer role for validating submitted annotations.
     """
     class Status(models.TextChoices):
         INVITED = "invited", "Invited"
@@ -150,7 +153,7 @@ class RoomMembership(TimeStampedModel):
     class Role(models.TextChoices):
         ANNOTATOR = "annotator", "Annotator"
         ADMIN = "admin", "Admin"
-        TESTER = "tester", "Inspector"
+        TESTER = "tester", "Reviewer"
 
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(

@@ -15,6 +15,7 @@
 - Сохранять корректный fallback на legacy balanced strategy.
 - Не ломать `Room.owner_is_annotator` в assignment pool logic.
 - Держать тесты и selectors в соответствии с реальной бизнес-логикой.
+- Удерживать optional validation voting pool как post-consensus gate: он не должен менять deterministic grouped assignment, но влияет на финализацию, progress и export.
 
 ## Non-Goals
 
@@ -46,6 +47,7 @@
 
 - Изменения в selectors или participant stats могут тихо рассинхронизироваться с assignment pool semantics.
 - Рефакторинг review/progress/export логики легко ломает final-stage semantics для `text_detect_text`.
+- Validation voting добавляет промежуточный `in_review` статус: любые progress/export изменения должны считать export-ready только финальные `submitted` задачи, а не consensus, который ещё ждёт голосования.
 - Любая “упрощающая” правка в assignment flow должна проверяться не только на happy path, но и на concurrency/fallback cases.
 - Rescue-pass особенно чувствителен к гонкам: нельзя ослаблять `select_for_update(skip_locked=True)` и проверки текущего числа annotator-ов раунда.
 
