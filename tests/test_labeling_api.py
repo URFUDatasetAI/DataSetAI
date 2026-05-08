@@ -913,6 +913,102 @@ class LabelingApiTests(APITestCase):
             ).exists()
         )
 
+    def test_review_voting_moves_actor_vote_to_checked_pool_until_quorum(self):
+        second_tester = make_user(username="roomtester2", full_name="Room Tester 2")
+        review_room = make_room(
+            customer=self.customer,
+            title="Voting quorum room",
+            dataset_type="image",
+            owner_is_annotator=False,
+            review_voting_enabled=True,
+            review_votes_required=2,
+            review_acceptance_threshold=100,
+        )
+        invite_annotator(room=review_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(
+            room=review_room,
+            annotator=self.tester_user,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.TESTER,
+        )
+        invite_annotator(
+            room=review_room,
+            annotator=second_tester,
+            invited_by=self.customer,
+            joined=True,
+            role=RoomMembership.Role.TESTER,
+        )
+        label = review_room.labels.create(name="car", color="#FF6B6B", sort_order=0)
+        task = make_task(
+            room=review_room,
+            payload={"width": 640, "height": 480, "source_name": "vote-quorum.jpg"},
+            source_type=Task.SourceType.IMAGE,
+            source_name="vote-quorum.jpg",
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": review_room.id}), **self.auth(self.annotator))
+        self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [10, 10, 100, 100],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        vote_response = self.client.post(
+            reverse("task-validation-vote", kwargs={"task_id": task.id}),
+            {"decision": ValidationVote.Decision.APPROVE},
+            format="json",
+            **self.auth(self.tester_user),
+        )
+        active_for_voter_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "validation"},
+            **self.auth(self.tester_user),
+        )
+        checked_for_voter_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "validation_voted"},
+            **self.auth(self.tester_user),
+        )
+        active_for_next_reviewer_response = self.client.get(
+            reverse("room-review-tasks", kwargs={"room_id": review_room.id}),
+            {"filter": "validation"},
+            **self.auth(second_tester),
+        )
+        duplicate_vote_response = self.client.post(
+            reverse("task-validation-vote", kwargs={"task_id": task.id}),
+            {"decision": ValidationVote.Decision.REJECT},
+            format="json",
+            **self.auth(self.tester_user),
+        )
+
+        self.assertEqual(vote_response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.IN_REVIEW)
+        self.assertEqual(active_for_voter_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(active_for_voter_response.data, [])
+        self.assertEqual(checked_for_voter_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in checked_for_voter_response.data], [task.id])
+        self.assertEqual(checked_for_voter_response.data[0]["actor_validation_vote"], ValidationVote.Decision.APPROVE)
+        self.assertFalse(checked_for_voter_response.data[0]["can_vote"])
+        self.assertEqual(active_for_next_reviewer_response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in active_for_next_reviewer_response.data], [task.id])
+        self.assertTrue(active_for_next_reviewer_response.data[0]["can_vote"])
+        self.assertEqual(duplicate_vote_response.status_code, status.HTTP_409_CONFLICT)
+
     def test_review_voting_rejects_image_into_next_round(self):
         review_room = make_room(
             customer=self.customer,

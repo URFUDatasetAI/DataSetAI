@@ -13,7 +13,13 @@ from common.exceptions import AccessDeniedError
 REVIEW_FILTER_FINAL = "final"
 REVIEW_FILTER_INCOMPLETE = "incomplete"
 REVIEW_FILTER_VALIDATION = "validation"
-REVIEW_FILTER_VALUES = (REVIEW_FILTER_VALIDATION, REVIEW_FILTER_FINAL, REVIEW_FILTER_INCOMPLETE)
+REVIEW_FILTER_VALIDATION_VOTED = "validation_voted"
+REVIEW_FILTER_VALUES = (
+    REVIEW_FILTER_VALIDATION,
+    REVIEW_FILTER_VALIDATION_VOTED,
+    REVIEW_FILTER_FINAL,
+    REVIEW_FILTER_INCOMPLETE,
+)
 
 
 def get_task_or_404(*, task_id: int) -> Task:
@@ -188,6 +194,7 @@ def get_task_validation_vote_summary(*, task: Task, reviewer=None) -> dict:
         reviewer is not None
         and task.status == Task.Status.IN_REVIEW
         and task.consensus_payload is not None
+        and actor_vote is None
         and not actor_has_current_annotation
         and can_review_room(room=task.room, user=reviewer)
     )
@@ -201,6 +208,21 @@ def get_task_validation_vote_summary(*, task: Task, reviewer=None) -> dict:
         "actor_validation_vote": actor_vote.decision if actor_vote else None,
         "can_vote": can_vote,
     }
+
+
+def task_matches_review_filter_for_actor(*, task: Task, review_filter: str, reviewer) -> bool:
+    review_state = get_task_review_state(task=task)
+    if review_filter == REVIEW_FILTER_VALIDATION:
+        if review_state != REVIEW_FILTER_VALIDATION:
+            return False
+        return get_task_validation_vote_summary(task=task, reviewer=reviewer)["can_vote"]
+
+    if review_filter == REVIEW_FILTER_VALIDATION_VOTED:
+        if review_state != REVIEW_FILTER_VALIDATION:
+            return False
+        return get_task_validation_vote_summary(task=task, reviewer=reviewer)["actor_validation_vote"] is not None
+
+    return review_state == review_filter
 
 
 def get_current_submitted_assignment_for_annotator(*, task_id: int, annotator) -> TaskAssignment:
