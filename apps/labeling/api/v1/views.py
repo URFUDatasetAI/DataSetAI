@@ -28,6 +28,7 @@ from apps.labeling.selectors import (
     get_task_review_state,
     get_task_validation_vote_summary,
     list_current_submitted_assignments_for_annotator,
+    task_matches_review_filter_for_actor,
 )
 from apps.labeling.services import (
     get_next_task_for_annotator,
@@ -152,7 +153,11 @@ class RoomReviewTaskListView(APIView):
         tasks = [
             task
             for task in candidate_tasks
-            if get_task_review_state(task=task) == review_filter
+            if task_matches_review_filter_for_actor(
+                task=task,
+                review_filter=review_filter,
+                reviewer=request.user,
+            )
         ]
         serializer = ReviewTaskListItemSerializer(tasks, many=True, context={"request": request})
         return Response(serializer.data)

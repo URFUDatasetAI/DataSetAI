@@ -31,6 +31,7 @@
 - Review-фильтр `final` включает два outcome-а: accepted consensus и rejected старые раунды после ручного/consensus отклонения. Для rejected-задач consensus недоступен, но прошлые submitted annotations остаются видимыми как rejected evidence.
 - Optional validation voting pool - это gate после accepted consensus на final-stage task, а не замена assignment consensus. При `Room.review_voting_enabled=True` такая задача становится `in_review`; export-ready статус появляется только после approve quorum. Reject quorum открывает следующий раунд и сохраняет обычную round semantics.
 - Reviewer-ы голосуют через `ValidationVote` в текущем раунде. Пользователь, который сам submitted-нул annotation в этом раунде, не должен голосовать за итог этой же задачи.
+- Validation review list actor-aware: `validation` означает “требует мой голос”, а `validation_voted` означает “мой голос уже учтён, ждём остальных”. Уже проголосовавший reviewer не должен снова видеть задачу в активной очереди голосования.
 
 ## What Refactors Must Preserve
 

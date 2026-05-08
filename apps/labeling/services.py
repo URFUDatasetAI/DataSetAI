@@ -739,6 +739,12 @@ def submit_validation_vote(*, task: Task, reviewer: User, decision: str, comment
             raise ConflictError("Голосовать можно только по задачам, ожидающим ревью.")
         if _user_has_submitted_current_round_annotation(task=locked_task, user=reviewer):
             raise ConflictError("Нельзя голосовать за собственную разметку.")
+        if ValidationVote.objects.filter(
+            task=locked_task,
+            voter=reviewer,
+            round_number=locked_task.current_round,
+        ).exists():
+            raise ConflictError("Твой голос по этой задаче уже учтен.")
 
         vote, _ = ValidationVote.objects.update_or_create(
             task=locked_task,

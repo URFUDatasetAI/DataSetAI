@@ -248,6 +248,8 @@ type TaskItem = {
   updated_at: string;
 };
 
+type ReviewTaskFilter = "validation" | "validation_voted" | "final" | "incomplete";
+
 type ReviewTaskListItem = {
   id: number;
   status: string;
@@ -5992,7 +5994,7 @@ function RoomWorkPage() {
   const [selectedReviewTaskId, setSelectedReviewTaskId] = useState<number | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewTaskDetail | null>(null);
   const [selectedReviewSource, setSelectedReviewSource] = useState<"consensus" | number>("consensus");
-  const [reviewFilter, setReviewFilter] = useState<"validation" | "final" | "incomplete">("validation");
+  const [reviewFilter, setReviewFilter] = useState<ReviewTaskFilter>("validation");
   const [reviewActionBusy, setReviewActionBusy] = useState<string | null>(null);
   const [skipping, setSkipping] = useState(false);
   const [editorState, setEditorState] = useState({
@@ -6395,7 +6397,7 @@ function RoomWorkPage() {
     }
   }
 
-  async function handleReviewFilterChange(nextFilter: "validation" | "final" | "incomplete") {
+  async function handleReviewFilterChange(nextFilter: ReviewTaskFilter) {
     if (reviewFilter === nextFilter) {
       return;
     }
@@ -6941,6 +6943,13 @@ function RoomWorkPage() {
                       onClick={() => handleReviewFilterChange("validation")}
                     >
                       Голосование
+                    </button>
+                    <button
+                      className={`room-editor__filter-chip ${reviewFilter === "validation_voted" ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleReviewFilterChange("validation_voted")}
+                    >
+                      Проверено мной
                     </button>
                     <button
                       className={`room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`}

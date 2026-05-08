@@ -27104,6 +27104,15 @@
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
+                    className: `room-editor__filter-chip ${reviewFilter === "validation_voted" ? "is-active" : ""}`,
+                    type: "button",
+                    onClick: () => handleReviewFilterChange("validation_voted"),
+                    children: "\u041F\u0440\u043E\u0432\u0435\u0440\u0435\u043D\u043E \u043C\u043D\u043E\u0439"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
                     className: `room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`,
                     type: "button",
                     onClick: () => handleReviewFilterChange("final"),
