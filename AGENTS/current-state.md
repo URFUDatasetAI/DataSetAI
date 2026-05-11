@@ -29,7 +29,7 @@
 - Если `Room.review_voting_enabled=True`, accepted consensus на final-stage задаче переводит task в `Task.Status.IN_REVIEW`, а не сразу в export-ready `submitted`. Reviewer-ы голосуют через `ValidationVote`; approve quorum переводит задачу в `submitted`, reject quorum начинает следующий раунд. Reviewer не должен голосовать за собственную разметку текущего раунда.
 - Review-фильтры включают `validation`, `validation_voted`, `final` и `incomplete`. `validation` - actor-aware очередь задач, где текущий reviewer ещё может голосовать; `validation_voted` - задачи, где его голос уже учтён, но общий quorum ещё не закрыл задачу.
 - Image dataset room не считается immutable после создания: владелец может дозагружать изображения/ZIP и удалять primary task rows через room dataset API; новые task rows должны продолжать `input_payload.item_number`, а удаление primary task удаляет связанные child tasks/разметки каскадом.
-- Прямой вход в комнату по ID+паролю убран из UI/API. Публичный путь доступа для новых участников - invite link / join request; список комнат показывает только уже доступные пользователю комнаты.
+- Публичный прямой вход в комнату по ID+паролю убран. Путь доступа для новых участников - invite link / join request; список комнат показывает только уже доступные пользователю комнаты. `RoomJoinView` при этом остаётся explicit join endpoint-ом для уже видимых комнат, а пароль комнаты всё ещё существует как настройка create/edit и проверка внутри join service.
 - Production deploy теперь привязан к `pull_request_target.closed` для merged PR в `main`, а не к обычному `push` в `main`: это защищает автодеплой от случаев, когда GitHub не создаёт push-triggered Actions run после merge. Ручной fallback остаётся через `workflow_dispatch`.
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
 - Ручной reject на review должен сначала возвращать задачу тем же annotator-ам, которые сдавали отклонённый раунд; не удаляй rejected-round assignments до успешного принятия нового раунда. Если исходные annotator-ы не переразмечают задачу, а строгих задач для другого annotator-а больше нет, assignment flow может rescue-ить такую задачу другим участником с незаполненной квотой, но не выше `required_reviews_per_item` в текущем раунде.
@@ -54,6 +54,8 @@
 - Список комнат уже живёт с pin ordering через `RoomPin.sort_order` и recency через `RoomVisit.last_accessed_at`.
 - `room-work` уже вынесен в отдельный fullscreen shell вместо прежнего page-section подхода.
 - Добавлен optional validation voting pool на уровне комнаты: владелец включает его при create/edit, reviewer-ы принимают или отклоняют финальную consensus-разметку голосованием.
+- Добавлены room default quotas, персональные quota overrides, skip exposure semantics и rescue-pass для зависших rejected/skip сценариев assignment-а.
+- Image rooms теперь поддерживают post-create dataset management: дозагрузка отдельных изображений/ZIP и удаление primary task rows через room dataset API.
 
 ## Where To Look First
 

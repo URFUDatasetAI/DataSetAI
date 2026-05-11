@@ -47,6 +47,7 @@
 - Нужна дальнейшая нормализация shell-а под большее число сценариев, чтобы bbox-логика не стала архитектурной ловушкой.
 - Любая визуальная полировка должна перепроверяться на предмет перекрытия media-контента.
 - Zoom и media boundary logic легко ломаются при seemingly harmless CSS/layout изменениях.
+- Верхний toolbar пока не стабилизирован по координатам между режимами: submit/review controls могут менять ширину topbar. Не лечи это скрытыми placeholder-ами; для аккуратного решения нужен отдельный layout pass.
 - При добавлении новых scenario tools важно не превратить shell обратно в “кучку фреймов” вместо единого редактора.
 - Edit-after-submit и reviewer-driven `return-for-revision` меняют не только UI, но и pipeline expectations; editor-правки в этой зоне нужно сверять с `apps/labeling/services.py` и тестами, а не только глазами.
 

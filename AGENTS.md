@@ -17,7 +17,7 @@
 - DataSetAI - Django-монолит для командной разметки датасетов с React UI, REST API и PostgreSQL.
 - Основные продуктовые поверхности: room lifecycle, labeling pipeline, review/export, fullscreen `room-work` editor.
 - Поддерживаемые dataset/source сценарии уже включают text, image, video и workflow `text_detect_text`.
-- Важные свежие слои системы: deterministic grouped cross-validation, `Room.owner_is_annotator`, recency-aware room sorting и fullscreen editor shell.
+- Важные свежие слои системы: deterministic grouped cross-validation, `Room.owner_is_annotator`, room default quotas/skip exposure semantics, editable image datasets, validation voting, recency-aware room sorting и fullscreen editor shell.
 
 ## Non-Negotiables
 

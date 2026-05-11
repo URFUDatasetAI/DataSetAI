@@ -25,7 +25,7 @@
 - `Room.default_assignment_quota` - стандартный лимит задач для новых/обычных annotator-ов комнаты. Персональный `RoomAssignmentQuota` является override-ом; очистка персональной квоты возвращает пользователя к стандартной квоте комнаты, а не обязательно к unlimited.
 - Join/access flow должен оставаться согласованным между policies, services, selectors и UI payload-ами.
 - Image dataset management теперь часть room lifecycle: владелец может после создания комнаты добавить изображения или ZIP-архив и удалить отдельные primary task rows. Этот write-side flow должен оставаться в `apps/rooms/services.py`, а UI/API не должны обходить каскадное удаление задач и связанных результатов.
-- Direct access по ID комнаты и паролю больше не является продуктовым входом. Новые участники приходят через invite link / join request; `/rooms/` показывает создание комнаты и список уже доступных комнат.
+- Public direct access по ID комнаты и паролю больше не является продуктовым входом. Новые участники приходят через invite link / join request; `/rooms/` показывает создание комнаты и список уже доступных комнат. Существующий `RoomJoinView` остаётся только explicit join endpoint-ом для комнат, которые actor уже видит через ownership/membership/invite flow; не трактуй его как публичный lookup по произвольному room id.
 
 ## What Refactors Must Preserve
 
@@ -33,7 +33,7 @@
 - Любое изменение роли владельца должно проверяться не только в create/update flow, но и в assignment eligibility, participant stats и review/dashboard payload-ах.
 - Любое изменение квот должно проверяться в create/update room flow, assignment eligibility, participant stats, dashboard payload-ах и UI copy: прогресс annotator-а показывается относительно квоты, а не размера датасета.
 - Post-create изменение датасета должно сохранять корректные `item_number`, source files и child-task semantics; нельзя просто удалять файл из storage без удаления task row и зависимых annotation/assignment rows.
-- Не возвращай форму или API endpoint прямого входа по ID+паролю без явного продуктового решения: это меняет privacy/access semantics комнаты.
+- Не возвращай публичную форму или API lookup прямого входа по ID+паролю без явного продуктового решения: это меняет privacy/access semantics комнаты. Если трогаешь `RoomJoinView`, сохрани правило `get_visible_room()` для скрытия чужих комнат за 404.
 - Порядок комнат не должен “плыть” от случайных query изменений: pinned rooms и non-pinned rooms имеют разные сигналы сортировки, и это уже часть UX.
 
 ## First Files To Read
