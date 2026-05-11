@@ -23,7 +23,7 @@
 4. Пушит ветку на GitHub
 5. Создаёт Pull Request в `main`
 6. GitHub Actions запускает CI
-7. После merge в `main` GitHub Actions запускает production deploy
+7. После merge Pull Request в `main` GitHub Actions запускает production deploy
 8. Сервер выполняет `/srv/datasetai/deploy.sh`
 9. `datasetai` перезапускается автоматически
 
@@ -42,7 +42,7 @@ Workflow [ci.yml](.github/workflows/ci.yml) запускается на кажд
 
 ## Что делает production deploy
 
-Workflow [deploy.yml](.github/workflows/deploy.yml) запускается только после `push` в `main`.
+Workflow [deploy.yml](.github/workflows/deploy.yml) запускается после закрытия Pull Request в `main`, если PR был смержен.
 Также его можно запустить вручную из GitHub Actions через `Deploy To Production` -> `Run workflow`.
 
 Он:
