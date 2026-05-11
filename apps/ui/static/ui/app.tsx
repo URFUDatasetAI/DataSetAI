@@ -36,6 +36,7 @@ type BootstrapData = {
   page_title: string;
   active_page: string;
   room_id: number | null;
+  video_id: number | null;
   profile_user_id: number | null;
   app_debug_mode: boolean;
   stats: {
@@ -230,6 +231,12 @@ type RoomDashboard = {
     activity: ActivitySeriesItem[];
   };
   annotators?: DashboardAnnotator[];
+  video_tasks?: Array<{
+    id: number;
+    source_name: string | null;
+    source_file_url: string | null;
+    input_payload: Record<string, any>;
+  }>;
 };
 
 type TaskItem = {
@@ -283,6 +290,75 @@ type RoomDatasetTaskItem = TaskItem & {
 type RoomDatasetUploadResponse = {
   added_count: number;
   tasks: RoomDatasetTaskItem[];
+};
+
+type VideoItem = {
+  id: number;
+  room_id: number;
+  source_name: string | null;
+  source_file_url: string | null;
+  fps: number;
+  width: number;
+  height: number;
+  duration: number;
+  frame_count: number;
+  input_payload: Record<string, any>;
+};
+
+type VideoSelectionItem = {
+  id: number;
+  video_id: number;
+  start_frame: number;
+  end_frame: number;
+  status: string;
+  created_by_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FrameAnnotationObject = {
+  id?: string;
+  label: string;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
+type FrameAnnotationPayload = {
+  id: number;
+  task_id: number;
+  video_id: number;
+  frame_index: number;
+  status: "annotated" | "empty" | "uncertain";
+  objects: FrameAnnotationObject[];
+  created_by_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FrameAnnotationTaskItem = {
+  id: number;
+  video_id: number;
+  frame_index: number;
+  time_ms: number;
+  source_segment_id: number | null;
+  status: string;
+  assigned_to_id: number | null;
+  frame_image_url: string | null;
+  annotation: FrameAnnotationPayload | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const frameTaskStatusLabels: Record<string, string> = {
+  pending: "ожидает",
+  in_progress: "в работе",
+  done: "сохранено",
+  skipped: "пропущено",
+  uncertain: "не уверен",
 };
 
 type AnnotationItem = {
@@ -400,6 +476,7 @@ const bootstrap = readJsonScript<BootstrapData>("ui-bootstrap-data") || {
   page_title: "DataSetAI",
   active_page: "home",
   room_id: null,
+  video_id: null,
   profile_user_id: null,
   app_debug_mode: false,
   stats: { users: 0, rooms: 0, tasks: 0 },
@@ -701,6 +778,54 @@ async function downloadRoomExport(roomId: number, exportFormat: string, authUser
   link.click();
   link.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+async function downloadVideoFrameExport(videoId: number, authUser: AuthUser) {
+  if (!authUser) {
+    throw new Error("Сначала войди в аккаунт.");
+  }
+
+  const response = await fetch(`/api/v1/videos/${videoId}/export/`, {
+    method: "GET",
+    headers: {
+      "X-User-Id": String(authUser.id),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      data = { detail: text || `Ошибка HTTP ${response.status}` };
+    }
+    throw new Error(data?.detail || `Ошибка HTTP ${response.status}`);
+  }
+
+  const disposition = response.headers.get("content-disposition") || "";
+  const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+  const filename = filenameMatch?.[1] || `video-${videoId}-frame-annotations.json`;
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatVideoTime(seconds: number) {
+  const safeSeconds = Math.max(0, Number(seconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds - minutes * 60;
+  return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
 function formatPercent(value: number | null | undefined) {
@@ -1120,12 +1245,15 @@ function readVideoMetadata(file: File) {
 
     video.onloadedmetadata = () => {
       URL.revokeObjectURL(objectUrl);
+      const frameRate = 25;
+      const duration = Number(video.duration.toFixed(3));
       resolve({
         name: file.name,
         width: video.videoWidth,
         height: video.videoHeight,
-        duration: Number(video.duration.toFixed(3)),
-        frame_rate: 25,
+        duration,
+        frame_rate: frameRate,
+        frame_count: Math.max(1, Math.round(duration * frameRate)),
       });
     };
     video.onerror = () => {
@@ -1633,6 +1761,10 @@ function PageRouter() {
       return <RoomDetailPage />;
     case "room-work":
       return <RoomWorkPage />;
+    case "video-pre-annotation":
+      return <VideoPreAnnotationPage />;
+    case "frame-annotation":
+      return <FrameAnnotationPage />;
     case "room-invite":
       return <RoomInvitePage />;
     case "auth-login":
@@ -3270,7 +3402,7 @@ function RoomDetailPage() {
       const nextDashboard = await api<RoomDashboard>(`/api/v1/rooms/${roomId}/dashboard/`);
       setDashboard(nextDashboard);
 
-      if (nextDashboard.actor.can_edit_room && nextDashboard.room.dataset_type === "image" && manageSectionOpen) {
+      if (nextDashboard.actor.can_edit_room && ["image", "video"].includes(nextDashboard.room.dataset_type) && manageSectionOpen) {
         await loadDatasetTasks(roomId);
       } else {
         setDatasetTasksLoading(false);
@@ -3314,7 +3446,7 @@ function RoomDetailPage() {
   }, [dashboard?.actor.can_review, reviewSectionOpen]);
 
   useEffect(() => {
-    if (!dashboard?.actor.can_edit_room || dashboard.room.dataset_type !== "image" || !manageSectionOpen) {
+    if (!dashboard?.actor.can_edit_room || !["image", "video"].includes(dashboard.room.dataset_type) || !manageSectionOpen) {
       return;
     }
 
@@ -3713,7 +3845,9 @@ function RoomDetailPage() {
     dashboard &&
       (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
   );
+  const firstVideoTask = dashboard?.video_tasks?.[0] || null;
   const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
+  const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
 
   return (
     <>
@@ -3750,7 +3884,11 @@ function RoomDetailPage() {
           )}
           {dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? (
             <div className="room-header-cta" aria-label="Действия комнаты">
-              {dashboard.actor.can_annotate ? (
+              {dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? (
+                <a className="btn btn--primary room-header-cta__button" href={`/videos/${firstVideoTask.id}/pre-annotate/`}>
+                  Выбрать кадры
+                </a>
+              ) : dashboard.actor.can_annotate ? (
                 <a className="btn btn--primary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/`}>
                   Приступить к работе
                 </a>
@@ -3994,6 +4132,58 @@ function RoomDetailPage() {
                               </div>
                             ) : null}
                           </>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {canManageVideoDataset ? (
+                      <div className="panel-card manage-card-legacy manage-card-legacy--dataset">
+                        <div className="panel-card__head">
+                          <h2>Видео датасет</h2>
+                          <span className="eyebrow room-settings-panel__eyebrow">2 этапа</span>
+                        </div>
+                        <label className="field panel-search">
+                          <span>Поиск по видео</span>
+                          <input
+                            value={datasetTaskSearch}
+                            type="text"
+                            placeholder="Файл или ID"
+                            onChange={(event) => setDatasetTaskSearch(event.currentTarget.value)}
+                          />
+                        </label>
+                        <div className="summary-stack dataset-manager-summary">
+                          <div className="summary-row">
+                            <span>Видео</span>
+                            <strong>{datasetTasks.length}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>По фильтру</span>
+                            <strong>{filteredDatasetTasks.length}</strong>
+                          </div>
+                        </div>
+                        {datasetTasksLoading ? (
+                          <div className="empty-card">Загружаем видео датасета.</div>
+                        ) : !datasetTasks.length ? (
+                          <div className="empty-card">В датасете пока нет видео.</div>
+                        ) : !filteredDatasetTasks.length ? (
+                          <div className="empty-card">По этому запросу видео не найдены.</div>
+                        ) : (
+                          <div className="dataset-task-list" aria-label="Видео датасета">
+                            {displayedDatasetTasks.map((task) => (
+                              <div key={task.id} className="dataset-task-row dataset-task-row--video">
+                                <span className="dataset-task-row__thumb dataset-task-row__thumb--empty" aria-hidden="true"></span>
+                                <span className="dataset-task-row__meta">
+                                  <strong>{task.source_name || `Видео #${task.id}`}</strong>
+                                  <span>
+                                    #{task.id} · {Number(task.input_payload?.frame_count || 0)} кадров · {translateTaskStatus(task.status)}
+                                  </span>
+                                </span>
+                                <a className="btn btn--primary btn--compact" href={`/videos/${task.id}/pre-annotate/`}>
+                                  Выбрать кадры
+                                </a>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     ) : null}
@@ -4433,6 +4623,831 @@ function RoomDetailPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function VideoPreAnnotationPage() {
+  const { bootstrap, api, addToast, clearToasts } = useApp();
+  const videoId = bootstrap.video_id;
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [video, setVideo] = useState<VideoItem | null>(null);
+  const [selections, setSelections] = useState<VideoSelectionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [rangeStart, setRangeStart] = useState<number | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<number | null>(null);
+
+  const fps = Number(video?.fps || 25);
+  const frameCount = Number(video?.frame_count || 0);
+  const currentFrame = clampNumber(Math.floor(currentTime * fps), 0, Math.max(frameCount - 1, 0));
+  const timelineProgress = frameCount > 1 ? (currentFrame / (frameCount - 1)) * 100 : 0;
+
+  async function refresh() {
+    if (!videoId) {
+      addToast("Не удалось определить видео из URL.", "error");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [nextVideo, nextSelections] = await Promise.all([
+        api<VideoItem>(`/api/v1/videos/${videoId}/`),
+        api<VideoSelectionItem[]>(`/api/v1/videos/${videoId}/selections/`),
+      ]);
+      setVideo(nextVideo);
+      setSelections(nextSelections || []);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        handlePlayPause();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        seekToFrame(currentFrame - 1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        seekToFrame(currentFrame + 1);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentFrame, fps, frameCount, playing]);
+
+  function seekToFrame(frameIndex: number) {
+    const videoElement = videoRef.current;
+    if (!videoElement || !video) {
+      return;
+    }
+    const clampedFrame = clampNumber(frameIndex, 0, Math.max(video.frame_count - 1, 0));
+    videoElement.currentTime = clampedFrame / fps;
+    setCurrentTime(videoElement.currentTime);
+  }
+
+  function handlePlayPause() {
+    const videoElement = videoRef.current;
+    if (!videoElement) {
+      return;
+    }
+    if (videoElement.paused) {
+      videoElement.play();
+    } else {
+      videoElement.pause();
+    }
+  }
+
+  function handleVideoMetadata(event: React.SyntheticEvent<HTMLVideoElement>) {
+    event.currentTarget.currentTime = 0;
+    setCurrentTime(0);
+    setPlaying(false);
+  }
+
+  async function createSelection(startFrame: number, endFrame: number) {
+    if (!videoId) {
+      return;
+    }
+    clearToasts();
+    setBusy(true);
+    try {
+      const selection = await api<VideoSelectionItem>(`/api/v1/videos/${videoId}/selections/`, {
+        method: "POST",
+        body: { start_frame: startFrame, end_frame: endFrame },
+      });
+      setSelections((current) => [...current, selection].sort((a, b) => a.start_frame - b.start_frame || a.id - b.id));
+      addToast(startFrame === endFrame ? `Кадр ${startFrame} добавлен.` : `Интервал ${startFrame}-${endFrame} добавлен.`, "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateSelection(selection: VideoSelectionItem) {
+    clearToasts();
+    setBusy(true);
+    try {
+      const updated = await api<VideoSelectionItem>(`/api/v1/video-selections/${selection.id}/`, {
+        method: "PATCH",
+        body: { start_frame: selection.start_frame, end_frame: selection.end_frame },
+      });
+      setSelections((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      addToast("Интервал обновлен.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSelection(selectionId: number) {
+    clearToasts();
+    setBusy(true);
+    try {
+      await api(`/api/v1/video-selections/${selectionId}/`, { method: "DELETE" });
+      setSelections((current) => current.filter((item) => item.id !== selectionId));
+      addToast("Выбор удален.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generateFrameTasks() {
+    if (!videoId) {
+      return;
+    }
+    clearToasts();
+    setBusy(true);
+    try {
+      const result = await api<{ created_count: number; skipped_duplicates_count: number }>(`/api/v1/videos/${videoId}/generate-frame-tasks/`, {
+        method: "POST",
+        body: {},
+      });
+      addToast(`Создано задач: ${result.created_count}. Дубликатов пропущено: ${result.skipped_duplicates_count}.`, "success");
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const persistedSelectedFramesCount = selections.reduce((sum, item) => sum + Math.abs(item.end_frame - item.start_frame) + 1, 0);
+  const draftRangeFramesCount =
+    rangeStart == null || rangeEnd == null ? 0 : Math.abs(Number(rangeEnd) - Number(rangeStart)) + 1;
+
+  return (
+    <section className="video-workspace">
+      <header className="video-workspace__header">
+        <div>
+          <span className="eyebrow">Предварительная разметка видео</span>
+          <h1>{video?.source_name || "Предварительная разметка видео"}</h1>
+        </div>
+        <div className="video-workspace__actions">
+          {video?.room_id ? (
+            <a className="btn btn--muted btn--compact" href={`/rooms/${video.room_id}/`}>
+              К комнате
+            </a>
+          ) : null}
+          {videoId ? (
+            <a className="btn btn--primary btn--compact" href={`/videos/${videoId}/frames/`}>
+              Покадровая разметка
+            </a>
+          ) : null}
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="empty-card">Загружаем видео.</div>
+      ) : video ? (
+        <div className="video-preannotator">
+          <div className="video-preannotator__stage">
+            {video.source_file_url ? (
+              <video
+                ref={videoRef}
+                className="video-preannotator__player"
+                src={video.source_file_url}
+                preload="metadata"
+                onLoadedMetadata={handleVideoMetadata}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                onSeeked={(event) => setCurrentTime(event.currentTarget.currentTime)}
+              ></video>
+            ) : (
+              <div className="empty-card">У видео нет исходного файла.</div>
+            )}
+            <div className="video-preannotator__timeline">
+              <input
+                type="range"
+                min="0"
+                max={Math.max(frameCount - 1, 0)}
+                value={currentFrame}
+                style={{ ["--timeline-progress" as any]: `${timelineProgress}%` }}
+                onChange={(event) => seekToFrame(Number(event.currentTarget.value))}
+              />
+              <div className="video-preannotator__meta">
+                <span>Кадр {currentFrame}</span>
+                <span>{formatVideoTime(currentTime)}</span>
+                <span>{video.width}×{video.height}</span>
+                <span>{frameCount} кадров</span>
+              </div>
+            </div>
+            <div className="video-preannotator__controls">
+              <button className="btn btn--secondary btn--compact" type="button" onClick={handlePlayPause}>
+                {playing ? "Пауза" : "Воспроизвести"}
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => seekToFrame(currentFrame - 1)}>
+                Предыдущий кадр
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => seekToFrame(currentFrame + 1)}>
+                Следующий кадр
+              </button>
+              <button className="btn btn--primary btn--compact" type="button" disabled={busy} onClick={() => createSelection(currentFrame, currentFrame)}>
+                Отметить кадр
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => setRangeStart(currentFrame)}>
+                Начало интервала
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => setRangeEnd(currentFrame)}>
+                Конец интервала
+              </button>
+              <button
+                className="btn btn--primary btn--compact"
+                type="button"
+                disabled={busy || rangeStart == null || rangeEnd == null}
+                onClick={() => {
+                  if (rangeStart != null && rangeEnd != null) {
+                    createSelection(rangeStart, rangeEnd);
+                  }
+                }}
+              >
+                Добавить интервал
+              </button>
+            </div>
+          </div>
+
+          <aside className="video-preannotator__side">
+            <div className="panel-card video-selection-summary">
+              <div className="summary-row">
+                <span>Начало интервала</span>
+                <strong>{rangeStart ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Конец интервала</span>
+                <strong>{rangeEnd ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Кадров в интервале</span>
+                <strong>{draftRangeFramesCount || "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Добавлено кадров</span>
+                <strong>{persistedSelectedFramesCount}</strong>
+              </div>
+              <button className="btn btn--primary" type="button" disabled={busy || !selections.length} onClick={generateFrameTasks}>
+                Создать задачи по кадрам
+              </button>
+            </div>
+
+            <div className="video-selection-list">
+              {selections.length ? (
+                selections.map((selection) => (
+                  <div key={selection.id} className="video-selection-row">
+                    <div className="video-selection-row__inputs">
+                      <input
+                        type="number"
+                        min="0"
+                        value={selection.start_frame}
+                        onChange={(event) =>
+                          setSelections((current) =>
+                            current.map((item) => (item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item))
+                          )
+                        }
+                      />
+                      <input
+                        type="number"
+                        min="0"
+                        value={selection.end_frame}
+                        onChange={(event) =>
+                          setSelections((current) =>
+                            current.map((item) => (item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item))
+                          )
+                        }
+                      />
+                    </div>
+                    <small>{selection.status === "generated" ? "задачи созданы" : "активно"}</small>
+                    <div className="video-selection-row__actions">
+                      <button className="btn btn--muted btn--compact" type="button" disabled={busy} onClick={() => updateSelection(selection)}>
+                        Сохранить
+                      </button>
+                      <button className="btn btn--danger btn--compact" type="button" disabled={busy} onClick={() => deleteSelection(selection.id)}>
+                        Удалить
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-card">Выбери кадр или интервал, чтобы сформировать очередь второго этапа.</div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="empty-card">Видео не найдено.</div>
+      )}
+    </section>
+  );
+}
+
+function normalizeFrameObjects(objects: FrameAnnotationObject[] | undefined) {
+  return (objects || []).map((item, index) => ({
+    id: item.id || `box-${Date.now()}-${index}`,
+    label: item.label || "object",
+    bbox: {
+      x: Number(item.bbox?.x || 0),
+      y: Number(item.bbox?.y || 0),
+      width: Number(item.bbox?.width || 0),
+      height: Number(item.bbox?.height || 0),
+    },
+  }));
+}
+
+function serializeFrameObjects(objects: FrameAnnotationObject[]) {
+  return objects.map((item) => ({
+    label: item.label || "object",
+    bbox: {
+      x: Number(item.bbox.x.toFixed(6)),
+      y: Number(item.bbox.y.toFixed(6)),
+      width: Number(item.bbox.width.toFixed(6)),
+      height: Number(item.bbox.height.toFixed(6)),
+    },
+  }));
+}
+
+function FrameAnnotationPage() {
+  const { bootstrap, authUser, api, addToast, clearToasts } = useApp();
+  const videoId = bootstrap.video_id;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const interactionRef = useRef<{
+    type: "draw" | "move" | "resize";
+    id?: string;
+    startX: number;
+    startY: number;
+    original?: FrameAnnotationObject["bbox"];
+    corner?: string;
+  } | null>(null);
+  const [video, setVideo] = useState<VideoItem | null>(null);
+  const [frameTasks, setFrameTasks] = useState<FrameAnnotationTaskItem[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [activeTask, setActiveTask] = useState<FrameAnnotationTaskItem | null>(null);
+  const [objects, setObjects] = useState<FrameAnnotationObject[]>([]);
+  const [draftBox, setDraftBox] = useState<FrameAnnotationObject["bbox"] | null>(null);
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [frameStatus, setFrameStatus] = useState<FrameAnnotationPayload["status"]>("annotated");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  async function refreshQueue(preferredTaskId?: number | null) {
+    if (!videoId) {
+      addToast("Не удалось определить видео из URL.", "error");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [nextVideo, nextTasks] = await Promise.all([
+        api<VideoItem>(`/api/v1/videos/${videoId}/`),
+        api<FrameAnnotationTaskItem[]>(`/api/v1/frame-tasks/?video_id=${videoId}`),
+      ]);
+      setVideo(nextVideo);
+      setFrameTasks(nextTasks || []);
+      const nextSelectedId =
+        preferredTaskId && nextTasks.some((task) => task.id === preferredTaskId)
+          ? preferredTaskId
+          : nextTasks.find((task) => task.status !== "done")?.id || nextTasks[0]?.id || null;
+      setSelectedTaskId(nextSelectedId);
+      if (nextSelectedId) {
+        await loadFrameTask(nextSelectedId, nextTasks);
+      }
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadFrameTask(taskId: number, knownTasks = frameTasks) {
+    const task = knownTasks.find((item) => item.id === taskId);
+    if (!task || !videoId) {
+      return;
+    }
+    try {
+      const detail = await api<FrameAnnotationTaskItem>(`/api/v1/videos/${videoId}/frames/${task.frame_index}/`);
+      setActiveTask(detail);
+      setFrameTasks((current) => current.map((item) => (item.id === detail.id ? detail : item)));
+      setObjects(normalizeFrameObjects(detail.annotation?.objects));
+      setFrameStatus(detail.annotation?.status === "empty" ? "empty" : "annotated");
+      setSelectedBoxId(null);
+      setDraftBox(null);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  useEffect(() => {
+    refreshQueue();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      loadFrameTask(selectedTaskId);
+    }
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToAdjacentTask(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goToAdjacentTask(1);
+      } else if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveAnnotation();
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        deleteSelectedBox();
+      } else if (event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        setFrameStatus("empty");
+        setObjects([]);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedTaskId, frameTasks, activeTask, objects, frameStatus]);
+
+  function getSvgPoint(event: React.PointerEvent<SVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) {
+      return { x: 0, y: 0 };
+    }
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1),
+      y: clampNumber((event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1),
+    };
+  }
+
+  function normalizeBbox(x1: number, y1: number, x2: number, y2: number) {
+    const x = clampNumber(Math.min(x1, x2), 0, 1);
+    const y = clampNumber(Math.min(y1, y2), 0, 1);
+    const width = clampNumber(Math.abs(x2 - x1), 0, 1 - x);
+    const height = clampNumber(Math.abs(y2 - y1), 0, 1 - y);
+    return { x, y, width, height };
+  }
+
+  function moveBbox(box: FrameAnnotationObject["bbox"], dx: number, dy: number) {
+    return {
+      ...box,
+      x: clampNumber(box.x + dx, 0, 1 - box.width),
+      y: clampNumber(box.y + dy, 0, 1 - box.height),
+    };
+  }
+
+  function resizeBbox(box: FrameAnnotationObject["bbox"], dx: number, dy: number, corner: string) {
+    let x1 = box.x;
+    let y1 = box.y;
+    let x2 = box.x + box.width;
+    let y2 = box.y + box.height;
+    if (corner.includes("left")) {
+      x1 += dx;
+    } else {
+      x2 += dx;
+    }
+    if (corner.includes("top")) {
+      y1 += dy;
+    } else {
+      y2 += dy;
+    }
+    return normalizeBbox(x1, y1, x2, y2);
+  }
+
+  function handleSvgPointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.target !== event.currentTarget || frameStatus === "empty") {
+      return;
+    }
+    const point = getSvgPoint(event);
+    interactionRef.current = { type: "draw", startX: point.x, startY: point.y };
+    setDraftBox({ x: point.x, y: point.y, width: 0, height: 0 });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleBoxPointerDown(event: React.PointerEvent<SVGGraphicsElement>, boxId: string, corner?: string) {
+    event.stopPropagation();
+    const point = getSvgPoint(event);
+    const box = objects.find((item) => item.id === boxId);
+    if (!box) {
+      return;
+    }
+    setSelectedBoxId(boxId);
+    interactionRef.current = {
+      type: corner ? "resize" : "move",
+      id: boxId,
+      startX: point.x,
+      startY: point.y,
+      original: { ...box.bbox },
+      corner,
+    };
+    svgRef.current?.setPointerCapture(event.pointerId);
+  }
+
+  function handleSvgPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const interaction = interactionRef.current;
+    if (!interaction) {
+      return;
+    }
+    const point = getSvgPoint(event);
+    if (interaction.type === "draw") {
+      setDraftBox(normalizeBbox(interaction.startX, interaction.startY, point.x, point.y));
+      return;
+    }
+    const dx = point.x - interaction.startX;
+    const dy = point.y - interaction.startY;
+    setObjects((current) =>
+      current.map((item) => {
+        if (item.id !== interaction.id || !interaction.original) {
+          return item;
+        }
+        return {
+          ...item,
+          bbox:
+            interaction.type === "move"
+              ? moveBbox(interaction.original, dx, dy)
+              : resizeBbox(interaction.original, dx, dy, interaction.corner || "bottom-right"),
+        };
+      })
+    );
+  }
+
+  function handleSvgPointerUp() {
+    const interaction = interactionRef.current;
+    if (interaction?.type === "draw" && draftBox && draftBox.width > 0.003 && draftBox.height > 0.003) {
+      const id = `box-${Date.now()}`;
+      setObjects((current) => [...current, { id, label: "object", bbox: draftBox }]);
+      setSelectedBoxId(id);
+      setFrameStatus("annotated");
+    }
+    interactionRef.current = null;
+    setDraftBox(null);
+  }
+
+  function deleteSelectedBox() {
+    if (!selectedBoxId) {
+      return;
+    }
+    setObjects((current) => current.filter((item) => item.id !== selectedBoxId));
+    setSelectedBoxId(null);
+  }
+
+  function goToAdjacentTask(direction: -1 | 1) {
+    if (!selectedTaskId || !frameTasks.length) {
+      return;
+    }
+    const currentIndex = frameTasks.findIndex((task) => task.id === selectedTaskId);
+    const nextTask = frameTasks[clampNumber(currentIndex + direction, 0, frameTasks.length - 1)];
+    if (nextTask) {
+      setSelectedTaskId(nextTask.id);
+    }
+  }
+
+  async function saveAnnotation() {
+    if (!activeTask) {
+      return;
+    }
+    clearToasts();
+    setSaving(true);
+    try {
+      const status = frameStatus === "empty" ? "empty" : "annotated";
+      const payloadObjects = status === "empty" ? [] : serializeFrameObjects(objects);
+      const response = await api<{ task: FrameAnnotationTaskItem }>(`/api/v1/frame-tasks/${activeTask.id}/annotation/`, {
+        method: "PUT",
+        body: { status, objects: payloadObjects },
+      });
+      setActiveTask(response.task);
+      setFrameTasks((current) => current.map((task) => (task.id === response.task.id ? response.task : task)));
+      addToast(`Кадр ${activeTask.frame_index} сохранен.`, "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleExport() {
+    if (!videoId) {
+      return;
+    }
+    try {
+      await downloadVideoFrameExport(videoId, authUser);
+      addToast("JSON-экспорт покадровых аннотаций подготовлен.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  const activeIndex = selectedTaskId ? frameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
+  const completedCount = frameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+  return (
+    <section className="video-workspace frame-workspace">
+      <header className="video-workspace__header">
+        <div>
+          <span className="eyebrow">Покадровая разметка</span>
+          <h1>{video?.source_name || "Покадровая разметка"}</h1>
+        </div>
+        <div className="video-workspace__actions">
+          {videoId ? (
+            <a className="btn btn--muted btn--compact" href={`/videos/${videoId}/pre-annotate/`}>
+              Выбор кадров
+            </a>
+          ) : null}
+          <button className="btn btn--secondary btn--compact" type="button" onClick={handleExport}>
+            Экспорт JSON
+          </button>
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="empty-card">Загружаем очередь кадров.</div>
+      ) : frameTasks.length ? (
+        <div className="frame-annotator">
+          <aside className="frame-annotator__queue">
+            <div className="panel-card">
+              <div className="summary-row">
+                <span>Всего задач</span>
+                <strong>{frameTasks.length}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Сохранено</span>
+                <strong>{completedCount}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Текущая</span>
+                <strong>{activeIndex >= 0 ? activeIndex + 1 : "-"}</strong>
+              </div>
+            </div>
+            <div className="frame-task-list">
+              {frameTasks.map((task) => (
+                <button
+                  key={task.id}
+                  className={`frame-task-row ${task.id === selectedTaskId ? "is-active" : ""}`}
+                  type="button"
+                  onClick={() => setSelectedTaskId(task.id)}
+                >
+                  <strong>Кадр {task.frame_index}</strong>
+                  <span>{frameTaskStatusLabels[task.status] || task.status}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <main className="frame-annotator__stage">
+            <div className="frame-annotator__toolbar">
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => goToAdjacentTask(-1)}>
+                Предыдущий
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => goToAdjacentTask(1)}>
+                Следующий
+              </button>
+              <button
+                className={`btn btn--muted btn--compact ${frameStatus === "empty" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => {
+                  setFrameStatus("empty");
+                  setObjects([]);
+                }}
+              >
+                Объект отсутствует
+              </button>
+              <button className="btn btn--danger btn--compact" type="button" disabled={!selectedBoxId} onClick={deleteSelectedBox}>
+                Удалить bbox
+              </button>
+              <button className="btn btn--primary btn--compact" type="button" disabled={saving || !activeTask} onClick={saveAnnotation}>
+                {saving ? "Сохраняем..." : "Сохранить"}
+              </button>
+            </div>
+
+            <div className="frame-canvas">
+              {activeTask?.frame_image_url ? (
+                <div className="frame-canvas__media">
+                  <img src={activeTask.frame_image_url} alt={`Кадр ${activeTask.frame_index}`} draggable={false} />
+                  <svg
+                    ref={svgRef}
+                    className="frame-canvas__overlay"
+                    viewBox="0 0 1 1"
+                    preserveAspectRatio="none"
+                    onPointerDown={handleSvgPointerDown}
+                    onPointerMove={handleSvgPointerMove}
+                    onPointerUp={handleSvgPointerUp}
+                    onPointerCancel={handleSvgPointerUp}
+                  >
+                    {objects.map((item) => (
+                      <g key={item.id} className={`frame-bbox-group ${item.id === selectedBoxId ? "is-selected" : ""}`}>
+                        <rect
+                          className="frame-bbox"
+                          x={item.bbox.x}
+                          y={item.bbox.y}
+                          width={item.bbox.width}
+                          height={item.bbox.height}
+                          vectorEffect="non-scaling-stroke"
+                          onPointerDown={(event) => handleBoxPointerDown(event, item.id || "", undefined)}
+                        />
+                        <foreignObject
+                          className="frame-bbox-label-wrap"
+                          x={item.bbox.x}
+                          y={Math.max(item.bbox.y - 0.055, 0)}
+                          width="0.22"
+                          height="0.045"
+                          pointerEvents="none"
+                        >
+                          <div className="frame-bbox-label">{(item.label || "object") === "object" ? "Объект" : item.label}</div>
+                        </foreignObject>
+                        {["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => {
+                          const cx = corner.includes("left") ? item.bbox.x : item.bbox.x + item.bbox.width;
+                          const cy = corner.includes("top") ? item.bbox.y : item.bbox.y + item.bbox.height;
+                          return (
+                            <circle
+                              key={corner}
+                              className="frame-bbox-handle"
+                              cx={cx}
+                              cy={cy}
+                              r="0.008"
+                              vectorEffect="non-scaling-stroke"
+                              onPointerDown={(event) => handleBoxPointerDown(event, item.id || "", corner)}
+                            />
+                          );
+                        })}
+                      </g>
+                    ))}
+                    {draftBox ? (
+                      <rect
+                        className="frame-bbox frame-bbox--draft"
+                        x={draftBox.x}
+                        y={draftBox.y}
+                        width={draftBox.width}
+                        height={draftBox.height}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ) : null}
+                  </svg>
+                </div>
+              ) : (
+                <div className="empty-card">Кадр еще не извлечен или FFmpeg недоступен на сервере.</div>
+              )}
+            </div>
+          </main>
+
+          <aside className="frame-annotator__side">
+            <div className="panel-card">
+              <div className="summary-row">
+                <span>Кадр</span>
+                <strong>{activeTask?.frame_index ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Время</span>
+                <strong>{activeTask ? `${activeTask.time_ms} мс` : "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Bbox</span>
+                <strong>{objects.length}</strong>
+              </div>
+            </div>
+            <div className="frame-object-list">
+              {objects.length ? (
+                objects.map((item, index) => (
+                  <button
+                    key={item.id}
+                    className={`frame-object-row ${item.id === selectedBoxId ? "is-active" : ""}`}
+                    type="button"
+                    onClick={() => setSelectedBoxId(item.id || null)}
+                  >
+                    <strong>{(item.label || "object") === "object" ? "Объект" : item.label} #{index + 1}</strong>
+                    <span>
+                      {item.bbox.x.toFixed(3)}, {item.bbox.y.toFixed(3)} · {item.bbox.width.toFixed(3)}×{item.bbox.height.toFixed(3)}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="empty-card">Нарисуй bbox поверх кадра или выбери статус «объект отсутствует».</div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="empty-card">Сначала сгенерируй задачи покадровой разметки на экране выбора кадров.</div>
+      )}
+    </section>
   );
 }
 

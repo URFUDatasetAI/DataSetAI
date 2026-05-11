@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -8,14 +9,18 @@ from apps.labeling.api.v1.serializers import (
     AnnotationSubmitSerializer,
     EditableSubmissionDetailSerializer,
     EditableSubmissionListItemSerializer,
+    FrameAnnotationSaveSerializer,
+    FrameAnnotationTaskSerializer,
     ReturnForRevisionSerializer,
     ReviewTaskDetailSerializer,
     ReviewTaskListItemSerializer,
     TaskSerializer,
     ValidationVoteSubmitSerializer,
+    VideoSelectionSerializer,
+    VideoSelectionWriteSerializer,
 )
 from apps.labeling.consensus import evaluate_annotation_against_consensus
-from apps.labeling.models import TaskAssignment
+from apps.labeling.models import TaskAssignment, VideoSelection
 from apps.labeling.selectors import (
     REVIEW_FILTER_FINAL,
     REVIEW_FILTER_VALUES,
@@ -40,10 +45,23 @@ from apps.labeling.services import (
     submit_validation_vote,
     update_submitted_annotation,
 )
+from apps.labeling.video_services import (
+    create_video_selection,
+    delete_video_selection,
+    ensure_frame_image,
+    export_frame_annotations_json,
+    generate_frame_tasks_from_selections,
+    get_frame_task_or_404,
+    get_video_for_workspace,
+    list_frame_tasks,
+    save_frame_annotation,
+    serialize_video,
+    update_video_selection,
+)
 from apps.labeling.workflows import get_room_final_tasks_queryset
 from apps.rooms.policies import can_review_room
 from apps.rooms.selectors import get_visible_room
-from common.exceptions import AccessDeniedError
+from common.exceptions import AccessDeniedError, NotFoundError
 
 """
 Labeling endpoints used by the annotator workflow:
@@ -247,3 +265,141 @@ class TaskReturnForRevisionView(APIView):
             annotator_id=serializer.validated_data["annotator_id"],
         )
         return Response(TaskSerializer(task, context={"request": request}).data)
+
+
+def _get_video_selection_or_404(*, selection_id: int) -> VideoSelection:
+    try:
+        return VideoSelection.objects.select_related("video__room").get(id=selection_id)
+    except VideoSelection.DoesNotExist as exc:
+        raise NotFoundError("Выбранный интервал не найден.") from exc
+
+
+class VideoDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, video_id: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        return Response(serialize_video(video=video, request=request))
+
+
+class VideoSelectionListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, video_id: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        selections = video.video_selections.select_related("created_by").order_by("start_frame", "end_frame", "id")
+        return Response(VideoSelectionSerializer(selections, many=True).data)
+
+    def post(self, request, video_id: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        serializer = VideoSelectionWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        selection = create_video_selection(
+            video=video,
+            actor=request.user,
+            start_frame=serializer.validated_data["start_frame"],
+            end_frame=serializer.validated_data["end_frame"],
+        )
+        return Response(VideoSelectionSerializer(selection).data, status=status.HTTP_201_CREATED)
+
+
+class VideoSelectionDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, selection_id: int):
+        selection = _get_video_selection_or_404(selection_id=selection_id)
+        serializer = VideoSelectionWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        selection = update_video_selection(
+            selection=selection,
+            actor=request.user,
+            start_frame=serializer.validated_data["start_frame"],
+            end_frame=serializer.validated_data["end_frame"],
+        )
+        return Response(VideoSelectionSerializer(selection).data)
+
+    def delete(self, request, selection_id: int):
+        selection = _get_video_selection_or_404(selection_id=selection_id)
+        delete_video_selection(selection=selection, actor=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class VideoGenerateFrameTasksView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, video_id: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        result = generate_frame_tasks_from_selections(video=video, actor=request.user)
+        return Response(
+            {
+                "created_count": result["created_count"],
+                "skipped_duplicates_count": result["skipped_duplicates_count"],
+                "tasks": FrameAnnotationTaskSerializer(result["tasks"], many=True, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FrameTaskListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        raw_video_id = request.query_params.get("video_id")
+        try:
+            video_id = int(raw_video_id) if raw_video_id else None
+        except (TypeError, ValueError) as exc:
+            raise NotFoundError("Видео не найдено.") from exc
+        tasks = list_frame_tasks(actor=request.user, video_id=video_id)
+        return Response(FrameAnnotationTaskSerializer(tasks, many=True, context={"request": request}).data)
+
+
+class FrameTaskDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, task_id: int):
+        task = get_frame_task_or_404(task_id=task_id, actor=request.user)
+        return Response(FrameAnnotationTaskSerializer(task, context={"request": request}).data)
+
+
+class VideoFrameView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, video_id: int, frame_index: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        frame_task = ensure_frame_image(video=video, frame_index=frame_index)
+        return Response(FrameAnnotationTaskSerializer(frame_task, context={"request": request}).data)
+
+
+class FrameTaskAnnotationView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, task_id: int):
+        task = get_frame_task_or_404(task_id=task_id, actor=request.user)
+        serializer = FrameAnnotationSaveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        annotation = save_frame_annotation(
+            frame_task=task,
+            actor=request.user,
+            status=serializer.validated_data["status"],
+            objects=serializer.validated_data.get("objects") or [],
+        )
+        refreshed_task = get_frame_task_or_404(task_id=task.id, actor=request.user)
+        serialized_task = FrameAnnotationTaskSerializer(refreshed_task, context={"request": request}).data
+        return Response(
+            {
+                "task": serialized_task,
+                "annotation": serialized_task["annotation"],
+                "annotation_id": annotation.id,
+            }
+        )
+
+
+class VideoFrameAnnotationExportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, video_id: int):
+        video = get_video_for_workspace(video_id=video_id, actor=request.user)
+        content = export_frame_annotations_json(video=video, actor=request.user)
+        response = HttpResponse(content, content_type="application/json; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="video_{video.id}_frame_annotations.json"'
+        return response

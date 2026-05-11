@@ -5,6 +5,7 @@
 - DataSetAI остаётся Django-монолитом с React UI-shell, REST API и PostgreSQL.
 - Канонический frontend entrypoint по-прежнему один: Django рендерит `apps/ui/templates/ui/base.html`, а React выбирает экран через bootstrap-contract в `apps/ui/static/ui/app.tsx`.
 - Проект уже вышел за рамки только текстовой разметки: image/video и workflow `text_detect_text` считаются first-class сценариями.
+- Видеоразметка теперь поддерживает двухэтапный flow: исходное видео хранится как `Task(source_type=video)`, выбранные кадры/интервалы живут в `VideoSelection`, а ручная покадровая bbox-разметка идёт через `FrameAnnotationTask` и `FrameAnnotation`. Для video cross-validation одна `FrameAnnotationTask` может иметь несколько `FrameAnnotation` - по одной на разметчика.
 - Cross-validation больше не только “равномерная раздача по людям”: в кодовой базе уже живёт deterministic grouped distribution с fallback на legacy strategy.
 - Владелец комнаты теперь не обязан быть annotator: это управляется `Room.owner_is_annotator` и затрагивает доступ, eligible pools и room payload-ы.
 - `room-work` развивается как отдельная fullscreen рабочая поверхность, а не как секция длинной страницы комнаты. Этот shell больше не annotator-only: внутри него теперь должны жить и очередь задач, и редактирование своих submit-ов, и reviewer-native проверка.
@@ -21,6 +22,7 @@
 ## Stable Invariants
 
 - Write-side бизнес-логика живёт в `services.py`; read-side shaping payload-ов живёт в `selectors.py`.
+- Для двухэтапной видеоразметки write-side вынесен в `apps/labeling/video_services.py`, чтобы не перегружать основной assignment/consensus `apps/labeling/services.py`.
 - Изменения в assignment/submit/reopen flow обязаны уважать `transaction.atomic()` и схему `select_for_update()`.
 - `get_next_task_for_annotator` нельзя случайно лишить `select_for_update(skip_locked=True)` там, где это поддерживается СУБД.
 - Квота разметчика внутри комнаты считается от эффективного лимита: `RoomAssignmentQuota.task_quota`, если задан персональный override, иначе `Room.default_assignment_quota`. Отсутствие персонального override больше не означает unlimited, если у комнаты есть стандартная квота. Квоту выполненной работы расходуют только assignments текущего раунда в статусах `in_progress`/`submitted`; skipped assignments и старые отклонённые раунды её не занимают.
@@ -29,6 +31,8 @@
 - Если `Room.review_voting_enabled=True`, accepted consensus на final-stage задаче переводит task в `Task.Status.IN_REVIEW`, а не сразу в export-ready `submitted`. Reviewer-ы голосуют через `ValidationVote`; approve quorum переводит задачу в `submitted`, reject quorum начинает следующий раунд. Reviewer не должен голосовать за собственную разметку текущего раунда.
 - Review-фильтры включают `validation`, `validation_voted`, `final` и `incomplete`. `validation` - actor-aware очередь задач, где текущий reviewer ещё может голосовать; `validation_voted` - задачи, где его голос уже учтён, но общий quorum ещё не закрыл задачу.
 - Image dataset room не считается immutable после создания: владелец может дозагружать изображения/ZIP и удалять primary task rows через room dataset API; новые task rows должны продолжать `input_payload.item_number`, а удаление primary task удаляет связанные child tasks/разметки каскадом.
+- Video dataset больше не должен автоматически раскладываться в image tasks при импорте: frame tasks создаются только из явных selections, без интерполяции, auto-tracking и multi-object tracking.
+- Video frame task закрывается как `done` только после `Room.required_reviews_per_item` независимых frame-аннотаций; до этого она остаётся `in_progress`. Если cross-validation bbox-ы расходятся ниже threshold, frame task становится `uncertain`.
 - Прямой вход в комнату по ID+паролю убран из UI/API. Публичный путь доступа для новых участников - invite link / join request; список комнат показывает только уже доступные пользователю комнаты.
 - Для grouped cross-validation одна и та же задача должна детерминированно попадать в одну reviewer-group, если room можно разбить на полные группы нужного размера; иначе обязателен fallback на legacy strategy.
 - Ручной reject на review должен сначала возвращать задачу тем же annotator-ам, которые сдавали отклонённый раунд; не удаляй rejected-round assignments до успешного принятия нового раунда. Если исходные annotator-ы не переразмечают задачу, а строгих задач для другого annotator-а больше нет, assignment flow может rescue-ить такую задачу другим участником с незаполненной квотой, но не выше `required_reviews_per_item` в текущем раунде.
@@ -53,6 +57,7 @@
 - Список комнат уже живёт с pin ordering через `RoomPin.sort_order` и recency через `RoomVisit.last_accessed_at`.
 - `room-work` уже вынесен в отдельный fullscreen shell вместо прежнего page-section подхода.
 - Добавлен optional validation voting pool на уровне комнаты: владелец включает его при create/edit, reviewer-ы принимают или отклоняют финальную consensus-разметку голосованием.
+- Добавлен MVP двухэтапной видеоразметки: pre-annotation экран для выбора кадров/интервалов, генерация уникальных frame tasks, ручный SVG bbox-editor по кадрам, статусы `empty`/`uncertain` и JSON-экспорт покадровых аннотаций.
 
 ## Where To Look First
 
@@ -84,6 +89,14 @@
 - [tasks/fullscreen-room-work-editor.md](tasks/fullscreen-room-work-editor.md)
 - `apps/ui/static/ui/app.tsx`
 - `apps/ui/static/ui/app.css`
+
+### Если задача про двухэтапную видеоразметку
+
+- `apps/labeling/video_services.py`
+- `apps/labeling/models.py` (`VideoSelection`, `FrameAnnotationTask`, `FrameAnnotation`)
+- `apps/labeling/api/v1/views.py`
+- `apps/ui/static/ui/app.tsx` (`VideoPreAnnotationPage`, `FrameAnnotationPage`)
+- `tests/test_video_annotation_api.py`
 
 ### Если задача про roadmap или новые типы разметки
 
