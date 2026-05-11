@@ -7,7 +7,7 @@ from itertools import combinations
 from pathlib import Path
 
 from django.core.files.base import ContentFile
-from django.db import IntegrityError, transaction
+from django.db import transaction
 
 from apps.labeling.models import FrameAnnotation, FrameAnnotationTask, Task, VideoSelection
 from apps.rooms.policies import can_annotate_room, can_edit_room, get_room_membership
@@ -417,14 +417,15 @@ def generate_frame_tasks_from_selections(*, video: Task, actor: User) -> dict:
                 end_frame=selection.end_frame,
                 frame_count=frame_count,
             ):
-                try:
-                    task = FrameAnnotationTask.objects.create(
-                        video=video,
-                        frame_index=frame_index,
-                        time_ms=frame_index_to_time_ms(video=video, frame_index=frame_index),
-                        source_segment=selection,
-                    )
-                except IntegrityError:
+                task, created = FrameAnnotationTask.objects.get_or_create(
+                    video=video,
+                    frame_index=frame_index,
+                    defaults={
+                        "time_ms": frame_index_to_time_ms(video=video, frame_index=frame_index),
+                        "source_segment": selection,
+                    },
+                )
+                if not created:
                     skipped_count += 1
                     continue
                 created_tasks.append(task)
