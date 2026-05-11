@@ -16,8 +16,10 @@ class VideoAnnotationApiTests(APITestCase):
     def setUp(self):
         self.customer = make_user(username="video_customer", full_name="Video Customer")
         self.annotator = make_user(username="video_annotator", full_name="Video Annotator")
+        self.annotator_2 = make_user(username="video_annotator_2", full_name="Video Annotator 2")
         self.room = make_room(customer=self.customer, title="Video room", dataset_type=Room.DatasetType.VIDEO)
         invite_annotator(room=self.room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        invite_annotator(room=self.room, annotator=self.annotator_2, invited_by=self.customer, joined=True)
         self.video = make_task(
             room=self.room,
             payload={
@@ -122,6 +124,90 @@ class VideoAnnotationApiTests(APITestCase):
         self.assertEqual(annotation.objects_payload[0]["bbox"]["x"], 0.42)
         frame_task.refresh_from_db()
         self.assertEqual(frame_task.status, FrameAnnotationTask.Status.DONE)
+
+    def test_cross_validation_waits_for_required_video_frame_annotations(self):
+        self.room.cross_validation_enabled = True
+        self.room.cross_validation_annotators_count = 2
+        self.room.cross_validation_similarity_threshold = 80
+        self.room.save(update_fields=["cross_validation_enabled", "cross_validation_annotators_count", "cross_validation_similarity_threshold"])
+        frame_task = FrameAnnotationTask.objects.create(video=self.video, frame_index=1, time_ms=40)
+        payload = {
+            "status": "annotated",
+            "objects": [
+                {
+                    "label": "object",
+                    "bbox": {"x": 0.42, "y": 0.31, "width": 0.08, "height": 0.06},
+                }
+            ],
+        }
+
+        first_response = self.client.put(
+            reverse("frame-task-annotation", kwargs={"task_id": frame_task.id}),
+            payload,
+            format="json",
+            **self.auth(self.annotator),
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        frame_task.refresh_from_db()
+        self.assertEqual(frame_task.status, FrameAnnotationTask.Status.IN_PROGRESS)
+
+        second_detail_response = self.client.get(
+            reverse("video-frame-detail", kwargs={"video_id": self.video.id, "frame_index": 1}),
+            **self.auth(self.annotator_2),
+        )
+        second_response = self.client.put(
+            reverse("frame-task-annotation", kwargs={"task_id": frame_task.id}),
+            payload,
+            format="json",
+            **self.auth(self.annotator_2),
+        )
+
+        self.assertIsNone(second_detail_response.data["annotation"])
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(FrameAnnotation.objects.filter(task=frame_task).count(), 2)
+        frame_task.refresh_from_db()
+        self.assertEqual(frame_task.status, FrameAnnotationTask.Status.DONE)
+
+    def test_cross_validation_marks_disagreed_video_frame_uncertain(self):
+        self.room.cross_validation_enabled = True
+        self.room.cross_validation_annotators_count = 2
+        self.room.cross_validation_similarity_threshold = 80
+        self.room.save(update_fields=["cross_validation_enabled", "cross_validation_annotators_count", "cross_validation_similarity_threshold"])
+        frame_task = FrameAnnotationTask.objects.create(video=self.video, frame_index=4, time_ms=160)
+
+        first_response = self.client.put(
+            reverse("frame-task-annotation", kwargs={"task_id": frame_task.id}),
+            {
+                "status": "annotated",
+                "objects": [
+                    {
+                        "label": "object",
+                        "bbox": {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.1},
+                    }
+                ],
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+        second_response = self.client.put(
+            reverse("frame-task-annotation", kwargs={"task_id": frame_task.id}),
+            {
+                "status": "annotated",
+                "objects": [
+                    {
+                        "label": "object",
+                        "bbox": {"x": 0.7, "y": 0.7, "width": 0.1, "height": 0.1},
+                    }
+                ],
+            },
+            format="json",
+            **self.auth(self.annotator_2),
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        frame_task.refresh_from_db()
+        self.assertEqual(frame_task.status, FrameAnnotationTask.Status.UNCERTAIN)
 
     def test_reject_invalid_bbox(self):
         frame_task = FrameAnnotationTask.objects.create(video=self.video, frame_index=1, time_ms=40)

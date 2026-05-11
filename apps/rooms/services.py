@@ -1,7 +1,6 @@
 import io
 import json
 import shutil
-import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -10,7 +9,6 @@ from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from django.core.files import File
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
@@ -131,7 +129,7 @@ def create_room(
     Creates a new Room, triggers initial parsing, and invites users.
     
     This is the core entry point for Room creation, separating the UI/Validation layer from the business logic.
-    Depending on the `dataset_mode`, it parses JSON, extracts Images, or breaks video into frames via ffmpeg.
+    Depending on the `dataset_mode`, it parses JSON, stores images, or stores source videos for staged frame annotation.
     
     Important: The entire structure is wrapped in `transaction.atomic()`, ensuring we don't end up
     with an orphaned Room if dataset parsing fails.
@@ -782,9 +780,9 @@ def _create_media_tasks(
         dataset_mode=Room.DatasetType.IMAGE if source_type == Task.SourceType.IMAGE else Room.DatasetType.VIDEO,
         dataset_files=dataset_files,
     )
-    # For image datasets we create one Task per uploaded file.
-    # For video datasets we fan out one uploaded video into many image tasks
-    # (frames), because the rest of the labeling pipeline operates on Task rows.
+    # For image datasets we create one Task per uploaded file. For video
+    # datasets the source video stays intact; frame tasks are generated later
+    # from explicit VideoSelection rows.
     manifest_by_name = {item["name"]: item for item in media_manifest if item.get("name")}
     next_item_number = start_item_number
     created_tasks: list[Task] = []
@@ -792,17 +790,6 @@ def _create_media_tasks(
     for dataset_file in dataset_files:
         file_name = Path(dataset_file.name).name
         metadata = manifest_by_name.get(file_name, {})
-
-        if source_type == Task.SourceType.VIDEO:
-            next_item_number, frame_tasks = _create_video_frame_tasks(
-                room=room,
-                dataset_label=dataset_label,
-                dataset_file=dataset_file,
-                metadata=metadata,
-                start_item_number=next_item_number,
-            )
-            created_tasks.extend(frame_tasks)
-            continue
 
         input_payload = {
             "dataset": dataset_label,
@@ -813,6 +800,20 @@ def _create_media_tasks(
             input_payload["width"] = metadata["width"]
         if metadata.get("height"):
             input_payload["height"] = metadata["height"]
+        if source_type == Task.SourceType.VIDEO:
+            frame_rate = metadata.get("fps") or metadata.get("frame_rate") or 25
+            duration = metadata.get("duration") or 0
+            frame_count = metadata.get("frame_count")
+            if frame_count is None and duration:
+                frame_count = int(round(float(duration) * float(frame_rate)))
+            input_payload.update(
+                {
+                    "fps": frame_rate,
+                    "frame_rate": frame_rate,
+                    "duration": duration,
+                    "frame_count": frame_count or 0,
+                }
+            )
 
         task = Task.objects.create(
             room=room,
@@ -826,107 +827,17 @@ def _create_media_tasks(
             source_file=dataset_file,
             input_payload=input_payload,
         )
+        if source_type == Task.SourceType.VIDEO and task.source_file:
+            try:
+                from apps.labeling.video_services import refresh_video_metadata
+
+                refresh_video_metadata(video=task, force=True)
+            except ConflictError:
+                pass
         created_tasks.append(task)
         next_item_number += 1
 
     return created_tasks
-
-
-def _create_video_frame_tasks(
-    *,
-    room: Room,
-    dataset_label: str,
-    dataset_file,
-    metadata: dict,
-    start_item_number: int,
-) -> tuple[int, list[Task]]:
-    """
-    Splits an uploaded video file into discrete frames (images) using ffmpeg.
-    Each frame is then represented as a separate Image Task.
-    
-    If this fails, make sure `ffmpeg` is installed on the host OS. Also,
-    if media doesn't load on frontend, verify `nginx` handles `MEDIA_ROOT`.
-    """
-    # Video import depends on ffmpeg being available on the host machine.
-    # Production setup must include ffmpeg, writable MEDIA_ROOT and nginx media
-    # serving, otherwise video/image labeling breaks even if Django itself works.
-    ffmpeg_path = shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise ConflictError("Для импорта видео-датасетов нужен FFmpeg.")
-
-    video_name = Path(dataset_file.name).name
-    frame_rate = int(metadata.get("frame_rate") or 25)
-    width = metadata.get("width")
-    height = metadata.get("height")
-    duration = metadata.get("duration") or 0
-
-    with tempfile.TemporaryDirectory(prefix="datasetai_video_") as temp_dir:
-        input_path = Path(temp_dir) / video_name
-        with input_path.open("wb") as input_handle:
-            for chunk in dataset_file.chunks():
-                input_handle.write(chunk)
-
-        frame_dir = Path(temp_dir) / "frames"
-        frame_dir.mkdir(parents=True, exist_ok=True)
-        frame_pattern = frame_dir / "frame_%06d.jpg"
-
-        try:
-            subprocess.run(
-                [
-                    ffmpeg_path,
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-i",
-                    str(input_path),
-                    "-vsync",
-                    "0",
-                    str(frame_pattern),
-                ],
-                check=True,
-                capture_output=True,
-            )
-        except subprocess.CalledProcessError as exc:
-            error_message = exc.stderr.decode("utf-8", errors="ignore").strip() or "Failed to extract video frames."
-            raise ConflictError(f"Не удалось разбить видео {video_name} на кадры: {error_message}") from exc
-
-        frame_paths = sorted(frame_dir.glob("frame_*.jpg"))
-        if not frame_paths:
-            raise ConflictError(f"Видео {video_name} не содержит кадров для разметки.")
-
-        next_item_number = start_item_number
-        created_tasks: list[Task] = []
-        for frame_index, frame_path in enumerate(frame_paths, start=1):
-            frame_name = f"{Path(video_name).stem}_frame_{frame_index:06d}.jpg"
-            frame_task = Task(
-                room=room,
-                source_type=Task.SourceType.IMAGE,
-                workflow_stage=(
-                    Task.WorkflowStage.TEXT_DETECTION
-                    if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
-                    else Task.WorkflowStage.STANDARD
-                ),
-                source_name=frame_name,
-                input_payload={
-                    "dataset": dataset_label,
-                    "item_number": next_item_number,
-                    "source_name": frame_name,
-                    "origin_source_type": Task.SourceType.VIDEO,
-                    "video_name": video_name,
-                    "frame_number": frame_index,
-                    "frame_rate": frame_rate,
-                    "frame_timestamp": round((frame_index - 1) / frame_rate, 3),
-                    "duration": duration,
-                    **({"width": width} if width else {}),
-                    **({"height": height} if height else {}),
-                },
-            )
-            frame_task.source_file.save(frame_name, ContentFile(frame_path.read_bytes()), save=False)
-            frame_task.save()
-            created_tasks.append(frame_task)
-            next_item_number += 1
-
-        return next_item_number, created_tasks
 
 
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:

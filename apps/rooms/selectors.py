@@ -5,7 +5,7 @@ from django.db.models import DateTimeField, Exists, F, OuterRef, QuerySet, Subqu
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, FrameAnnotationTask, Task, TaskAssignment
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 
 from apps.rooms.models import Room, RoomAssignmentQuota, RoomJoinRequest, RoomMembership, RoomPin, RoomVisit
@@ -273,8 +273,18 @@ def build_room_invite_preview(*, room: Room, actor: User | None, request=None) -
 def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
     # Dashboard payload is intentionally assembled here instead of serializers:
     # it mixes room metadata, aggregate stats and actor-specific slices.
-    total_tasks = get_room_primary_tasks_queryset(room=room).count()
-    completed_tasks = get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).count()
+    if room.dataset_type == Room.DatasetType.VIDEO:
+        frame_tasks_queryset = FrameAnnotationTask.objects.filter(video__room=room)
+        frame_tasks_count = frame_tasks_queryset.count()
+        total_tasks = frame_tasks_count or get_room_primary_tasks_queryset(room=room).count()
+        completed_tasks = (
+            frame_tasks_queryset.filter(status__in=(FrameAnnotationTask.Status.DONE, FrameAnnotationTask.Status.UNCERTAIN)).count()
+            if frame_tasks_count
+            else 0
+        )
+    else:
+        total_tasks = get_room_primary_tasks_queryset(room=room).count()
+        completed_tasks = get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).count()
     remaining_tasks = max(total_tasks - completed_tasks, 0)
     progress_percent = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0.0
 
@@ -356,6 +366,21 @@ def build_room_dashboard(*, room: Room, actor: User, request=None) -> dict:
             "can_delete_room": can_delete_room(room=room, user=actor),
         },
     }
+    if room.dataset_type == Room.DatasetType.VIDEO:
+        video_tasks = []
+        for task in get_room_primary_tasks_queryset(room=room).filter(source_type=Task.SourceType.VIDEO).order_by("id"):
+            source_url = task.source_file.url if task.source_file else None
+            if source_url and request is not None:
+                source_url = request.build_absolute_uri(source_url)
+            video_tasks.append(
+                {
+                    "id": task.id,
+                    "source_name": task.source_name,
+                    "source_file_url": source_url,
+                    "input_payload": task.input_payload,
+                }
+            )
+        payload["video_tasks"] = video_tasks
 
     if actor_can_annotate:
         actor_completed = _count_completed_items_for_user(room=room, user=actor)

@@ -1,7 +1,9 @@
 import json
+import json
 import shutil
 import subprocess
 import tempfile
+from itertools import combinations
 from pathlib import Path
 
 from django.core.files.base import ContentFile
@@ -11,6 +13,110 @@ from apps.labeling.models import FrameAnnotation, FrameAnnotationTask, Task, Vid
 from apps.rooms.policies import can_annotate_room, can_edit_room, get_room_membership
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, ConflictError, NotFoundError
+
+
+def _bbox_iou(left: dict, right: dict) -> float:
+    left_x1 = float(left["x"])
+    left_y1 = float(left["y"])
+    left_x2 = left_x1 + float(left["width"])
+    left_y2 = left_y1 + float(left["height"])
+    right_x1 = float(right["x"])
+    right_y1 = float(right["y"])
+    right_x2 = right_x1 + float(right["width"])
+    right_y2 = right_y1 + float(right["height"])
+
+    intersection_x1 = max(left_x1, right_x1)
+    intersection_y1 = max(left_y1, right_y1)
+    intersection_x2 = min(left_x2, right_x2)
+    intersection_y2 = min(left_y2, right_y2)
+    intersection_width = max(intersection_x2 - intersection_x1, 0)
+    intersection_height = max(intersection_y2 - intersection_y1, 0)
+    intersection_area = intersection_width * intersection_height
+    left_area = max(left_x2 - left_x1, 0) * max(left_y2 - left_y1, 0)
+    right_area = max(right_x2 - right_x1, 0) * max(right_y2 - right_y1, 0)
+    union_area = left_area + right_area - intersection_area
+    return intersection_area / union_area if union_area > 0 else 0.0
+
+
+def _frame_object_similarity(left: dict, right: dict) -> float:
+    if left.get("label") != right.get("label"):
+        return 0.0
+    return _bbox_iou(left["bbox"], right["bbox"])
+
+
+def _frame_annotation_similarity(left: FrameAnnotation, right: FrameAnnotation) -> float:
+    if left.status == FrameAnnotation.Status.EMPTY and right.status == FrameAnnotation.Status.EMPTY:
+        return 100.0
+    if left.status != right.status:
+        return 0.0
+    if left.status == FrameAnnotation.Status.UNCERTAIN:
+        return 100.0
+
+    left_objects = list(left.objects_payload or [])
+    right_objects = list(right.objects_payload or [])
+    if not left_objects and not right_objects:
+        return 100.0
+    if not left_objects or not right_objects:
+        return 0.0
+
+    used_right_indexes: set[int] = set()
+    matched_score_sum = 0.0
+    for left_object in left_objects:
+        best_index = None
+        best_score = 0.0
+        for index, right_object in enumerate(right_objects):
+            if index in used_right_indexes:
+                continue
+            score = _frame_object_similarity(left_object, right_object)
+            if score > best_score:
+                best_score = score
+                best_index = index
+        if best_index is not None and best_score > 0:
+            used_right_indexes.add(best_index)
+            matched_score_sum += best_score
+
+    denominator = len(left_objects) + len(right_objects)
+    return round(((2 * matched_score_sum) / denominator) * 100, 2) if denominator else 100.0
+
+
+def _evaluate_frame_annotations(*, annotations: list[FrameAnnotation], threshold: int) -> dict:
+    if not annotations:
+        return {
+            "accepted": False,
+            "score": 0.0,
+            "status": FrameAnnotation.Status.EMPTY,
+            "objects": [],
+        }
+    if len(annotations) == 1:
+        annotation = annotations[0]
+        return {
+            "accepted": True,
+            "score": 100.0,
+            "status": annotation.status,
+            "objects": annotation.objects_payload,
+        }
+
+    pair_scores = [
+        _frame_annotation_similarity(left, right)
+        for left, right in combinations(annotations, 2)
+    ]
+    score = round(sum(pair_scores) / len(pair_scores), 2) if pair_scores else 100.0
+    accepted = score >= threshold
+    if not accepted:
+        return {
+            "accepted": False,
+            "score": score,
+            "status": FrameAnnotation.Status.UNCERTAIN,
+            "objects": [],
+        }
+
+    latest = sorted(annotations, key=lambda item: (item.updated_at, item.id))[-1]
+    return {
+        "accepted": True,
+        "score": score,
+        "status": latest.status,
+        "objects": latest.objects_payload,
+    }
 
 
 def _assert_video_task(*, video: Task) -> None:
@@ -334,7 +440,11 @@ def generate_frame_tasks_from_selections(*, video: Task, actor: User) -> dict:
 
 
 def list_frame_tasks(*, actor: User, video_id: int | None = None) -> list[FrameAnnotationTask]:
-    queryset = FrameAnnotationTask.objects.select_related("video__room", "assigned_to", "annotation").order_by("video_id", "frame_index", "id")
+    queryset = (
+        FrameAnnotationTask.objects.select_related("video__room", "assigned_to")
+        .prefetch_related("annotations")
+        .order_by("video_id", "frame_index", "id")
+    )
     if video_id is not None:
         video = get_video_task_or_404(video_id=video_id)
         _assert_can_use_video_workspace(video=video, actor=actor)
@@ -346,7 +456,7 @@ def list_frame_tasks(*, actor: User, video_id: int | None = None) -> list[FrameA
 
 def get_frame_task_or_404(*, task_id: int, actor: User) -> FrameAnnotationTask:
     try:
-        task = FrameAnnotationTask.objects.select_related("video__room", "annotation").get(id=task_id)
+        task = FrameAnnotationTask.objects.select_related("video__room").prefetch_related("annotations").get(id=task_id)
     except FrameAnnotationTask.DoesNotExist as exc:
         raise NotFoundError("Покадровая задача не найдена.") from exc
     _assert_can_use_video_workspace(video=task.video, actor=actor)
@@ -357,21 +467,38 @@ def save_frame_annotation(*, frame_task: FrameAnnotationTask, actor: User, statu
     _assert_can_use_video_workspace(video=frame_task.video, actor=actor)
     validated_objects = validate_frame_annotation_payload(status=status, objects=objects)
     with transaction.atomic():
-        locked_task = FrameAnnotationTask.objects.select_for_update().select_related("video").get(id=frame_task.id)
+        locked_task = FrameAnnotationTask.objects.select_for_update().select_related("video__room").get(id=frame_task.id)
         annotation, _ = FrameAnnotation.objects.update_or_create(
             task=locked_task,
+            created_by=actor,
             defaults={
                 "video": locked_task.video,
                 "frame_index": locked_task.frame_index,
                 "status": status,
                 "objects_payload": validated_objects,
-                "created_by": actor,
             },
         )
-        if status == FrameAnnotation.Status.UNCERTAIN:
+
+        annotations = list(
+            FrameAnnotation.objects.filter(task=locked_task)
+            .exclude(created_by__isnull=True)
+            .order_by("created_at", "id")
+        )
+        required_reviews = locked_task.video.room.required_reviews_per_item
+        if len(annotations) < required_reviews:
+            locked_task.status = FrameAnnotationTask.Status.IN_PROGRESS
+        elif status == FrameAnnotation.Status.UNCERTAIN:
             locked_task.status = FrameAnnotationTask.Status.UNCERTAIN
         else:
-            locked_task.status = FrameAnnotationTask.Status.DONE
+            consensus = _evaluate_frame_annotations(
+                annotations=annotations,
+                threshold=locked_task.video.room.cross_validation_similarity_threshold,
+            )
+            locked_task.status = (
+                FrameAnnotationTask.Status.DONE
+                if consensus["accepted"] and consensus["status"] != FrameAnnotation.Status.UNCERTAIN
+                else FrameAnnotationTask.Status.UNCERTAIN
+            )
         locked_task.assigned_to = actor
         locked_task.save(update_fields=["status", "assigned_to", "updated_at"])
     return annotation
@@ -438,12 +565,16 @@ def build_frame_annotation_export(*, video: Task) -> dict:
     annotations = []
     tasks = (
         FrameAnnotationTask.objects.filter(video=video)
-        .select_related("annotation")
+        .prefetch_related("annotations")
         .order_by("frame_index", "id")
     )
     for task in tasks:
-        annotation = getattr(task, "annotation", None)
-        status = annotation.status if annotation else task.status
+        task_annotations = list(task.annotations.all())
+        consensus = _evaluate_frame_annotations(
+            annotations=task_annotations,
+            threshold=video.room.cross_validation_similarity_threshold,
+        )
+        status = consensus["status"] if task_annotations else task.status
         if status == FrameAnnotationTask.Status.DONE:
             status = FrameAnnotation.Status.ANNOTATED
         if status not in FrameAnnotation.Status.values:
@@ -453,7 +584,7 @@ def build_frame_annotation_export(*, video: Task) -> dict:
                 "frame_index": task.frame_index,
                 "time_ms": task.time_ms,
                 "status": status,
-                "objects": annotation.objects_payload if annotation else [],
+                "objects": consensus["objects"] if task_annotations else [],
             }
         )
     return {

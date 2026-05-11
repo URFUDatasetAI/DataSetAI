@@ -261,7 +261,7 @@ class FrameAnnotation(TimeStampedModel):
         EMPTY = "empty", "Empty"
         UNCERTAIN = "uncertain", "Uncertain"
 
-    task = models.OneToOneField(FrameAnnotationTask, on_delete=models.CASCADE, related_name="annotation")
+    task = models.ForeignKey(FrameAnnotationTask, on_delete=models.CASCADE, related_name="annotations")
     video = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="frame_annotations")
     frame_index = models.PositiveIntegerField()
     status = models.CharField(max_length=16, choices=Status.choices)
@@ -276,6 +276,9 @@ class FrameAnnotation(TimeStampedModel):
 
     class Meta:
         ordering = ("video_id", "frame_index", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("task", "created_by"), name="unique_frame_annotation_task_user"),
+        ]
         indexes = [
             models.Index(fields=("video", "status"), name="labeling_fa_video_s_d56b4d_idx"),
         ]
