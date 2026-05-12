@@ -1,5 +1,6 @@
+from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Count, Exists, F, IntegerField, OuterRef, Subquery
+from django.db.models import Count, Exists, F, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -9,7 +10,8 @@ from apps.labeling.distribution import (
     get_task_assignment_pool_ids,
     get_task_designated_annotator_ids,
 )
-from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
+from apps.labeling.jobs import interpolate_video_asset
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote, VideoAsset, VideoFrame
 from apps.labeling.workflows import (
     build_task_input_payload_with_revision_target,
     get_task_is_final_stage,
@@ -38,6 +40,10 @@ ACTIVE_ASSIGNMENT_STATUSES = (
 EXPOSURE_ASSIGNMENT_STATUSES = (
     *ACTIVE_ASSIGNMENT_STATUSES,
     TaskAssignment.Status.SKIPPED,
+)
+ASSIGNABLE_VIDEO_FRAME_STATES = (
+    VideoFrame.State.PENDING_MANUAL,
+    VideoFrame.State.GENERATED_REJECTED,
 )
 
 
@@ -184,6 +190,53 @@ def _task_requires_manual_validation(*, task: Task) -> bool:
     return bool(task.room.review_voting_enabled and get_task_is_final_stage(task=task))
 
 
+def _is_no_object_payload(payload: dict | None) -> bool:
+    return bool(payload and payload.get("frame_state") == VideoFrame.State.NO_OBJECT and payload.get("annotations") == [])
+
+
+def _enqueue_video_interpolation(*, video_asset_id: int) -> None:
+    def run_after_commit() -> None:
+        if not settings.RQ_ASYNC:
+            interpolate_video_asset(video_asset_id)
+            return
+
+        import django_rq
+
+        queue = django_rq.get_queue("default")
+        job = queue.enqueue(interpolate_video_asset, video_asset_id)
+        VideoAsset.objects.filter(id=video_asset_id).update(interpolation_job_id=job.id)
+
+    transaction.on_commit(run_after_commit)
+
+
+def _sync_video_frame_after_task_decision(*, task: Task) -> None:
+    video_frame = VideoFrame.objects.select_for_update().filter(task=task).first()
+    if video_frame is None:
+        return
+
+    if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
+        if _is_no_object_payload(task.consensus_payload):
+            next_state = VideoFrame.State.NO_OBJECT
+        elif video_frame.state == VideoFrame.State.GENERATED_REVIEW:
+            next_state = VideoFrame.State.GENERATED_ACCEPTED
+        else:
+            next_state = VideoFrame.State.MANUAL_SUBMITTED
+        if video_frame.state != next_state:
+            video_frame.state = next_state
+            video_frame.save(update_fields=["state", "updated_at"])
+        if next_state in (VideoFrame.State.MANUAL_SUBMITTED, VideoFrame.State.GENERATED_ACCEPTED):
+            _enqueue_video_interpolation(video_asset_id=video_frame.video_asset_id)
+        return
+
+    if task.status == Task.Status.PENDING and video_frame.state in (
+        VideoFrame.State.MANUAL_SUBMITTED,
+        VideoFrame.State.NO_OBJECT,
+        VideoFrame.State.GENERATED_ACCEPTED,
+    ):
+        video_frame.state = VideoFrame.State.PENDING_MANUAL
+        video_frame.save(update_fields=["state", "updated_at"])
+
+
 def _apply_consensus_to_task(
     *,
     task: Task,
@@ -307,6 +360,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                     has_annotator_assignment=False,
                     round_assignments_count__lt=room.required_reviews_per_item,
                 )
+                .filter(Q(video_frame__isnull=True) | Q(video_frame__state__in=ASSIGNABLE_VIDEO_FRAME_STATES))
                 .exclude(
                     workflow_stage=Task.WorkflowStage.TEXT_TRANSCRIPTION,
                     input_payload__excluded_annotator_ids__contains=[annotator.id],
@@ -341,6 +395,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                     has_other_submitted_assignment=False,
                     round_assignments_count__lt=room.required_reviews_per_item,
                 )
+                .filter(Q(video_frame__isnull=True) | Q(video_frame__state__in=ASSIGNABLE_VIDEO_FRAME_STATES))
                 .order_by("id")
             )
             return list(lock_candidate_queryset(queryset).prefetch_related("assignments"))
@@ -529,6 +584,7 @@ def submit_annotation(*, task: Task, annotator: User, result_payload):
             if revision_gate_cleared:
                 update_fields.insert(4, "input_payload")
             locked_task.save(update_fields=update_fields)
+            _sync_video_frame_after_task_decision(task=locked_task)
 
             if (
                 consensus["accepted"]
@@ -605,6 +661,7 @@ def skip_task_for_annotator(*, task: Task, annotator: User) -> Task:
                     submitted_assignments=submitted_assignments,
                 )
             )
+            _sync_video_frame_after_task_decision(task=locked_task)
 
             if (
                 consensus["accepted"]
@@ -706,6 +763,7 @@ def _apply_validation_vote_decision(*, task: Task) -> None:
         task.status = Task.Status.SUBMITTED
         _delete_rejected_round_history(task=task)
         task.save(update_fields=["status", "updated_at"])
+        _sync_video_frame_after_task_decision(task=task)
         return
 
     task.status = Task.Status.PENDING
@@ -721,6 +779,7 @@ def _apply_validation_vote_decision(*, task: Task) -> None:
             "updated_at",
         ]
     )
+    _sync_video_frame_after_task_decision(task=task)
 
 
 def submit_validation_vote(*, task: Task, reviewer: User, decision: str, comment: str = "") -> ValidationVote:
@@ -784,6 +843,7 @@ def reject_task_annotation(*, task: Task, reviewer: User) -> Task:
                 "updated_at",
             ]
         )
+        _sync_video_frame_after_task_decision(task=locked_task)
         return locked_task
 
 
@@ -825,6 +885,10 @@ def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator
             locked_task.validation_score = None
             locked_task.consensus_payload = None
             locked_task.save(update_fields=["status", "validation_score", "consensus_payload", "updated_at"])
+            VideoFrame.objects.filter(task=locked_task).exclude(state=VideoFrame.State.PENDING_MANUAL).update(
+                state=VideoFrame.State.PENDING_MANUAL,
+                updated_at=timezone.now(),
+            )
             return locked_task
 
         next_round = locked_task.current_round + 1
@@ -854,4 +918,72 @@ def return_task_annotation_for_revision(*, task: Task, reviewer: User, annotator
             status=TaskAssignment.Status.IN_PROGRESS,
             assigned_at=timezone.now(),
         )
+        VideoFrame.objects.filter(task=locked_task).exclude(state=VideoFrame.State.PENDING_MANUAL).update(
+            state=VideoFrame.State.PENDING_MANUAL,
+            updated_at=timezone.now(),
+        )
+        return locked_task
+
+
+def approve_generated_video_frame(*, task: Task, reviewer: User) -> Task:
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("У тебя нет прав принимать сгенерированные разметки в этой комнате.")
+
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        video_frame = VideoFrame.objects.select_for_update().filter(task=locked_task).first()
+        if video_frame is None or video_frame.state != VideoFrame.State.GENERATED_REVIEW:
+            raise ConflictError("Эта задача не ожидает проверки сгенерированной разметки.")
+        if locked_task.status != Task.Status.IN_REVIEW or not video_frame.generated_payload:
+            raise ConflictError("Принять можно только сгенерированную разметку, ожидающую ревью.")
+
+        locked_task.status = Task.Status.SUBMITTED
+        locked_task.consensus_payload = video_frame.generated_payload
+        locked_task.validation_score = 100.0
+        locked_task.save(update_fields=["status", "consensus_payload", "validation_score", "updated_at"])
+        video_frame.state = VideoFrame.State.GENERATED_ACCEPTED
+        video_frame.save(update_fields=["state", "updated_at"])
+        _enqueue_video_interpolation(video_asset_id=video_frame.video_asset_id)
+        return locked_task
+
+
+def reject_generated_video_frame(*, task: Task, reviewer: User) -> Task:
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("У тебя нет прав отклонять сгенерированные разметки в этой комнате.")
+
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        video_frame = VideoFrame.objects.select_for_update().filter(task=locked_task).first()
+        if video_frame is None or video_frame.state != VideoFrame.State.GENERATED_REVIEW:
+            raise ConflictError("Эта задача не ожидает проверки сгенерированной разметки.")
+
+        locked_task.status = Task.Status.PENDING
+        locked_task.validation_score = None
+        locked_task.consensus_payload = None
+        locked_task.save(update_fields=["status", "validation_score", "consensus_payload", "updated_at"])
+        video_frame.state = VideoFrame.State.GENERATED_REJECTED
+        video_frame.save(update_fields=["state", "updated_at"])
+        return locked_task
+
+
+def mark_generated_video_frame_no_object(*, task: Task, reviewer: User) -> Task:
+    if not can_review_room(room=task.room, user=reviewer):
+        raise AccessDeniedError("У тебя нет прав проверять сгенерированные разметки в этой комнате.")
+
+    with transaction.atomic():
+        locked_task = Task.objects.select_for_update().select_related("room").get(id=task.id)
+        video_frame = VideoFrame.objects.select_for_update().filter(task=locked_task).first()
+        if video_frame is None or video_frame.state != VideoFrame.State.GENERATED_REVIEW:
+            raise ConflictError("Эта задача не ожидает проверки сгенерированной разметки.")
+
+        locked_task.status = Task.Status.SUBMITTED
+        locked_task.validation_score = 100.0
+        locked_task.consensus_payload = {
+            "annotations": [],
+            "frame_state": VideoFrame.State.NO_OBJECT,
+            "source": "review_no_object",
+        }
+        locked_task.save(update_fields=["status", "validation_score", "consensus_payload", "updated_at"])
+        video_frame.state = VideoFrame.State.NO_OBJECT
+        video_frame.save(update_fields=["state", "updated_at"])
         return locked_task

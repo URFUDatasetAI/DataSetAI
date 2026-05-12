@@ -17,6 +17,10 @@ def task_source_upload_to(instance, filename: str) -> str:
     return f"task_sources/room_{instance.room_id}/{uuid4().hex}_{filename}"
 
 
+def video_asset_upload_to(instance, filename: str) -> str:
+    return f"video_assets/room_{instance.room_id}/{uuid4().hex}_{filename}"
+
+
 class Task(TimeStampedModel):
     """
     Represents a single unit of work in a labeling Room.
@@ -179,3 +183,68 @@ class ValidationVote(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ValidationVote task={self.task_id} voter={self.voter_id} round={self.round_number}"
+
+
+class VideoAsset(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        READY = "ready", "Ready"
+        FAILED = "failed", "Failed"
+
+    room = models.ForeignKey("rooms.Room", on_delete=models.CASCADE, related_name="video_assets")
+    source_file = models.FileField(upload_to=video_asset_upload_to)
+    source_name = models.CharField(max_length=255)
+    width = models.PositiveIntegerField(null=True, blank=True)
+    height = models.PositiveIntegerField(null=True, blank=True)
+    duration = models.FloatField(null=True, blank=True)
+    source_frame_rate = models.PositiveIntegerField(default=25)
+    extraction_fps = models.PositiveIntegerField(null=True, blank=True)
+    frame_step = models.PositiveIntegerField(default=1)
+    max_frames = models.PositiveIntegerField(default=1000)
+    manual_keyframe_percent = models.PositiveSmallIntegerField(default=10)
+    auto_default_assignment_quota = models.BooleanField(default=False)
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    extraction_job_id = models.CharField(max_length=255, blank=True)
+    interpolation_job_id = models.CharField(max_length=255, blank=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ("room_id", "id")
+
+    def __str__(self) -> str:
+        return f"VideoAsset {self.id}: {self.source_name}"
+
+
+class VideoFrame(TimeStampedModel):
+    class Role(models.TextChoices):
+        MANUAL_KEYFRAME = "manual_keyframe", "Manual keyframe"
+        INTERPOLATION_TARGET = "interpolation_target", "Interpolation target"
+
+    class State(models.TextChoices):
+        WAITING_INTERPOLATION = "waiting_interpolation", "Waiting interpolation"
+        PENDING_MANUAL = "pending_manual", "Pending manual"
+        MANUAL_SUBMITTED = "manual_submitted", "Manual submitted"
+        NO_OBJECT = "no_object", "No object"
+        GENERATED_REVIEW = "generated_review", "Generated review"
+        GENERATED_ACCEPTED = "generated_accepted", "Generated accepted"
+        GENERATED_REJECTED = "generated_rejected", "Generated rejected"
+
+    video_asset = models.ForeignKey(VideoAsset, on_delete=models.CASCADE, related_name="frames")
+    task = models.OneToOneField(Task, on_delete=models.CASCADE, related_name="video_frame")
+    frame_number = models.PositiveIntegerField()
+    timestamp = models.FloatField(default=0)
+    role = models.CharField(max_length=32, choices=Role.choices, default=Role.INTERPOLATION_TARGET)
+    state = models.CharField(max_length=32, choices=State.choices, default=State.PENDING_MANUAL)
+    generated_payload = models.JSONField(null=True, blank=True)
+    generated_from_frames = models.JSONField(default=list, blank=True)
+    trajectory_warnings = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ("video_asset_id", "frame_number", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("video_asset", "frame_number"), name="unique_video_asset_frame_number"),
+        ]
+
+    def __str__(self) -> str:
+        return f"VideoFrame {self.video_asset_id}:{self.frame_number}"

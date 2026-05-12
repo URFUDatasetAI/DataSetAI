@@ -1,4 +1,5 @@
 from rest_framework import status
+from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,8 +32,11 @@ from apps.labeling.selectors import (
     task_matches_review_filter_for_actor,
 )
 from apps.labeling.services import (
+    approve_generated_video_frame,
     get_next_task_for_annotator,
     get_submission_editability,
+    mark_generated_video_frame_no_object,
+    reject_generated_video_frame,
     reject_task_annotation,
     return_task_annotation_for_revision,
     skip_task_for_annotator,
@@ -142,9 +146,13 @@ class RoomReviewTaskListView(APIView):
 
         candidate_tasks = (
             get_room_final_tasks_queryset(room=room)
+            .select_related("video_frame", "video_frame__video_asset")
             .filter(
-                annotations__isnull=False,
-                annotations__assignment__status=TaskAssignment.Status.SUBMITTED,
+                Q(
+                    annotations__isnull=False,
+                    annotations__assignment__status=TaskAssignment.Status.SUBMITTED,
+                )
+                | Q(video_frame__state="generated_review")
             )
             .prefetch_related("annotations", "assignments")
             .distinct()
@@ -173,7 +181,7 @@ class TaskReviewDetailView(APIView):
         )
         review_state = get_task_review_state(task=task)
         review_outcome = get_task_review_outcome(task=task)
-        consensus_available = task.consensus_payload is not None and review_outcome in ("accepted", "validation")
+        consensus_available = task.consensus_payload is not None and review_outcome in ("accepted", "validation", "generated")
         counts = get_task_review_counts(task=task)
         vote_summary = get_task_validation_vote_summary(task=task, reviewer=request.user)
         serialized_annotations = []
@@ -205,6 +213,19 @@ class TaskReviewDetailView(APIView):
             "annotations": serialized_annotations,
             "review_outcome": review_outcome,
         }
+        try:
+            video_frame = task.video_frame
+        except Exception:
+            video_frame = None
+        if video_frame is not None:
+            payload.update(
+                {
+                    "video_frame_state": video_frame.state,
+                    "generated_payload": video_frame.generated_payload,
+                    "generated_from_frames": video_frame.generated_from_frames,
+                    "trajectory_warnings": video_frame.trajectory_warnings,
+                }
+            )
         return Response(ReviewTaskDetailSerializer(payload, context={"request": request}).data)
 
 
@@ -246,4 +267,31 @@ class TaskReturnForRevisionView(APIView):
             reviewer=request.user,
             annotator_id=serializer.validated_data["annotator_id"],
         )
+        return Response(TaskSerializer(task, context={"request": request}).data)
+
+
+class TaskGeneratedApproveView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id: int):
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        task = approve_generated_video_frame(task=task, reviewer=request.user)
+        return Response(TaskSerializer(task, context={"request": request}).data)
+
+
+class TaskGeneratedRejectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id: int):
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        task = reject_generated_video_frame(task=task, reviewer=request.user)
+        return Response(TaskSerializer(task, context={"request": request}).data)
+
+
+class TaskGeneratedNoObjectView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, task_id: int):
+        task = get_task_for_review(task_id=task_id, reviewer=request.user)
+        task = mark_generated_video_frame_no_object(task=task, reviewer=request.user)
         return Response(TaskSerializer(task, context={"request": request}).data)

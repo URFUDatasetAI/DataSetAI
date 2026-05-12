@@ -222,6 +222,53 @@ cd /srv/datasetai/app
 sudo -u datasetai /srv/datasetai/venv/bin/python scripts/check_db.py
 ```
 
+## Video workflow worker
+
+Video rooms use frame tasks grouped by `VideoAsset`. Source videos are saved first, then frame extraction and interpolation run through Django RQ.
+
+Production requirements:
+
+- Redis available to Django through `REDIS_URL`, for example `redis://127.0.0.1:6379/0`
+- `RQ_ASYNC=true` in production `.env`
+- system package `ffmpeg`
+- a running worker for the default queue
+
+Recommended systemd unit:
+
+```ini
+[Unit]
+Description=DataSetAI RQ worker
+After=network.target redis-server.service
+
+[Service]
+User=datasetai
+Group=datasetai
+WorkingDirectory=/srv/datasetai/app
+EnvironmentFile=/srv/datasetai/app/.env
+ExecStart=/srv/datasetai/venv/bin/python manage.py rqworker default
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Deploy should restart both services after migrations and static collection:
+
+```bash
+sudo systemctl restart datasetai
+sudo systemctl restart datasetai-rqworker
+```
+
+Useful checks:
+
+```bash
+sudo systemctl status datasetai-rqworker --no-pager -l
+sudo journalctl -u datasetai-rqworker -n 100 --no-pager
+redis-cli ping
+ffmpeg -version
+```
+
 ## Что делать, если deploy упал
 
 1. Открыть вкладку `Actions` в GitHub

@@ -1,9 +1,13 @@
+import json
+
+from django.core.files.base import ContentFile
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
+from apps.labeling.jobs import interpolate_video_asset
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote, VideoAsset, VideoFrame
 from apps.rooms.models import RoomAssignmentQuota, RoomMembership
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
@@ -33,6 +37,36 @@ class LabelingApiTests(APITestCase):
 
     def auth(self, user):
         return {"HTTP_X_USER_ID": str(user.id)}
+
+    def make_video_frame_task(self, *, room, video_asset, frame_number, state, role=None):
+        task = make_task(
+            room=room,
+            payload={
+                "width": 640,
+                "height": 480,
+                "source_name": f"frame-{frame_number}.jpg",
+                "origin_source_type": Task.SourceType.VIDEO,
+                "video_asset_id": video_asset.id,
+                "video_name": video_asset.source_name,
+                "frame_number": frame_number,
+                "frame_timestamp": frame_number / 25,
+            },
+            source_type=Task.SourceType.IMAGE,
+            source_name=f"frame-{frame_number}.jpg",
+        )
+        VideoFrame.objects.create(
+            video_asset=video_asset,
+            task=task,
+            frame_number=frame_number,
+            timestamp=frame_number / 25,
+            role=role or (
+                VideoFrame.Role.MANUAL_KEYFRAME
+                if state == VideoFrame.State.PENDING_MANUAL
+                else VideoFrame.Role.INTERPOLATION_TARGET
+            ),
+            state=state,
+        )
+        return task
 
     def test_annotator_can_get_next_task(self):
         response = self.client.get(
@@ -250,6 +284,195 @@ class LabelingApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.image_task.refresh_from_db()
         self.assertEqual(self.image_task.status, Task.Status.SUBMITTED)
+
+    def test_video_bbox_annotation_requires_track_id(self):
+        video_room = make_room(customer=self.customer, title="Video track room", dataset_type="video")
+        invite_annotator(room=video_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        label = video_room.labels.create(name="drone", color="#FF6B6B", sort_order=0)
+        asset = VideoAsset.objects.create(
+            room=video_room,
+            source_file=ContentFile(b"video", name="sample.mp4"),
+            source_name="sample.mp4",
+        )
+        task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=1,
+            state=VideoFrame.State.PENDING_MANUAL,
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": video_room.id}), **self.auth(self.annotator))
+        response = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {
+                "result_payload": {
+                    "annotations": [
+                        {
+                            "type": "bbox",
+                            "label_id": label.id,
+                            "points": [12, 18, 150, 170],
+                            "frame": 0,
+                            "attributes": [],
+                            "occluded": False,
+                        }
+                    ]
+                }
+            },
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_video_no_object_submission_finalizes_frame(self):
+        video_room = make_room(customer=self.customer, title="No object video", dataset_type="video")
+        invite_annotator(room=video_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        asset = VideoAsset.objects.create(
+            room=video_room,
+            source_file=ContentFile(b"video", name="sample.mp4"),
+            source_name="sample.mp4",
+        )
+        task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=1,
+            state=VideoFrame.State.PENDING_MANUAL,
+        )
+
+        self.client.get(reverse("room-next-task", kwargs={"room_id": video_room.id}), **self.auth(self.annotator))
+        response = self.client.post(
+            reverse("task-submit", kwargs={"task_id": task.id}),
+            {"result_payload": {"annotations": [], "frame_state": "no_object"}},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+        self.assertEqual(task.consensus_payload["frame_state"], "no_object")
+        self.assertEqual(task.video_frame.state, VideoFrame.State.NO_OBJECT)
+
+    def test_only_manual_video_keyframes_are_assigned_before_interpolation(self):
+        video_room = make_room(customer=self.customer, title="Manual keyframes", dataset_type="video")
+        invite_annotator(room=video_room, annotator=self.annotator, invited_by=self.customer, joined=True)
+        asset = VideoAsset.objects.create(
+            room=video_room,
+            source_file=ContentFile(b"video", name="sample.mp4"),
+            source_name="sample.mp4",
+        )
+        manual_task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=1,
+            state=VideoFrame.State.PENDING_MANUAL,
+        )
+        self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=2,
+            state=VideoFrame.State.WAITING_INTERPOLATION,
+            role=VideoFrame.Role.INTERPOLATION_TARGET,
+        )
+
+        first_response = self.client.get(reverse("room-next-task", kwargs={"room_id": video_room.id}), **self.auth(self.annotator))
+        skip_response = self.client.post(reverse("task-skip", kwargs={"task_id": manual_task.id}), format="json", **self.auth(self.annotator))
+        second_response = self.client.get(reverse("room-next-task", kwargs={"room_id": video_room.id}), **self.auth(self.annotator))
+
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.data["id"], manual_task.id)
+        self.assertEqual(skip_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(second_response.data["id"], manual_task.id)
+
+    def test_video_interpolation_creates_generated_review_proposal(self):
+        video_room = make_room(customer=self.customer, title="Interpolation", dataset_type="video")
+        label = video_room.labels.create(name="drone", color="#FF6B6B", sort_order=0)
+        asset = VideoAsset.objects.create(
+            room=video_room,
+            source_file=ContentFile(b"video", name="sample.mp4"),
+            source_name="sample.mp4",
+        )
+        left_task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=1,
+            state=VideoFrame.State.MANUAL_SUBMITTED,
+        )
+        target_task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=2,
+            state=VideoFrame.State.WAITING_INTERPOLATION,
+            role=VideoFrame.Role.INTERPOLATION_TARGET,
+        )
+        right_task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=3,
+            state=VideoFrame.State.MANUAL_SUBMITTED,
+        )
+        left_task.status = Task.Status.SUBMITTED
+        left_task.consensus_payload = {
+            "annotations": [
+                {"type": "bbox", "label_id": label.id, "points": [10, 10, 30, 30], "frame": 0, "track_id": "drone-1"}
+            ]
+        }
+        left_task.save(update_fields=["status", "consensus_payload", "updated_at"])
+        right_task.status = Task.Status.SUBMITTED
+        right_task.consensus_payload = {
+            "annotations": [
+                {"type": "bbox", "label_id": label.id, "points": [30, 30, 50, 50], "frame": 0, "track_id": "drone-1"}
+            ]
+        }
+        right_task.save(update_fields=["status", "consensus_payload", "updated_at"])
+
+        interpolate_video_asset(asset.id)
+
+        target_task.refresh_from_db()
+        self.assertEqual(target_task.status, Task.Status.IN_REVIEW)
+        self.assertEqual(target_task.video_frame.state, VideoFrame.State.GENERATED_REVIEW)
+        generated = target_task.consensus_payload["annotations"][0]
+        self.assertEqual(generated["track_id"], "drone-1")
+        self.assertEqual(generated["points"], [20.0, 20.0, 40.0, 40.0])
+
+    def test_reviewer_can_approve_or_reject_generated_video_proposal(self):
+        video_room = make_room(customer=self.customer, title="Generated review", dataset_type="video")
+        invite_annotator(room=video_room, annotator=self.tester_user, invited_by=self.customer, joined=True, role=RoomMembership.Role.TESTER)
+        label = video_room.labels.create(name="drone", color="#FF6B6B", sort_order=0)
+        asset = VideoAsset.objects.create(
+            room=video_room,
+            source_file=ContentFile(b"video", name="sample.mp4"),
+            source_name="sample.mp4",
+        )
+        task = self.make_video_frame_task(
+            room=video_room,
+            video_asset=asset,
+            frame_number=2,
+            state=VideoFrame.State.GENERATED_REVIEW,
+            role=VideoFrame.Role.INTERPOLATION_TARGET,
+        )
+        task.status = Task.Status.IN_REVIEW
+        task.consensus_payload = {
+            "annotations": [
+                {"type": "bbox", "label_id": label.id, "points": [20, 20, 40, 40], "frame": 0, "track_id": "drone-1"}
+            ],
+            "source": "generated_interpolation",
+        }
+        task.save(update_fields=["status", "consensus_payload", "updated_at"])
+        task.video_frame.generated_payload = task.consensus_payload
+        task.video_frame.save(update_fields=["generated_payload", "updated_at"])
+
+        approve_response = self.client.post(
+            reverse("task-generated-approve", kwargs={"task_id": task.id}),
+            format="json",
+            **self.auth(self.tester_user),
+        )
+
+        self.assertEqual(approve_response.status_code, status.HTTP_200_OK)
+        task.refresh_from_db()
+        self.assertEqual(task.status, Task.Status.SUBMITTED)
+        self.assertEqual(task.video_frame.state, VideoFrame.State.GENERATED_ACCEPTED)
 
     def test_annotator_can_skip_image_task_without_receiving_same_round_again(self):
         second_image_task = make_task(

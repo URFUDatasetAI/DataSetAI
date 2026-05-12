@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.labeling.models import Annotation, Task, TaskAssignment
+from apps.labeling.models import Annotation, Task, TaskAssignment, VideoAsset, VideoFrame
 from apps.rooms.models import RoomAssignmentQuota, RoomMembership, RoomPin
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
@@ -643,6 +643,9 @@ class RoomsApiTests(APITestCase):
                     "dataset_files": [
                         SimpleUploadedFile("sample.mp4", video_handle.read(), content_type="video/mp4"),
                     ],
+                    "video_frame_step": "1",
+                    "video_max_frames": "10",
+                    "video_manual_keyframe_percent": "50",
                 },
                 format="multipart",
                 **self.auth(self.customer),
@@ -651,10 +654,13 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         room = self.customer.created_rooms.get(id=response.data["id"])
         self.assertEqual(room.dataset_type, "video")
+        self.assertEqual(room.video_assets.count(), 1)
+        self.assertEqual(room.video_assets.first().status, VideoAsset.Status.READY)
         self.assertGreater(room.tasks.count(), 0)
         first_task = room.tasks.order_by("id").first()
         self.assertEqual(first_task.source_type, Task.SourceType.IMAGE)
         self.assertEqual(first_task.input_payload["origin_source_type"], Task.SourceType.VIDEO)
+        self.assertTrue(hasattr(first_task, "video_frame"))
         self.assertTrue(first_task.source_file.name.endswith(".jpg"))
 
     def test_customer_can_export_native_room_dataset(self):
@@ -811,6 +817,60 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(root.findtext("object/name"), "car")
         self.assertEqual(root.findtext("object/bndbox/xmin"), "10")
         self.assertEqual(root.findtext("object/bndbox/ymax"), "112")
+
+    def test_detector_exports_exclude_video_no_object_frames(self):
+        room = make_room(customer=self.customer, title="No object export", dataset_type="video")
+        label = room.labels.create(name="drone", color="#FF6B6B", sort_order=0)
+        asset = VideoAsset.objects.create(
+            room=room,
+            source_file=SimpleUploadedFile("sample.mp4", b"video", content_type="video/mp4"),
+            source_name="sample.mp4",
+        )
+        task = Task.objects.create(
+            room=room,
+            source_type=Task.SourceType.IMAGE,
+            source_name="sample_frame_000001.jpg",
+            input_payload={
+                "width": 640,
+                "height": 480,
+                "source_name": "sample_frame_000001.jpg",
+                "origin_source_type": Task.SourceType.VIDEO,
+                "video_asset_id": asset.id,
+                "video_name": asset.source_name,
+                "frame_number": 1,
+            },
+            status=Task.Status.SUBMITTED,
+            consensus_payload={"annotations": [], "frame_state": "no_object"},
+            validation_score=100.0,
+        )
+        VideoFrame.objects.create(
+            video_asset=asset,
+            task=task,
+            frame_number=1,
+            timestamp=0,
+            role=VideoFrame.Role.MANUAL_KEYFRAME,
+            state=VideoFrame.State.NO_OBJECT,
+        )
+
+        native_response = self.client.get(
+            reverse("room-export", kwargs={"room_id": room.id}),
+            {"export_format": "native_json"},
+            **self.auth(self.customer),
+        )
+        coco_response = self.client.get(
+            reverse("room-export", kwargs={"room_id": room.id}),
+            {"export_format": "coco_json"},
+            **self.auth(self.customer),
+        )
+
+        self.assertEqual(native_response.status_code, status.HTTP_200_OK)
+        native_payload = json.loads(native_response.content.decode("utf-8"))
+        self.assertEqual(native_payload["tasks"][0]["annotation"]["frame_state"], "no_object")
+        self.assertEqual(native_payload["tasks"][0]["video_frame"]["state"], VideoFrame.State.NO_OBJECT)
+        self.assertEqual(coco_response.status_code, status.HTTP_200_OK)
+        coco_payload = json.loads(coco_response.content.decode("utf-8"))
+        self.assertEqual(coco_payload["images"], [])
+        self.assertEqual(coco_payload["annotations"], [])
 
     def test_export_ignores_non_validated_annotations(self):
         room = make_room(customer=self.customer, title="Export filtered room", dataset_type="image")

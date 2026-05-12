@@ -35,6 +35,7 @@ from apps.rooms.selectors import (
 )
 from apps.rooms.services import (
     add_room_dataset_images,
+    add_room_dataset_videos,
     approve_room_join_request,
     create_room,
     delete_room_dataset_tasks,
@@ -191,6 +192,25 @@ class RoomDatasetUploadView(APIView):
         room = get_visible_room(room_id=room_id, user=request.user)
         serializer = RoomDatasetUploadSerializer(data=_build_room_dataset_upload_payload(request))
         serializer.is_valid(raise_exception=True)
+        if room.dataset_type == "video":
+            assets = add_room_dataset_videos(
+                room=room,
+                actor=request.user,
+                dataset_files=serializer.validated_data["dataset_files"],
+                media_manifest=serializer.validated_data.get("media_manifest") or [],
+                extraction_fps=serializer.validated_data.get("video_extraction_fps"),
+                frame_step=serializer.validated_data.get("video_frame_step", 1),
+                max_frames=serializer.validated_data.get("video_max_frames", 1000),
+                manual_keyframe_percent=serializer.validated_data.get("video_manual_keyframe_percent", 10),
+            )
+            return Response(
+                {
+                    "added_count": len(assets),
+                    "tasks": [],
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
         tasks = add_room_dataset_images(
             room=room,
             actor=request.user,

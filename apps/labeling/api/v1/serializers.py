@@ -6,7 +6,7 @@ from apps.labeling.selectors import (
     get_task_review_state,
     get_task_validation_vote_summary,
 )
-from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote, VideoFrame
 from apps.labeling.services import get_submission_editability
 
 
@@ -14,6 +14,7 @@ class TaskSerializer(serializers.ModelSerializer):
     room_id = serializers.IntegerField(read_only=True)
     parent_task_id = serializers.IntegerField(read_only=True)
     source_file_url = serializers.SerializerMethodField()
+    video_frame_context = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -29,6 +30,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "workflow_stage",
             "source_name",
             "source_file_url",
+            "video_frame_context",
             "created_at",
             "updated_at",
         )
@@ -40,6 +42,50 @@ class TaskSerializer(serializers.ModelSerializer):
         if request is None:
             return obj.source_file.url
         return request.build_absolute_uri(obj.source_file.url)
+
+    def _build_frame_item(self, frame):
+        if frame is None:
+            return None
+        source_url = frame.task.source_file.url if frame.task.source_file else None
+        request = self.context.get("request")
+        if request is not None and source_url:
+            source_url = request.build_absolute_uri(source_url)
+        return {
+            "task_id": frame.task_id,
+            "source_name": frame.task.source_name,
+            "source_file_url": source_url,
+            "frame_number": frame.frame_number,
+            "timestamp": frame.timestamp,
+            "role": frame.role,
+            "state": frame.state,
+            "generated_from_frames": frame.generated_from_frames,
+            "trajectory_warnings": frame.trajectory_warnings,
+        }
+
+    def get_video_frame_context(self, obj):
+        try:
+            video_frame = obj.video_frame
+        except VideoFrame.DoesNotExist:
+            return None
+        previous_frame = (
+            VideoFrame.objects.select_related("task")
+            .filter(video_asset=video_frame.video_asset, frame_number__lt=video_frame.frame_number)
+            .order_by("-frame_number", "-id")
+            .first()
+        )
+        next_frame = (
+            VideoFrame.objects.select_related("task")
+            .filter(video_asset=video_frame.video_asset, frame_number__gt=video_frame.frame_number)
+            .order_by("frame_number", "id")
+            .first()
+        )
+        return {
+            "video_asset_id": video_frame.video_asset_id,
+            "video_name": video_frame.video_asset.source_name,
+            "current": self._build_frame_item(video_frame),
+            "previous": self._build_frame_item(previous_frame),
+            "next": self._build_frame_item(next_frame),
+        }
 
 
 class ValidationVoteSubmitSerializer(serializers.Serializer):
@@ -58,6 +104,7 @@ class BoundingBoxAnnotationSerializer(serializers.Serializer):
     frame = serializers.IntegerField(min_value=0)
     attributes = serializers.ListField(child=serializers.JSONField(), required=False, allow_empty=True)
     occluded = serializers.BooleanField(required=False, default=False)
+    track_id = serializers.CharField(required=False, allow_blank=True, max_length=64)
 
     def validate_points(self, value):
         x_min, y_min, x_max, y_max = value
@@ -87,6 +134,15 @@ class AnnotationSubmitSerializer(serializers.Serializer):
         if not isinstance(annotations, list):
             raise serializers.ValidationError("Annotations must be an array.")
 
+        is_video_frame_task = (task.input_payload or {}).get("origin_source_type") == Task.SourceType.VIDEO
+        if is_video_frame_task and value.get("frame_state") == VideoFrame.State.NO_OBJECT:
+            if annotations:
+                raise serializers.ValidationError("No-object video frame payload must not contain annotations.")
+            return {
+                "annotations": [],
+                "frame_state": VideoFrame.State.NO_OBJECT,
+            }
+
         if task.workflow_stage == Task.WorkflowStage.TEXT_TRANSCRIPTION:
             serializer = TextTranscriptionAnnotationSerializer(data=annotations, many=True)
             serializer.is_valid(raise_exception=True)
@@ -111,6 +167,14 @@ class AnnotationSubmitSerializer(serializers.Serializer):
 
         serializer = BoundingBoxAnnotationSerializer(data=annotations, many=True)
         serializer.is_valid(raise_exception=True)
+        if is_video_frame_task:
+            missing_track_ids = [
+                index + 1
+                for index, item in enumerate(serializer.validated_data)
+                if not str(item.get("track_id") or "").strip()
+            ]
+            if missing_track_ids:
+                raise serializers.ValidationError("Video bbox annotations must contain track_id for every box.")
 
         valid_label_ids = set(task.room.labels.values_list("id", flat=True))
         invalid_label_ids = {
@@ -169,6 +233,8 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     validation_reject_votes_count = serializers.SerializerMethodField()
     actor_validation_vote = serializers.SerializerMethodField()
     can_vote = serializers.SerializerMethodField()
+    video_frame_state = serializers.SerializerMethodField()
+    trajectory_warnings = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -194,6 +260,8 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "validation_reject_votes_count",
             "actor_validation_vote",
             "can_vote",
+            "video_frame_state",
+            "trajectory_warnings",
             "updated_at",
         )
 
@@ -262,6 +330,18 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     def get_can_vote(self, obj):
         return self._get_vote_summary(obj)["can_vote"]
 
+    def get_video_frame_state(self, obj):
+        try:
+            return obj.video_frame.state
+        except VideoFrame.DoesNotExist:
+            return None
+
+    def get_trajectory_warnings(self, obj):
+        try:
+            return obj.video_frame.trajectory_warnings
+        except VideoFrame.DoesNotExist:
+            return []
+
 
 class ReviewAnnotationSerializer(AnnotationSerializer):
     review_outcome = serializers.CharField()
@@ -287,6 +367,10 @@ class ReviewTaskDetailSerializer(serializers.Serializer):
     can_vote = serializers.BooleanField()
     annotations = ReviewAnnotationSerializer(many=True)
     review_outcome = serializers.CharField()
+    video_frame_state = serializers.CharField(allow_null=True, required=False)
+    generated_payload = serializers.JSONField(allow_null=True, required=False)
+    generated_from_frames = serializers.JSONField(required=False)
+    trajectory_warnings = serializers.JSONField(required=False)
 
 
 class EditableSubmissionListItemSerializer(serializers.ModelSerializer):

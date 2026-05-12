@@ -28,6 +28,9 @@
 - Review различает `final` и `incomplete` задачи. `final` включает как accepted consensus, так и уже rejected старые раунды; `incomplete` - только текущий раунд, где есть submissions, но их меньше нужного числа. Неполные cross-validation задачи показывают только per-annotator submissions без consensus и позволяют вернуть на исправление только одну выбранную разметку.
 - Если `Room.review_voting_enabled=True`, accepted consensus на final-stage задаче переводит task в `Task.Status.IN_REVIEW`, а не сразу в export-ready `submitted`. Reviewer-ы голосуют через `ValidationVote`; approve quorum переводит задачу в `submitted`, reject quorum начинает следующий раунд. Reviewer не должен голосовать за собственную разметку текущего раунда.
 - Review-фильтры включают `validation`, `validation_voted`, `final` и `incomplete`. `validation` - actor-aware очередь задач, где текущий reviewer ещё может голосовать; `validation_voted` - задачи, где его голос уже учтён, но общий quorum ещё не закрыл задачу.
+- Video workflow строится вокруг frame tasks, сгруппированных через `VideoAsset`/`VideoFrame`, а не вокруг одного native video task. До интерполяции annotator-ам выдаются только `manual_keyframe` кадры; `interpolation_target` кадры становятся видимыми только как generated review proposal или после reject-а в ручную правку.
+- Для video bbox каждая область обязана иметь `track_id`. `skip` остаётся отказом от задачи, а `frame_state=no_object` является валидным финальным решением кадра. No-object кадры исключаются из COCO/YOLO/Pascal, но остаются в Native JSON/JSONL для аудита.
+- Generated interpolation proposals не export-ready: reviewer должен принять bbox, отклонить в ручную правку или отметить `Объекта нет`. Review имеет отдельный фильтр `generated`.
 - Image dataset room не считается immutable после создания: владелец может дозагружать изображения/ZIP и удалять primary task rows через room dataset API; новые task rows должны продолжать `input_payload.item_number`, а удаление primary task удаляет связанные child tasks/разметки каскадом.
 - Публичный прямой вход в комнату по ID+паролю убран. Путь доступа для новых участников - invite link / join request; список комнат показывает только уже доступные пользователю комнаты. `RoomJoinView` при этом остаётся explicit join endpoint-ом для уже видимых комнат, а пароль комнаты всё ещё существует как настройка create/edit и проверка внутри join service.
 - Production deploy теперь привязан к `pull_request_target.closed` для merged PR в `main`, а не к обычному `push` в `main`: это защищает автодеплой от случаев, когда GitHub не создаёт push-triggered Actions run после merge. Ручной fallback остаётся через `workflow_dispatch`.
@@ -46,6 +49,8 @@
   Главная UI-тема: превратить `room-work` в быстрый редактор под bbox today и расширяемый scenario shell tomorrow, включая review и post-submit edit flow.
 - [tasks/grouped-cross-validation-stabilization.md](tasks/grouped-cross-validation-stabilization.md)
   Backend-тема: удерживать новую grouped distribution согласованной с owner-role semantics, review flow и тестами.
+- [tasks/video-annotation-workflow.md](tasks/video-annotation-workflow.md)
+  Frame-based video workflow: FFmpeg/RQ extraction, track-aware bbox keyframes, generated interpolation review and export rules.
 
 ## Recently Completed Major Changes
 

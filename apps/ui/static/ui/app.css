@@ -2923,6 +2923,44 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding-bottom: 0;
 }
 
+.room-editor__frame-strip {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 6px;
+    margin-right: 10px;
+    padding-right: 10px;
+    border-right: 1px solid var(--editor-border);
+}
+
+.room-editor__frame-chip {
+    min-width: 96px;
+    display: grid;
+    gap: 2px;
+    padding: 5px 8px;
+    border: 1px solid var(--editor-border);
+    background: rgba(255, 255, 255, 0.62);
+    color: var(--text-soft);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    line-height: 1.1;
+}
+
+.room-editor__frame-chip strong {
+    color: var(--text);
+    font-size: 0.78rem;
+}
+
+.room-editor__frame-chip small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.room-editor__frame-chip.is-active {
+    border-color: rgba(255, 201, 25, 0.48);
+    background: rgba(255, 201, 25, 0.14);
+}
+
 .editor-toolbar__zoom {
     flex: 0 0 auto;
     display: flex;
@@ -3162,6 +3200,23 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .room-editor .annotation-row--transcription textarea {
     width: 100%;
+}
+
+.room-editor .annotation-row__track {
+    display: grid;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-soft);
+}
+
+.room-editor .annotation-row__track input {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
 }
 
 @media (max-width: 1360px) {

@@ -1,7 +1,7 @@
 from django.db.models import F
 
 from apps.labeling.distribution import get_effective_reviews_for_task, get_task_assignment_pool_ids
-from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
+from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote, VideoFrame
 from apps.labeling.workflows import get_task_is_final_stage
 from apps.rooms.policies import can_annotate_room, can_review_room, get_room_membership
 from common.exceptions import NotFoundError
@@ -14,9 +14,11 @@ REVIEW_FILTER_FINAL = "final"
 REVIEW_FILTER_INCOMPLETE = "incomplete"
 REVIEW_FILTER_VALIDATION = "validation"
 REVIEW_FILTER_VALIDATION_VOTED = "validation_voted"
+REVIEW_FILTER_GENERATED = "generated"
 REVIEW_FILTER_VALUES = (
     REVIEW_FILTER_VALIDATION,
     REVIEW_FILTER_VALIDATION_VOTED,
+    REVIEW_FILTER_GENERATED,
     REVIEW_FILTER_FINAL,
     REVIEW_FILTER_INCOMPLETE,
 )
@@ -90,6 +92,13 @@ def task_has_current_round_review_annotations(*, task: Task) -> bool:
 
 
 def get_task_review_state(*, task: Task) -> str:
+    try:
+        video_frame = task.video_frame
+    except VideoFrame.DoesNotExist:
+        video_frame = None
+    if video_frame is not None and video_frame.state == VideoFrame.State.GENERATED_REVIEW:
+        return REVIEW_FILTER_GENERATED
+
     if task.status == Task.Status.IN_REVIEW and task.consensus_payload is not None:
         return REVIEW_FILTER_VALIDATION
 
@@ -108,6 +117,8 @@ def get_task_review_state(*, task: Task) -> str:
 
 def get_task_review_outcome(*, task: Task) -> str:
     review_state = get_task_review_state(task=task)
+    if review_state == REVIEW_FILTER_GENERATED:
+        return "generated"
     if review_state == REVIEW_FILTER_VALIDATION:
         return "validation"
     if task.status == Task.Status.SUBMITTED and task.consensus_payload is not None:
@@ -190,10 +201,16 @@ def get_task_validation_vote_summary(*, task: Task, reviewer=None) -> dict:
             assignment__status=TaskAssignment.Status.SUBMITTED,
         ).exists()
 
+    try:
+        video_frame = task.video_frame
+    except VideoFrame.DoesNotExist:
+        video_frame = None
+
     can_vote = bool(
         reviewer is not None
         and task.status == Task.Status.IN_REVIEW
         and task.consensus_payload is not None
+        and (video_frame is None or video_frame.state != VideoFrame.State.GENERATED_REVIEW)
         and actor_vote is None
         and not actor_has_current_annotation
         and can_review_room(room=task.room, user=reviewer)

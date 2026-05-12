@@ -244,11 +244,32 @@ type TaskItem = {
   workflow_stage: string;
   source_name: string | null;
   source_file_url: string | null;
+  video_frame_context: VideoFrameContext | null;
   created_at: string;
   updated_at: string;
 };
 
-type ReviewTaskFilter = "validation" | "validation_voted" | "final" | "incomplete";
+type VideoFrameContextItem = {
+  task_id: number;
+  source_name: string | null;
+  source_file_url: string | null;
+  frame_number: number;
+  timestamp: number;
+  role: string;
+  state: string;
+  generated_from_frames?: number[];
+  trajectory_warnings?: string[];
+};
+
+type VideoFrameContext = {
+  video_asset_id: number;
+  video_name: string;
+  current: VideoFrameContextItem;
+  previous: VideoFrameContextItem | null;
+  next: VideoFrameContextItem | null;
+};
+
+type ReviewTaskFilter = "validation" | "validation_voted" | "generated" | "final" | "incomplete";
 
 type ReviewTaskListItem = {
   id: number;
@@ -272,6 +293,8 @@ type ReviewTaskListItem = {
   validation_reject_votes_count: number;
   actor_validation_vote: string | null;
   can_vote: boolean;
+  video_frame_state: string | null;
+  trajectory_warnings: string[];
   updated_at: string;
 };
 
@@ -349,6 +372,10 @@ type ReviewTaskDetail = {
   can_vote: boolean;
   annotations: AnnotationItem[];
   review_outcome: string;
+  video_frame_state?: string | null;
+  generated_payload?: Record<string, any> | null;
+  generated_from_frames?: number[];
+  trajectory_warnings?: string[];
 };
 
 type EditableSubmissionListItem = {
@@ -849,7 +876,26 @@ function translateReviewOutcome(outcome: string | null | undefined) {
   if (outcome === "validation") {
     return "На голосовании";
   }
+  if (outcome === "generated") {
+    return "Сгенерирована";
+  }
   return "Ожидает проверки";
+}
+
+function translateVideoFrameState(state: string | null | undefined) {
+  const labels: Record<string, string> = {
+    waiting_interpolation: "Ждёт интерполяции",
+    pending_manual: "Ручная разметка",
+    manual_submitted: "Размечен вручную",
+    no_object: "Объекта нет",
+    generated_review: "Сгенерирована",
+    generated_accepted: "Сгенерирована принята",
+    generated_rejected: "Нужна ручная правка",
+    abrupt_center_jump: "резкий сдвиг центра",
+    abrupt_width_change: "резкое изменение ширины",
+    abrupt_height_change: "резкое изменение высоты",
+  };
+  return state ? labels[state] || state : "Нет данных";
 }
 
 function translateDatasetMode(mode: string | null | undefined) {
@@ -2376,6 +2422,10 @@ function RoomCreatePage() {
   const [annotationWorkflow, setAnnotationWorkflow] = useState("standard");
   const [datasetLabel, setDatasetLabel] = useState("Тестовый датасет");
   const [testTaskCount, setTestTaskCount] = useState("12");
+  const [videoExtractionFps, setVideoExtractionFps] = useState("");
+  const [videoFrameStep, setVideoFrameStep] = useState("1");
+  const [videoMaxFrames, setVideoMaxFrames] = useState("1000");
+  const [videoManualKeyframePercent, setVideoManualKeyframePercent] = useState("10");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [labels, setLabels] = useState<Array<{ name: string; color: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -2423,6 +2473,10 @@ function RoomCreatePage() {
       const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
       const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
       const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
+      const normalizedVideoFps = videoExtractionFps.trim() === "" ? null : Number(videoExtractionFps.trim());
+      const normalizedVideoFrameStep = Number(videoFrameStep || 1);
+      const normalizedVideoMaxFrames = Number(videoMaxFrames || 1000);
+      const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
 
       if (datasetMode !== "demo" && !selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
@@ -2457,6 +2511,24 @@ function RoomCreatePage() {
         throw new Error("Сократи текст в полях, которые выделены красным.");
       }
 
+      if (
+        datasetMode === "video" &&
+        (
+          (normalizedVideoFps !== null && (!Number.isInteger(normalizedVideoFps) || normalizedVideoFps < 1 || normalizedVideoFps > 120)) ||
+          !Number.isInteger(normalizedVideoFrameStep) ||
+          normalizedVideoFrameStep < 1 ||
+          normalizedVideoFrameStep > 1000 ||
+          !Number.isInteger(normalizedVideoMaxFrames) ||
+          normalizedVideoMaxFrames < 1 ||
+          normalizedVideoMaxFrames > 100000 ||
+          !Number.isInteger(normalizedVideoManualPercent) ||
+          normalizedVideoManualPercent < 1 ||
+          normalizedVideoManualPercent > 100
+        )
+      ) {
+        throw new Error("Проверь настройки разбиения видео: FPS, шаг, лимит кадров и процент keyframe должны быть в допустимых пределах.");
+      }
+
       if (deadlineError) {
         throw new Error(deadlineError);
       }
@@ -2478,6 +2550,14 @@ function RoomCreatePage() {
       payload.append("review_votes_required", String(normalizedReviewVotesRequired));
       payload.append("review_acceptance_threshold", String(normalizedReviewAcceptanceThreshold));
       payload.append("owner_is_annotator", ownerIsAnnotator ? "true" : "false");
+      if (datasetMode === "video") {
+        if (normalizedVideoFps !== null) {
+          payload.append("video_extraction_fps", String(normalizedVideoFps));
+        }
+        payload.append("video_frame_step", String(normalizedVideoFrameStep));
+        payload.append("video_max_frames", String(normalizedVideoMaxFrames));
+        payload.append("video_manual_keyframe_percent", String(normalizedVideoManualPercent));
+      }
       if (normalizedDefaultQuota !== null) {
         payload.append("default_assignment_quota", String(normalizedDefaultQuota));
       }
@@ -2625,6 +2705,41 @@ function RoomCreatePage() {
                       <span>Количество тестовых задач</span>
                       <input value={testTaskCount} name="test_task_count" type="number" min="1" max="100" onChange={(event) => setTestTaskCount(event.currentTarget.value)} />
                     </label>
+                  )}
+                  {datasetMode === "video" && (
+                    <>
+                      <label className="field">
+                        <span>FPS извлечения</span>
+                        <input
+                          value={videoExtractionFps}
+                          name="video_extraction_fps"
+                          type="number"
+                          min="1"
+                          max="120"
+                          placeholder="Все кадры"
+                          onChange={(event) => setVideoExtractionFps(event.currentTarget.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Шаг кадров</span>
+                        <input value={videoFrameStep} name="video_frame_step" type="number" min="1" max="1000" onChange={(event) => setVideoFrameStep(event.currentTarget.value)} />
+                      </label>
+                      <label className="field">
+                        <span>Лимит кадров на видео</span>
+                        <input value={videoMaxFrames} name="video_max_frames" type="number" min="1" max="100000" onChange={(event) => setVideoMaxFrames(event.currentTarget.value)} />
+                      </label>
+                      <label className="field">
+                        <span>Ручные keyframe, %</span>
+                        <input
+                          value={videoManualKeyframePercent}
+                          name="video_manual_keyframe_percent"
+                          type="number"
+                          min="1"
+                          max="100"
+                          onChange={(event) => setVideoManualKeyframePercent(event.currentTarget.value)}
+                        />
+                      </label>
+                    </>
                   )}
                 </div>
                 <div className={`dataset-uploader ${modeConfig.usesFiles ? "" : "is-disabled"}`}>
@@ -4583,6 +4698,10 @@ function createMediaAnnotationEditor(options: {
     return getTask()?.workflow_stage === "text_transcription";
   }
 
+  function isVideoFrameTask() {
+    return getTask()?.input_payload?.origin_source_type === "video" || getTask()?.source_type === "video";
+  }
+
   function isReadOnly() {
     return editor.readOnly;
   }
@@ -4821,6 +4940,7 @@ function createMediaAnnotationEditor(options: {
       frame: Number(annotation?.frame || 0),
       attributes: Array.isArray(annotation?.attributes) ? annotation.attributes : [],
       occluded: Boolean(annotation?.occluded),
+      track_id: typeof annotation?.track_id === "string" && annotation.track_id.trim() ? annotation.track_id.trim() : "track-1",
       text: typeof annotation?.text === "string" ? annotation.text : "",
     }));
   }
@@ -4836,6 +4956,7 @@ function createMediaAnnotationEditor(options: {
           frame: annotation.frame,
           attributes: annotation.attributes,
           occluded: annotation.occluded,
+          ...(isVideoFrameTask() ? { track_id: annotation.track_id || "track-1" } : {}),
           ...(isTextTranscriptionTask() ? { text: typeof annotation.text === "string" ? annotation.text : "" } : {}),
         })),
     };
@@ -5204,9 +5325,14 @@ function createMediaAnnotationEditor(options: {
             <div class="annotation-row__meta">
               <strong>#${index + 1}</strong>
               <span>${label ? label.name : "Без лейбла"}</span>
-              <small>frame ${annotation.frame}</small>
+              <small>${isVideoFrameTask() ? `track ${annotation.track_id || "track-1"}` : `frame ${annotation.frame}`}</small>
             </div>
             <div class="annotation-row__points">[${annotation.points.join(", ")}]</div>
+            ${
+              isVideoFrameTask() && !isReadOnly()
+                ? `<label class="annotation-row__track"><span>Track</span><input data-track-id="${annotation.local_id}" value="${annotation.track_id || "track-1"}" maxlength="64" /></label>`
+                : ""
+            }
             ${isReadOnly() ? "" : `<button class="btn btn--muted btn--compact" type="button" data-remove-id="${annotation.local_id}">Удалить</button>`}
           </div>
         `;
@@ -5214,6 +5340,18 @@ function createMediaAnnotationEditor(options: {
       .join("");
 
     if (!isReadOnly()) {
+      options.annotationList.querySelectorAll<HTMLInputElement>("[data-track-id]").forEach((input) => {
+        input.addEventListener("input", (event) => {
+          const target = event.currentTarget as HTMLInputElement;
+          const annotation = editor.annotations.find((item) => item.local_id === target.dataset.trackId);
+          if (!annotation) {
+            return;
+          }
+          annotation.track_id = target.value.trim() || "track-1";
+          renderBoxes();
+          updateResultPreview();
+        });
+      });
       options.annotationList.querySelectorAll<HTMLButtonElement>("[data-remove-id]").forEach((button) => {
         button.addEventListener("click", () => {
           removeAnnotation(button.dataset.removeId);
@@ -5243,7 +5381,7 @@ function createMediaAnnotationEditor(options: {
     element.style.setProperty("--bbox-color", label?.color || "#B8B8B8");
     const labelNode = element.firstElementChild instanceof HTMLSpanElement ? element.firstElementChild : null;
     if (labelNode) {
-      labelNode.textContent = label ? label.name : "Без лейбла";
+      labelNode.textContent = isVideoFrameTask() && annotation.track_id ? `${label ? label.name : "Без лейбла"} · ${annotation.track_id}` : label ? label.name : "Без лейбла";
     }
   }
 
@@ -5731,6 +5869,7 @@ function createMediaAnnotationEditor(options: {
         frame: getCurrentFrame(),
         attributes: [],
         occluded: false,
+        track_id: "track-1",
       });
     }
 
@@ -6048,6 +6187,7 @@ function RoomWorkPage() {
   const [reviewFilter, setReviewFilter] = useState<ReviewTaskFilter>("validation");
   const [reviewActionBusy, setReviewActionBusy] = useState<string | null>(null);
   const [skipping, setSkipping] = useState(false);
+  const [noObjecting, setNoObjecting] = useState(false);
   const [editorState, setEditorState] = useState({
     annotationCount: 0,
     hasUnlabeledAnnotations: false,
@@ -6103,6 +6243,7 @@ function RoomWorkPage() {
   const submitDisabled =
     submitting ||
     skipping ||
+    noObjecting ||
     workspaceMode === "review" ||
     !currentTask ||
     (workspaceMode === "submitted" && Boolean(submittedDetail && !submittedDetail.editable)) ||
@@ -6130,6 +6271,7 @@ function RoomWorkPage() {
   const taskDimensionsLabel = taskWidth > 0 && taskHeight > 0 ? `${taskWidth}×${taskHeight}` : null;
   const taskFrameValue =
     currentTask?.input_payload?.frame_number ?? currentTask?.input_payload?.frame_index ?? currentTask?.input_payload?.frame ?? null;
+  const videoFrameContext = currentTask?.video_frame_context || null;
   const summaryMeta = currentTask ? `#${currentTask.id} / ${roomTitle}` : roomTitle;
   const submitButtonLabel =
     workspaceMode === "queue"
@@ -6584,6 +6726,35 @@ function RoomWorkPage() {
     }
   }
 
+  async function handleNoObjectTask() {
+    if (workspaceMode !== "queue" || !currentTask || !isMediaTask) {
+      return;
+    }
+
+    clearToasts();
+    setNoObjecting(true);
+    try {
+      const completedTaskId = currentTask.id;
+      await api(`/api/v1/tasks/${currentTask.id}/submit/`, {
+        method: "POST",
+        body: { result_payload: { annotations: [], frame_state: "no_object" } },
+      });
+      setCurrentTask(null);
+      await refreshDashboardSnapshot();
+      const nextTask = await loadNextTask();
+      addToast(
+        nextTask
+          ? `Задача #${completedTaskId}: объекта нет. Следующая задача уже готова.`
+          : `Задача #${completedTaskId}: объекта нет. Доступных задач больше нет.`,
+        "success"
+      );
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setNoObjecting(false);
+    }
+  }
+
   async function handleReturnForRevision() {
     if (!reviewDetail?.task.id || !selectedReviewAnnotation) {
       return;
@@ -6669,6 +6840,35 @@ function RoomWorkPage() {
     }
   }
 
+  async function handleGeneratedDecision(decision: "approve" | "reject" | "no-object") {
+    if (!reviewDetail?.task.id || reviewDetail.review_outcome !== "generated") {
+      return;
+    }
+
+    clearToasts();
+    setReviewActionBusy(`generated-${decision}`);
+    try {
+      await api(`/api/v1/tasks/${reviewDetail.task.id}/generated/${decision === "no-object" ? "no-object" : decision}/`, {
+        method: "POST",
+        body: {},
+      });
+      await refreshDashboardSnapshot();
+      addToast(
+        decision === "approve"
+          ? `Сгенерированная разметка задачи #${reviewDetail.task.id} принята.`
+          : decision === "no-object"
+            ? `Задача #${reviewDetail.task.id} отмечена как кадр без объекта.`
+            : `Сгенерированная разметка задачи #${reviewDetail.task.id} отправлена на ручную правку.`,
+        "success"
+      );
+      await activateWorkspaceMode("review");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setReviewActionBusy(null);
+    }
+  }
+
   return (
     <form ref={formRef} className="room-editor" onSubmit={handleSubmit}>
       <header className="room-editor__topbar">
@@ -6726,9 +6926,14 @@ function RoomWorkPage() {
           {workspaceMode === "review" ? null : (
             <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
               {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping} onClick={handleSkipTask}>
-                  {skipping ? "Пропускаем..." : "Пропустить"}
-                </button>
+                <>
+                  <button className="btn btn--secondary btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleNoObjectTask}>
+                    {noObjecting ? "Отмечаем..." : "Объекта нет"}
+                  </button>
+                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleSkipTask}>
+                    {skipping ? "Пропускаем..." : "Пропустить"}
+                  </button>
+                </>
               ) : null}
               <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
                 {submitButtonLabel}
@@ -6795,6 +7000,22 @@ function RoomWorkPage() {
                       <strong>{taskFrameValue}</strong>
                     </div>
                   )}
+                  {videoFrameContext ? (
+                    <>
+                      <div className="room-editor__meta-row">
+                        <span>Видео</span>
+                        <strong>{videoFrameContext.video_name}</strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>Время</span>
+                        <strong>{Number(videoFrameContext.current.timestamp || 0).toFixed(3)} c</strong>
+                      </div>
+                      <div className="room-editor__meta-row">
+                        <span>Статус кадра</span>
+                        <strong>{translateVideoFrameState(videoFrameContext.current.state)}</strong>
+                      </div>
+                    </>
+                  ) : null}
                   <div className="editor-sidepanel__note">
                     После отправки редактор сразу запросит следующий объект из очереди.
                   </div>
@@ -6877,6 +7098,12 @@ function RoomWorkPage() {
                         <span>Статус</span>
                         <strong>{translateReviewOutcome(reviewDetail.review_outcome)}</strong>
                       </div>
+                      {reviewDetail.video_frame_state ? (
+                        <div className="room-editor__meta-row">
+                          <span>Кадр</span>
+                          <strong>{translateVideoFrameState(reviewDetail.video_frame_state)}</strong>
+                        </div>
+                      ) : null}
                       <div className="room-editor__meta-row">
                         <span>Голоса</span>
                         <strong>
@@ -6904,6 +7131,11 @@ function RoomWorkPage() {
                         </strong>
                       </div>
                     </div>
+                    {reviewDetail.trajectory_warnings?.length ? (
+                      <div className="editor-sidepanel__note">
+                        Проверь траекторию: {reviewDetail.trajectory_warnings.map((item) => translateVideoFrameState(item)).join(", ")}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="editor-sidepanel__section">
@@ -6934,6 +7166,19 @@ function RoomWorkPage() {
                   </div>
 
                   <div className="editor-sidepanel__actions">
+                    {reviewDetail.review_outcome === "generated" ? (
+                      <>
+                        <button className="btn btn--primary btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={() => handleGeneratedDecision("approve")}>
+                          {reviewActionBusy === "generated-approve" ? "Принимаем..." : "Принять"}
+                        </button>
+                        <button className="btn btn--secondary btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={() => handleGeneratedDecision("no-object")}>
+                          {reviewActionBusy === "generated-no-object" ? "Отмечаем..." : "Объекта нет"}
+                        </button>
+                        <button className="btn btn--danger btn--compact" type="button" disabled={Boolean(reviewActionBusy)} onClick={() => handleGeneratedDecision("reject")}>
+                          {reviewActionBusy === "generated-reject" ? "Возвращаем..." : "В ручную правку"}
+                        </button>
+                      </>
+                    ) : null}
                     {reviewDetail.can_vote ? (
                       <>
                         <button
@@ -7003,6 +7248,13 @@ function RoomWorkPage() {
                       Проверено мной
                     </button>
                     <button
+                      className={`room-editor__filter-chip ${reviewFilter === "generated" ? "is-active" : ""}`}
+                      type="button"
+                      onClick={() => handleReviewFilterChange("generated")}
+                    >
+                      Сгенерированные
+                    </button>
+                    <button
                       className={`room-editor__filter-chip ${reviewFilter === "final" ? "is-active" : ""}`}
                       type="button"
                       onClick={() => handleReviewFilterChange("final")}
@@ -7016,6 +7268,21 @@ function RoomWorkPage() {
                     >
                       Неполные
                     </button>
+                  </div>
+                ) : null}
+                {videoFrameContext ? (
+                  <div className="room-editor__frame-strip" aria-label="Контекст кадров видео">
+                    {[videoFrameContext.previous, videoFrameContext.current, videoFrameContext.next].filter(Boolean).map((frame: any) => (
+                      <div
+                        key={`${frame.task_id}-${frame.frame_number}`}
+                        className={`room-editor__frame-chip ${frame.task_id === currentTask?.id ? "is-active" : ""}`}
+                        title={translateVideoFrameState(frame.state)}
+                      >
+                        <strong>#{frame.frame_number}</strong>
+                        <span>{Number(frame.timestamp || 0).toFixed(2)} c</span>
+                        <small>{translateVideoFrameState(frame.state)}</small>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
                 <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" ? "hidden" : ""}`}></div>
