@@ -21722,11 +21722,19 @@
   var import_react = __toESM(require_react());
   var import_client = __toESM(require_client());
   var import_jsx_runtime = __toESM(require_jsx_runtime());
+  var frameTaskStatusLabels = {
+    pending: "\u043E\u0436\u0438\u0434\u0430\u0435\u0442",
+    in_progress: "\u0432 \u0440\u0430\u0431\u043E\u0442\u0435",
+    done: "\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E",
+    skipped: "\u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E",
+    uncertain: "\u043D\u0435 \u0443\u0432\u0435\u0440\u0435\u043D"
+  };
   var bootstrap = readJsonScript("ui-bootstrap-data") || {
     page: "home",
     page_title: "DataSetAI",
     active_page: "home",
     room_id: null,
+    video_id: null,
     profile_user_id: null,
     app_debug_mode: false,
     stats: { users: 0, rooms: 0, tasks: 0 },
@@ -21981,6 +21989,48 @@
     link.click();
     link.remove();
     URL.revokeObjectURL(blobUrl);
+  }
+  async function downloadVideoFrameExport(videoId, authUser) {
+    if (!authUser) {
+      throw new Error("\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0438 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442.");
+    }
+    const response = await fetch(`/api/v1/videos/${videoId}/export/`, {
+      method: "GET",
+      headers: {
+        "X-User-Id": String(authUser.id)
+      }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (error) {
+        data = { detail: text || `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${response.status}` };
+      }
+      throw new Error(data?.detail || `\u041E\u0448\u0438\u0431\u043A\u0430 HTTP ${response.status}`);
+    }
+    const disposition = response.headers.get("content-disposition") || "";
+    const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+    const filename = filenameMatch?.[1] || `video-${videoId}-frame-annotations.json`;
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(blobUrl);
+  }
+  function clampNumber(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+  function formatVideoTime(seconds) {
+    const safeSeconds = Math.max(0, Number(seconds || 0));
+    const minutes = Math.floor(safeSeconds / 60);
+    const rest = safeSeconds - minutes * 60;
+    return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
   }
   function formatPercent(value) {
     return `${Number(value || 0).toFixed(1)}%`;
@@ -22317,12 +22367,15 @@
       video.preload = "metadata";
       video.onloadedmetadata = () => {
         URL.revokeObjectURL(objectUrl);
+        const frameRate = 25;
+        const duration = Number(video.duration.toFixed(3));
         resolve({
           name: file.name,
           width: video.videoWidth,
           height: video.videoHeight,
-          duration: Number(video.duration.toFixed(3)),
-          frame_rate: 25
+          duration,
+          frame_rate: frameRate,
+          frame_count: Math.max(1, Math.round(duration * frameRate))
         });
       };
       video.onerror = () => {
@@ -22650,6 +22703,10 @@
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomDetailPage, {});
       case "room-work":
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomWorkPage, {});
+      case "video-pre-annotation":
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(VideoPreAnnotationPage, {});
+      case "frame-annotation":
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FrameAnnotationPage, {});
       case "room-invite":
         return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RoomInvitePage, {});
       case "auth-login":
@@ -24104,7 +24161,7 @@
       try {
         const nextDashboard = await api(`/api/v1/rooms/${roomId}/dashboard/`);
         setDashboard(nextDashboard);
-        if (nextDashboard.actor.can_edit_room && nextDashboard.room.dataset_type === "image" && manageSectionOpen) {
+        if (nextDashboard.actor.can_edit_room && ["image", "video"].includes(nextDashboard.room.dataset_type) && manageSectionOpen) {
           await loadDatasetTasks(roomId);
         } else {
           setDatasetTasksLoading(false);
@@ -24142,7 +24199,7 @@
       }
     }, [dashboard?.actor.can_review, reviewSectionOpen]);
     (0, import_react.useEffect)(() => {
-      if (!dashboard?.actor.can_edit_room || dashboard.room.dataset_type !== "image" || !manageSectionOpen) {
+      if (!dashboard?.actor.can_edit_room || !["image", "video"].includes(dashboard.room.dataset_type) || !manageSectionOpen) {
         return;
       }
       if (!datasetTasks.length && !datasetTasksLoading) {
@@ -24478,7 +24535,9 @@
     const hasRoomManagementActions = Boolean(
       dashboard && (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
     );
+    const firstVideoTask = dashboard?.video_tasks?.[0] || null;
     const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
+    const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--room", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
@@ -24511,7 +24570,7 @@
             ] })
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }),
           dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-cta", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
-            dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) : null,
+            dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/videos/${firstVideoTask.id}/pre-annotate/`, children: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" }) : dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) : null,
             dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null
           ] }) : null
         ] }),
@@ -24727,6 +24786,49 @@
                           ". \u0423\u0442\u043E\u0447\u043D\u0438 \u043F\u043E\u0438\u0441\u043A, \u0447\u0442\u043E\u0431\u044B \u0431\u044B\u0441\u0442\u0440\u0435\u0435 \u043D\u0430\u0439\u0442\u0438 \u043D\u0443\u0436\u043D\u044B\u0435 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F."
                         ] }) : null
                       ] })
+                    ] }) : null,
+                    canManageVideoDataset ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--dataset", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0412\u0438\u0434\u0435\u043E \u0434\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow room-settings-panel__eyebrow", children: "2 \u044D\u0442\u0430\u043F\u0430" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field panel-search", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0438\u0441\u043A \u043F\u043E \u0432\u0438\u0434\u0435\u043E" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "input",
+                          {
+                            value: datasetTaskSearch,
+                            type: "text",
+                            placeholder: "\u0424\u0430\u0439\u043B \u0438\u043B\u0438 ID",
+                            onChange: (event) => setDatasetTaskSearch(event.currentTarget.value)
+                          }
+                        )
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack dataset-manager-summary", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0438\u0434\u0435\u043E" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: datasetTasks.length })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E \u0444\u0438\u043B\u044C\u0442\u0440\u0443" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: filteredDatasetTasks.length })
+                        ] })
+                      ] }),
+                      datasetTasksLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0432\u0438\u0434\u0435\u043E \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." }) : !datasetTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0432\u0438\u0434\u0435\u043E." }) : !filteredDatasetTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041F\u043E \u044D\u0442\u043E\u043C\u0443 \u0437\u0430\u043F\u0440\u043E\u0441\u0443 \u0432\u0438\u0434\u0435\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "dataset-task-list", "aria-label": "\u0412\u0438\u0434\u0435\u043E \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", children: displayedDatasetTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-task-row dataset-task-row--video", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "dataset-task-row__thumb dataset-task-row__thumb--empty", "aria-hidden": "true" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "dataset-task-row__meta", children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0412\u0438\u0434\u0435\u043E #${task.id}` }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                            "#",
+                            task.id,
+                            " \xB7 ",
+                            Number(task.input_payload?.frame_count || 0),
+                            " \u043A\u0430\u0434\u0440\u043E\u0432 \xB7 ",
+                            translateTaskStatus(task.status)
+                          ] })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: `/videos/${task.id}/pre-annotate/`, children: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" })
+                      ] }, task.id)) })
                     ] }) : null,
                     dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 \u0438 \u043B\u0435\u0439\u0431\u043B\u044B" }) }),
@@ -25034,6 +25136,990 @@
           ]
         }
       ) }) : null
+    ] });
+  }
+  function VideoPreAnnotationPage() {
+    const { bootstrap: bootstrap2, api, addToast, clearToasts } = useApp();
+    const videoId = bootstrap2.video_id;
+    const videoRef = (0, import_react.useRef)(null);
+    const [video, setVideo] = (0, import_react.useState)(null);
+    const [selections, setSelections] = (0, import_react.useState)([]);
+    const [loading, setLoading] = (0, import_react.useState)(true);
+    const [busy, setBusy] = (0, import_react.useState)(false);
+    const [playing, setPlaying] = (0, import_react.useState)(false);
+    const [currentTime, setCurrentTime] = (0, import_react.useState)(0);
+    const [rangeStart, setRangeStart] = (0, import_react.useState)(null);
+    const [rangeEnd, setRangeEnd] = (0, import_react.useState)(null);
+    const fps = Number(video?.fps || 25);
+    const frameCount = Number(video?.frame_count || 0);
+    const currentFrame = clampNumber(Math.floor(currentTime * fps), 0, Math.max(frameCount - 1, 0));
+    const timelineProgress = frameCount > 1 ? currentFrame / (frameCount - 1) * 100 : 0;
+    async function refresh() {
+      if (!videoId) {
+        addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C \u0432\u0438\u0434\u0435\u043E \u0438\u0437 URL.", "error");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const [nextVideo, nextSelections] = await Promise.all([
+          api(`/api/v1/videos/${videoId}/`),
+          api(`/api/v1/videos/${videoId}/selections/`)
+        ]);
+        setVideo(nextVideo);
+        setSelections(nextSelections || []);
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    (0, import_react.useEffect)(() => {
+      refresh();
+    }, []);
+    (0, import_react.useEffect)(() => {
+      function handleKeyDown(event) {
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+        if (event.code === "Space") {
+          event.preventDefault();
+          handlePlayPause();
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          seekToFrame(currentFrame - 1);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          seekToFrame(currentFrame + 1);
+        }
+      }
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [currentFrame, fps, frameCount, playing]);
+    function seekToFrame(frameIndex) {
+      const videoElement = videoRef.current;
+      if (!videoElement || !video) {
+        return;
+      }
+      const clampedFrame = clampNumber(frameIndex, 0, Math.max(video.frame_count - 1, 0));
+      videoElement.currentTime = clampedFrame / fps;
+      setCurrentTime(videoElement.currentTime);
+    }
+    function handlePlayPause() {
+      const videoElement = videoRef.current;
+      if (!videoElement) {
+        return;
+      }
+      if (videoElement.paused) {
+        videoElement.play();
+      } else {
+        videoElement.pause();
+      }
+    }
+    function handleVideoMetadata(event) {
+      event.currentTarget.currentTime = 0;
+      setCurrentTime(0);
+      setPlaying(false);
+    }
+    async function createSelection(startFrame, endFrame) {
+      if (!videoId) {
+        return;
+      }
+      clearToasts();
+      setBusy(true);
+      try {
+        const selection = await api(`/api/v1/videos/${videoId}/selections/`, {
+          method: "POST",
+          body: { start_frame: startFrame, end_frame: endFrame }
+        });
+        setSelections((current) => [...current, selection].sort((a, b) => a.start_frame - b.start_frame || a.id - b.id));
+        addToast(startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame} \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame} \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.`, "success");
+        if (startFrame !== endFrame) {
+          setRangeStart(null);
+          setRangeEnd(null);
+        }
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+    async function updateSelection(selection) {
+      clearToasts();
+      setBusy(true);
+      try {
+        const updated = await api(`/api/v1/video-selections/${selection.id}/`, {
+          method: "PATCH",
+          body: { start_frame: selection.start_frame, end_frame: selection.end_frame }
+        });
+        setSelections((current) => current.map((item) => item.id === updated.id ? updated : item));
+        addToast("\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D.", "success");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+    async function deleteSelection(selectionId) {
+      clearToasts();
+      setBusy(true);
+      try {
+        await api(`/api/v1/video-selections/${selectionId}/`, { method: "DELETE" });
+        setSelections((current) => current.filter((item) => item.id !== selectionId));
+        addToast("\u0412\u044B\u0431\u043E\u0440 \u0443\u0434\u0430\u043B\u0435\u043D.", "success");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+    async function generateFrameTasksForSelection(selection) {
+      clearToasts();
+      setBusy(true);
+      try {
+        const result = await api(
+          `/api/v1/video-selections/${selection.id}/generate-frame-tasks/`,
+          {
+            method: "POST",
+            body: {}
+          }
+        );
+        addToast(
+          `${formatSelectionTitle(selection)}: \u0441\u043E\u0437\u0434\u0430\u043D\u043E \u0437\u0430\u0434\u0430\u0447 ${result.created_count}, \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u043E\u0432\u0430\u043B\u043E ${result.skipped_duplicates_count}.`,
+          "success"
+        );
+        await refresh();
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setBusy(false);
+      }
+    }
+    async function startSelectionAnnotation(selection) {
+      if (!videoId) {
+        return;
+      }
+      clearToasts();
+      setBusy(true);
+      try {
+        const updated = await api(`/api/v1/video-selections/${selection.id}/`, {
+          method: "PATCH",
+          body: { start_frame: selection.start_frame, end_frame: selection.end_frame }
+        });
+        await api(`/api/v1/video-selections/${updated.id}/generate-frame-tasks/`, {
+          method: "POST",
+          body: {}
+        });
+        window.location.href = `/videos/${videoId}/frames/?selection=${updated.id}`;
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setBusy(false);
+      }
+    }
+    const persistedSelectedFramesCount = selections.reduce((sum, item) => sum + Math.abs(item.end_frame - item.start_frame) + 1, 0);
+    const draftRangeFramesCount = rangeStart == null || rangeEnd == null ? 0 : Math.abs(Number(rangeEnd) - Number(rangeStart)) + 1;
+    const generatedSelectionsCount = selections.filter((item) => item.status === "generated").length;
+    function getSelectionFrameCount(selection) {
+      return Math.abs(selection.end_frame - selection.start_frame) + 1;
+    }
+    function formatSelectionTitle(selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame}` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame}`;
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "video-workspace", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "video-workspace__header", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0432\u0438\u0434\u0435\u043E" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: video?.source_name || "\u041F\u0440\u0435\u0434\u0432\u0430\u0440\u0438\u0442\u0435\u043B\u044C\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0432\u0438\u0434\u0435\u043E" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-workspace__actions", children: [
+          video?.room_id ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: `/rooms/${video.room_id}/`, children: "\u041A \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }) : null,
+          videoId ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: `/videos/${videoId}/frames/`, children: "\u041F\u043E\u043A\u0430\u0434\u0440\u043E\u0432\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }) : null
+        ] })
+      ] }),
+      loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0432\u0438\u0434\u0435\u043E." }) : video ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-preannotator", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-preannotator__stage", children: [
+          video.source_file_url ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "video",
+            {
+              ref: videoRef,
+              className: "video-preannotator__player",
+              src: video.source_file_url,
+              preload: "metadata",
+              onLoadedMetadata: handleVideoMetadata,
+              onPlay: () => setPlaying(true),
+              onPause: () => setPlaying(false),
+              onTimeUpdate: (event) => setCurrentTime(event.currentTarget.currentTime),
+              onSeeked: (event) => setCurrentTime(event.currentTarget.currentTime)
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u0438\u0434\u0435\u043E \u043D\u0435\u0442 \u0438\u0441\u0445\u043E\u0434\u043D\u043E\u0433\u043E \u0444\u0430\u0439\u043B\u0430." }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-preannotator__timeline", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                type: "range",
+                min: "0",
+                max: Math.max(frameCount - 1, 0),
+                value: currentFrame,
+                style: { ["--timeline-progress"]: `${timelineProgress}%` },
+                onChange: (event) => seekToFrame(Number(event.currentTarget.value))
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-preannotator__meta", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                "\u041A\u0430\u0434\u0440 ",
+                currentFrame
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: formatVideoTime(currentTime) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                video.width,
+                "\xD7",
+                video.height
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                frameCount,
+                " \u043A\u0430\u0434\u0440\u043E\u0432"
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-preannotator__controls", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handlePlayPause, children: playing ? "\u041F\u0430\u0443\u0437\u0430" : "\u0412\u043E\u0441\u043F\u0440\u043E\u0438\u0437\u0432\u0435\u0441\u0442\u0438" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => seekToFrame(currentFrame - 1), children: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439 \u043A\u0430\u0434\u0440" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => seekToFrame(currentFrame + 1), children: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043A\u0430\u0434\u0440" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact", type: "button", disabled: busy, onClick: () => createSelection(currentFrame, currentFrame), children: "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043A\u0430\u0434\u0440" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => setRangeStart(currentFrame), children: "\u041D\u0430\u0447\u0430\u043B\u043E \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => setRangeEnd(currentFrame), children: "\u041A\u043E\u043D\u0435\u0446 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: "btn btn--primary btn--compact",
+                type: "button",
+                disabled: busy || rangeStart == null || rangeEnd == null,
+                onClick: () => {
+                  if (rangeStart != null && rangeEnd != null) {
+                    createSelection(rangeStart, rangeEnd);
+                  }
+                },
+                children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B"
+              }
+            )
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "video-preannotator__side", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card video-selection-summary", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-summary__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u044B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: selections.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0447\u0430\u043B\u043E \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: rangeStart ?? "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043D\u0435\u0446 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: rangeEnd ?? "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0434\u0440\u043E\u0432 \u0432 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: draftRangeFramesCount || "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E \u043A\u0430\u0434\u0440\u043E\u0432" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: persistedSelectedFramesCount })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u0442\u043E\u0432\u044B\u0445 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u043E\u0432" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: generatedSelectionsCount })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "video-selection-list", children: selections.length ? selections.map((selection) => {
+            const isGenerated = selection.status === "generated";
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `video-selection-row ${isGenerated ? "is-generated" : ""}`, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__title", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatSelectionTitle(selection) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    getSelectionFrameCount(selection),
+                    " \u043A\u0430\u0434\u0440\u043E\u0432"
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "video-selection-row__status", children: isGenerated ? "\u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E\u0437\u0434\u0430\u043D\u044B" : "\u043E\u0436\u0438\u0434\u0430\u0435\u0442" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__inputs", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0447\u0430\u043B\u043E" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      type: "number",
+                      min: "0",
+                      value: selection.start_frame,
+                      onChange: (event) => setSelections(
+                        (current) => current.map(
+                          (item) => item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item
+                        )
+                      )
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043D\u0435\u0446" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      type: "number",
+                      min: "0",
+                      value: selection.end_frame,
+                      onChange: (event) => setSelections(
+                        (current) => current.map(
+                          (item) => item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item
+                        )
+                      )
+                    }
+                  )
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__actions", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: busy, onClick: () => updateSelection(selection), children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: "btn btn--muted btn--compact",
+                    type: "button",
+                    disabled: busy,
+                    onClick: () => generateFrameTasksForSelection(selection),
+                    children: isGenerated ? "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: "btn btn--primary btn--compact",
+                    type: "button",
+                    disabled: busy,
+                    onClick: () => startSelectionAnnotation(selection),
+                    children: "\u041D\u0430\u0447\u0430\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: busy, onClick: () => deleteSelection(selection.id), children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C" })
+              ] })
+            ] }, selection.id);
+          }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u043A\u0430\u0434\u0440 \u0438\u043B\u0438 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B, \u0447\u0442\u043E\u0431\u044B \u0441\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u044D\u0442\u0430\u043F\u0430." }) })
+        ] })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u0438\u0434\u0435\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E." })
+    ] });
+  }
+  function normalizeFrameObjects(objects) {
+    return (objects || []).map((item, index) => ({
+      id: item.id || `box-${Date.now()}-${index}`,
+      label: item.label || "object",
+      bbox: {
+        x: Number(item.bbox?.x || 0),
+        y: Number(item.bbox?.y || 0),
+        width: Number(item.bbox?.width || 0),
+        height: Number(item.bbox?.height || 0)
+      }
+    }));
+  }
+  function serializeFrameObjects(objects) {
+    return objects.map((item) => ({
+      label: item.label || "object",
+      bbox: {
+        x: Number(item.bbox.x.toFixed(6)),
+        y: Number(item.bbox.y.toFixed(6)),
+        width: Number(item.bbox.width.toFixed(6)),
+        height: Number(item.bbox.height.toFixed(6))
+      }
+    }));
+  }
+  function buildFrameAnnotationSnapshot(status, objects) {
+    const normalizedStatus = status === "empty" ? "empty" : "annotated";
+    return JSON.stringify({
+      status: normalizedStatus,
+      objects: normalizedStatus === "empty" ? [] : serializeFrameObjects(objects)
+    });
+  }
+  function readPositiveIntegerSearchParam(name) {
+    const value = Number(new URLSearchParams(window.location.search).get(name));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  function replaceFrameAnnotationSelectionQuery(selectionId) {
+    const url = new URL(window.location.href);
+    if (selectionId) {
+      url.searchParams.set("selection", String(selectionId));
+    } else {
+      url.searchParams.delete("selection");
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  function FrameAnnotationPage() {
+    const { bootstrap: bootstrap2, authUser, api, addToast, clearToasts } = useApp();
+    const videoId = bootstrap2.video_id;
+    const svgRef = (0, import_react.useRef)(null);
+    const initialSelectionIdRef = (0, import_react.useRef)(readPositiveIntegerSearchParam("selection"));
+    const loadedFrameSnapshotRef = (0, import_react.useRef)(buildFrameAnnotationSnapshot("annotated", []));
+    const interactionRef = (0, import_react.useRef)(null);
+    const [video, setVideo] = (0, import_react.useState)(null);
+    const [frameSelections, setFrameSelections] = (0, import_react.useState)([]);
+    const [frameTasks, setFrameTasks] = (0, import_react.useState)([]);
+    const [selectedSelectionId, setSelectedSelectionId] = (0, import_react.useState)(null);
+    const [selectedTaskId, setSelectedTaskId] = (0, import_react.useState)(null);
+    const [activeTask, setActiveTask] = (0, import_react.useState)(null);
+    const [objects, setObjects] = (0, import_react.useState)([]);
+    const [draftBox, setDraftBox] = (0, import_react.useState)(null);
+    const [selectedBoxId, setSelectedBoxId] = (0, import_react.useState)(null);
+    const [frameStatus, setFrameStatus] = (0, import_react.useState)("annotated");
+    const [loading, setLoading] = (0, import_react.useState)(true);
+    const [saving, setSaving] = (0, import_react.useState)(false);
+    function formatFrameSelectionTitle(selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame}` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame}`;
+    }
+    function frameTaskBelongsToSelection(task, selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return task.source_segment_id === selection.id || task.frame_index >= startFrame && task.frame_index <= endFrame;
+    }
+    function getFrameTasksForSelection(selectionId, tasks = frameTasks, selections = frameSelections) {
+      if (selectionId == null) {
+        return tasks;
+      }
+      const selection = selections.find((item) => item.id === selectionId);
+      if (!selection) {
+        return tasks;
+      }
+      return tasks.filter((task) => frameTaskBelongsToSelection(task, selection));
+    }
+    function findSelectionForFrameTask(taskId, tasks = frameTasks, selections = frameSelections) {
+      if (taskId == null) {
+        return null;
+      }
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) {
+        return null;
+      }
+      return selections.find((selection) => frameTaskBelongsToSelection(task, selection)) || null;
+    }
+    function pickFrameTaskForSelection(selectionId, tasks = frameTasks, selections = frameSelections) {
+      const scopedTasks = getFrameTasksForSelection(selectionId, tasks, selections);
+      return scopedTasks.find((task) => task.status !== "done") || scopedTasks[0] || null;
+    }
+    async function refreshQueue(preferredTaskId, preferredSelectionId) {
+      if (!videoId) {
+        addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C \u0432\u0438\u0434\u0435\u043E \u0438\u0437 URL.", "error");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const [nextVideo, nextTasks, nextSelections] = await Promise.all([
+          api(`/api/v1/videos/${videoId}/`),
+          api(`/api/v1/frame-tasks/?video_id=${videoId}`),
+          api(`/api/v1/videos/${videoId}/selections/`)
+        ]);
+        const safeTasks = nextTasks || [];
+        const safeSelections = nextSelections || [];
+        setVideo(nextVideo);
+        setFrameTasks(safeTasks);
+        setFrameSelections(safeSelections);
+        const requestedSelectionId = preferredSelectionId !== void 0 ? preferredSelectionId : initialSelectionIdRef.current;
+        initialSelectionIdRef.current = null;
+        const selectionFromPreferredTask = findSelectionForFrameTask(preferredTaskId || null, safeTasks, safeSelections);
+        const firstSelectionWithTasks = safeSelections.find((selection) => getFrameTasksForSelection(selection.id, safeTasks, safeSelections).length)?.id || null;
+        const nextSelectionId = requestedSelectionId && safeSelections.some((selection) => selection.id === requestedSelectionId) ? requestedSelectionId : selectionFromPreferredTask?.id || firstSelectionWithTasks;
+        const scopedTasks = getFrameTasksForSelection(nextSelectionId, safeTasks, safeSelections);
+        const nextSelectedId = preferredTaskId && scopedTasks.some((task) => task.id === preferredTaskId) ? preferredTaskId : (pickFrameTaskForSelection(nextSelectionId, safeTasks, safeSelections) || safeTasks.find((task) => task.status !== "done") || safeTasks[0])?.id || null;
+        setSelectedSelectionId(nextSelectionId);
+        setSelectedTaskId(nextSelectedId);
+        if (nextSelectedId) {
+          await loadFrameTask(nextSelectedId, safeTasks);
+        }
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setLoading(false);
+      }
+    }
+    async function loadFrameTask(taskId, knownTasks = frameTasks) {
+      const task = knownTasks.find((item) => item.id === taskId);
+      if (!task || !videoId) {
+        return;
+      }
+      try {
+        const detail = await api(`/api/v1/videos/${videoId}/frames/${task.frame_index}/`);
+        const nextObjects = normalizeFrameObjects(detail.annotation?.objects);
+        const nextStatus = detail.annotation?.status === "empty" ? "empty" : "annotated";
+        setActiveTask(detail);
+        setFrameTasks((current) => current.map((item) => item.id === detail.id ? detail : item));
+        setObjects(nextObjects);
+        setFrameStatus(nextStatus);
+        setSelectedBoxId(null);
+        setDraftBox(null);
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(nextStatus, nextObjects);
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      }
+    }
+    (0, import_react.useEffect)(() => {
+      refreshQueue();
+    }, []);
+    (0, import_react.useEffect)(() => {
+      if (selectedTaskId) {
+        loadFrameTask(selectedTaskId);
+      }
+    }, [selectedTaskId]);
+    (0, import_react.useEffect)(() => {
+      function handleKeyDown(event) {
+        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          goToAdjacentTask(-1);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          goToAdjacentTask(1);
+        } else if (event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          saveAnnotation();
+        } else if (event.key === "Delete") {
+          event.preventDefault();
+          deleteSelectedBox();
+        } else if (event.key.toLowerCase() === "e") {
+          event.preventDefault();
+          setFrameStatus("empty");
+          setObjects([]);
+        }
+      }
+      window.addEventListener("keydown", handleKeyDown);
+      return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [selectedTaskId, selectedSelectionId, frameTasks, frameSelections, activeTask, objects, frameStatus]);
+    function getSvgPoint(event) {
+      const svg = svgRef.current;
+      if (!svg) {
+        return { x: 0, y: 0 };
+      }
+      const rect = svg.getBoundingClientRect();
+      return {
+        x: clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1),
+        y: clampNumber((event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1)
+      };
+    }
+    function normalizeBbox(x1, y1, x2, y2) {
+      const x = clampNumber(Math.min(x1, x2), 0, 1);
+      const y = clampNumber(Math.min(y1, y2), 0, 1);
+      const width = clampNumber(Math.abs(x2 - x1), 0, 1 - x);
+      const height = clampNumber(Math.abs(y2 - y1), 0, 1 - y);
+      return { x, y, width, height };
+    }
+    function moveBbox(box, dx, dy) {
+      return {
+        ...box,
+        x: clampNumber(box.x + dx, 0, 1 - box.width),
+        y: clampNumber(box.y + dy, 0, 1 - box.height)
+      };
+    }
+    function resizeBbox(box, dx, dy, corner) {
+      let x1 = box.x;
+      let y1 = box.y;
+      let x2 = box.x + box.width;
+      let y2 = box.y + box.height;
+      if (corner.includes("left")) {
+        x1 += dx;
+      } else {
+        x2 += dx;
+      }
+      if (corner.includes("top")) {
+        y1 += dy;
+      } else {
+        y2 += dy;
+      }
+      return normalizeBbox(x1, y1, x2, y2);
+    }
+    function handleSvgPointerDown(event) {
+      if (event.target !== event.currentTarget || frameStatus === "empty") {
+        return;
+      }
+      const point = getSvgPoint(event);
+      interactionRef.current = { type: "draw", startX: point.x, startY: point.y };
+      setDraftBox({ x: point.x, y: point.y, width: 0, height: 0 });
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    function handleBoxPointerDown(event, boxId, corner) {
+      event.stopPropagation();
+      const point = getSvgPoint(event);
+      const box = objects.find((item) => item.id === boxId);
+      if (!box) {
+        return;
+      }
+      setSelectedBoxId(boxId);
+      interactionRef.current = {
+        type: corner ? "resize" : "move",
+        id: boxId,
+        startX: point.x,
+        startY: point.y,
+        original: { ...box.bbox },
+        corner
+      };
+      svgRef.current?.setPointerCapture(event.pointerId);
+    }
+    function handleSvgPointerMove(event) {
+      const interaction = interactionRef.current;
+      if (!interaction) {
+        return;
+      }
+      const point = getSvgPoint(event);
+      if (interaction.type === "draw") {
+        setDraftBox(normalizeBbox(interaction.startX, interaction.startY, point.x, point.y));
+        return;
+      }
+      const dx = point.x - interaction.startX;
+      const dy = point.y - interaction.startY;
+      setObjects(
+        (current) => current.map((item) => {
+          if (item.id !== interaction.id || !interaction.original) {
+            return item;
+          }
+          return {
+            ...item,
+            bbox: interaction.type === "move" ? moveBbox(interaction.original, dx, dy) : resizeBbox(interaction.original, dx, dy, interaction.corner || "bottom-right")
+          };
+        })
+      );
+    }
+    function handleSvgPointerUp() {
+      const interaction = interactionRef.current;
+      if (interaction?.type === "draw" && draftBox && draftBox.width > 3e-3 && draftBox.height > 3e-3) {
+        const id = `box-${Date.now()}`;
+        setObjects((current) => [...current, { id, label: "object", bbox: draftBox }]);
+        setSelectedBoxId(id);
+        setFrameStatus("annotated");
+      }
+      interactionRef.current = null;
+      setDraftBox(null);
+    }
+    function deleteSelectedBox() {
+      if (!selectedBoxId) {
+        return;
+      }
+      setObjects((current) => current.filter((item) => item.id !== selectedBoxId));
+      setSelectedBoxId(null);
+    }
+    function hasUnsavedFrameChanges() {
+      if (!activeTask) {
+        return false;
+      }
+      return buildFrameAnnotationSnapshot(frameStatus, objects) !== loadedFrameSnapshotRef.current;
+    }
+    function requestTaskSwitch(taskId) {
+      if (saving || taskId === selectedTaskId) {
+        return;
+      }
+      if (hasUnsavedFrameChanges() && !window.confirm("\u041D\u0435\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0442\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u043A\u0430\u0434\u0440\u0430 \u0431\u0443\u0434\u0435\u0442 \u043F\u043E\u0442\u0435\u0440\u044F\u043D\u0430. \u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0434\u0440\u0443\u0433\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0435?")) {
+        return;
+      }
+      const nextTask = frameTasks.find((task) => task.id === taskId);
+      const currentSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+      const nextSelection = nextTask && currentSelection && frameTaskBelongsToSelection(nextTask, currentSelection) ? currentSelection : findSelectionForFrameTask(taskId);
+      if (nextSelection && nextSelection.id !== selectedSelectionId) {
+        setSelectedSelectionId(nextSelection.id);
+        replaceFrameAnnotationSelectionQuery(nextSelection.id);
+      }
+      setSelectedTaskId(taskId);
+    }
+    function requestSelectionSwitch(selectionId) {
+      if (saving || selectionId === selectedSelectionId) {
+        return;
+      }
+      if (hasUnsavedFrameChanges() && !window.confirm("\u041D\u0435\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0442\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u043A\u0430\u0434\u0440\u0430 \u0431\u0443\u0434\u0435\u0442 \u043F\u043E\u0442\u0435\u0440\u044F\u043D\u0430. \u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0434\u0440\u0443\u0433\u043E\u043C\u0443 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0443?")) {
+        return;
+      }
+      const nextTask = pickFrameTaskForSelection(selectionId);
+      setSelectedSelectionId(selectionId);
+      replaceFrameAnnotationSelectionQuery(selectionId);
+      setSelectedTaskId(nextTask?.id || null);
+      if (!nextTask) {
+        setActiveTask(null);
+        setObjects([]);
+        setFrameStatus("annotated");
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot("annotated", []);
+      }
+    }
+    function goToAdjacentTask(direction) {
+      const scopedTasks = getFrameTasksForSelection(selectedSelectionId);
+      if (!selectedTaskId || !scopedTasks.length) {
+        return;
+      }
+      const currentIndex = scopedTasks.findIndex((task) => task.id === selectedTaskId);
+      const nextTask = scopedTasks[clampNumber(currentIndex + direction, 0, scopedTasks.length - 1)];
+      if (nextTask) {
+        requestTaskSwitch(nextTask.id);
+      }
+    }
+    async function saveAnnotation() {
+      if (!activeTask) {
+        return;
+      }
+      clearToasts();
+      setSaving(true);
+      try {
+        const status = frameStatus === "empty" ? "empty" : "annotated";
+        const payloadObjects = status === "empty" ? [] : serializeFrameObjects(objects);
+        const response = await api(`/api/v1/frame-tasks/${activeTask.id}/annotation/`, {
+          method: "PUT",
+          body: { status, objects: payloadObjects }
+        });
+        setActiveTask(response.task);
+        setFrameTasks((current) => current.map((task) => task.id === response.task.id ? response.task : task));
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(status, status === "empty" ? [] : objects);
+        addToast(`\u041A\u0430\u0434\u0440 ${activeTask.frame_index} \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D.`, "success");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      } finally {
+        setSaving(false);
+      }
+    }
+    async function handleExport() {
+      if (!videoId) {
+        return;
+      }
+      try {
+        await downloadVideoFrameExport(videoId, authUser);
+        addToast("JSON-\u044D\u043A\u0441\u043F\u043E\u0440\u0442 \u043F\u043E\u043A\u0430\u0434\u0440\u043E\u0432\u044B\u0445 \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u0439 \u043F\u043E\u0434\u0433\u043E\u0442\u043E\u0432\u043B\u0435\u043D.", "success");
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+      }
+    }
+    const intervalOptions = frameSelections.filter((selection) => getFrameTasksForSelection(selection.id).length);
+    const visibleFrameTasks = intervalOptions.length ? getFrameTasksForSelection(selectedSelectionId) : frameTasks;
+    const selectedSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+    const activeIndex = selectedTaskId ? visibleFrameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
+    const completedCount = visibleFrameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+    const hasPreviousTask = activeIndex > 0;
+    const hasNextTask = activeIndex >= 0 && activeIndex < visibleFrameTasks.length - 1;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "video-workspace frame-workspace", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "video-workspace__header", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u043E\u043A\u0430\u0434\u0440\u043E\u0432\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: video?.source_name || "\u041F\u043E\u043A\u0430\u0434\u0440\u043E\u0432\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-workspace__actions", children: [
+          videoId ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted btn--compact", href: `/videos/${videoId}/pre-annotate/`, children: "\u0412\u044B\u0431\u043E\u0440 \u043A\u0430\u0434\u0440\u043E\u0432" }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary btn--compact", type: "button", onClick: handleExport, children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442 JSON" })
+        ] })
+      ] }),
+      loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u043A\u0430\u0434\u0440\u043E\u0432." }) : frameTasks.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "frame-annotator", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "frame-annotator__queue", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u043E\u0432" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: intervalOptions.length || "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: selectedSelection ? formatFrameSelectionTitle(selectedSelection) : "\u0412\u0441\u0435 \u043A\u0430\u0434\u0440\u044B" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0434\u0440\u043E\u0432 \u0432 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: visibleFrameTasks.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: completedCount })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u043A\u0430\u0434\u0440" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeIndex >= 0 ? activeIndex + 1 : "-" })
+            ] })
+          ] }),
+          intervalOptions.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-queue-section-title", children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-interval-list", children: intervalOptions.map((selection, index) => {
+              const selectionTasks = getFrameTasksForSelection(selection.id);
+              const selectionCompletedCount = selectionTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  className: `frame-interval-row ${selection.id === selectedSelectionId ? "is-active" : ""}`,
+                  type: "button",
+                  onClick: () => requestSelectionSwitch(selection.id),
+                  disabled: saving,
+                  "aria-current": selection.id === selectedSelectionId ? "true" : void 0,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                      index + 1,
+                      ". ",
+                      formatFrameSelectionTitle(selection)
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                      selectionCompletedCount,
+                      "/",
+                      selectionTasks.length,
+                      " \u043A\u0430\u0434\u0440\u043E\u0432"
+                    ] })
+                  ]
+                },
+                selection.id
+              );
+            }) })
+          ] }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-queue-section-title", children: "\u041A\u0430\u0434\u0440\u044B \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-task-list", children: visibleFrameTasks.map((task, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: `frame-task-row ${task.id === selectedTaskId ? "is-active" : ""}`,
+              type: "button",
+              onClick: () => requestTaskSwitch(task.id),
+              disabled: saving,
+              "aria-current": task.id === selectedTaskId ? "true" : void 0,
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                  "\u0417\u0430\u0434\u0430\u0447\u0430 ",
+                  index + 1,
+                  ": \u043A\u0430\u0434\u0440 ",
+                  task.frame_index
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: frameTaskStatusLabels[task.status] || task.status })
+              ]
+            },
+            task.id
+          )) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "frame-annotator__stage", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "frame-annotator__toolbar", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: !hasPreviousTask || saving, onClick: () => goToAdjacentTask(-1), children: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: !hasNextTask || saving, onClick: () => goToAdjacentTask(1), children: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: `btn btn--muted btn--compact ${frameStatus === "empty" ? "is-active" : ""}`,
+                type: "button",
+                onClick: () => {
+                  setFrameStatus("empty");
+                  setObjects([]);
+                },
+                children: "\u041E\u0431\u044A\u0435\u043A\u0442 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: !selectedBoxId, onClick: deleteSelectedBox, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C bbox" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary btn--compact", type: "button", disabled: saving || !activeTask, onClick: saveAnnotation, children: saving ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-canvas", children: activeTask?.frame_image_url ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "frame-canvas__media", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: activeTask.frame_image_url, alt: `\u041A\u0430\u0434\u0440 ${activeTask.frame_index}`, draggable: false }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "svg",
+              {
+                ref: svgRef,
+                className: "frame-canvas__overlay",
+                viewBox: "0 0 1 1",
+                preserveAspectRatio: "none",
+                onPointerDown: handleSvgPointerDown,
+                onPointerMove: handleSvgPointerMove,
+                onPointerUp: handleSvgPointerUp,
+                onPointerCancel: handleSvgPointerUp,
+                children: [
+                  objects.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { className: `frame-bbox-group ${item.id === selectedBoxId ? "is-selected" : ""}`, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "rect",
+                      {
+                        className: "frame-bbox",
+                        x: item.bbox.x,
+                        y: item.bbox.y,
+                        width: item.bbox.width,
+                        height: item.bbox.height,
+                        vectorEffect: "non-scaling-stroke",
+                        onPointerDown: (event) => handleBoxPointerDown(event, item.id || "", void 0)
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "foreignObject",
+                      {
+                        className: "frame-bbox-label-wrap",
+                        x: item.bbox.x,
+                        y: Math.max(item.bbox.y - 0.055, 0),
+                        width: "0.22",
+                        height: "0.045",
+                        pointerEvents: "none",
+                        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-bbox-label", children: (item.label || "object") === "object" ? "\u041E\u0431\u044A\u0435\u043A\u0442" : item.label })
+                      }
+                    ),
+                    ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => {
+                      const cx = corner.includes("left") ? item.bbox.x : item.bbox.x + item.bbox.width;
+                      const cy = corner.includes("top") ? item.bbox.y : item.bbox.y + item.bbox.height;
+                      return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "circle",
+                        {
+                          className: "frame-bbox-handle",
+                          cx,
+                          cy,
+                          r: "0.008",
+                          vectorEffect: "non-scaling-stroke",
+                          onPointerDown: (event) => handleBoxPointerDown(event, item.id || "", corner)
+                        },
+                        corner
+                      );
+                    })
+                  ] }, item.id)),
+                  draftBox ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "rect",
+                    {
+                      className: "frame-bbox frame-bbox--draft",
+                      x: draftBox.x,
+                      y: draftBox.y,
+                      width: draftBox.width,
+                      height: draftBox.height,
+                      vectorEffect: "non-scaling-stroke"
+                    }
+                  ) : null
+                ]
+              }
+            )
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041A\u0430\u0434\u0440 \u0435\u0449\u0435 \u043D\u0435 \u0438\u0437\u0432\u043B\u0435\u0447\u0435\u043D \u0438\u043B\u0438 FFmpeg \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435." }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "frame-annotator__side", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0434\u0440" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeTask?.frame_index ?? "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0440\u0435\u043C\u044F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeTask ? `${activeTask.time_ms} \u043C\u0441` : "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Bbox" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: objects.length })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-object-list", children: objects.length ? objects.map((item, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: `frame-object-row ${item.id === selectedBoxId ? "is-active" : ""}`,
+              type: "button",
+              onClick: () => setSelectedBoxId(item.id || null),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                  (item.label || "object") === "object" ? "\u041E\u0431\u044A\u0435\u043A\u0442" : item.label,
+                  " #",
+                  index + 1
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                  item.bbox.x.toFixed(3),
+                  ", ",
+                  item.bbox.y.toFixed(3),
+                  " \xB7 ",
+                  item.bbox.width.toFixed(3),
+                  "\xD7",
+                  item.bbox.height.toFixed(3)
+                ] })
+              ]
+            },
+            item.id
+          )) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u041D\u0430\u0440\u0438\u0441\u0443\u0439 bbox \u043F\u043E\u0432\u0435\u0440\u0445 \u043A\u0430\u0434\u0440\u0430 \u0438\u043B\u0438 \u0432\u044B\u0431\u0435\u0440\u0438 \u0441\u0442\u0430\u0442\u0443\u0441 \xAB\u043E\u0431\u044A\u0435\u043A\u0442 \u043E\u0442\u0441\u0443\u0442\u0441\u0442\u0432\u0443\u0435\u0442\xBB." }) })
+        ] })
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u0443\u0439 \u0437\u0430\u0434\u0430\u0447\u0438 \u043F\u043E\u043A\u0430\u0434\u0440\u043E\u0432\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u043D\u0430 \u044D\u043A\u0440\u0430\u043D\u0435 \u0432\u044B\u0431\u043E\u0440\u0430 \u043A\u0430\u0434\u0440\u043E\u0432." })
     ] });
   }
   function createMediaAnnotationEditor(options) {

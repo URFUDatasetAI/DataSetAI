@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.ui.views import (
+    FrameAnnotationView,
     LandingView,
     LoginPageView,
     ProfileView,
@@ -11,6 +12,7 @@ from apps.ui.views import (
     RoomWorkView,
     RoomsView,
     RoomWorkspaceView,
+    VideoPreAnnotationView,
     UserLogoutView,
 )
 
@@ -26,6 +28,8 @@ urlpatterns = [
     path("rooms/<int:room_id>/edit/", RoomEditView.as_view(), name="ui-room-edit"),
     path("rooms/<int:room_id>/", RoomWorkspaceView.as_view(), name="ui-room-detail"),
     path("rooms/<int:room_id>/work/", RoomWorkView.as_view(), name="ui-room-work"),
+    path("videos/<int:video_id>/pre-annotate/", VideoPreAnnotationView.as_view(), name="ui-video-pre-annotation"),
+    path("videos/<int:video_id>/frames/", FrameAnnotationView.as_view(), name="ui-frame-annotation"),
     path("profile/", ProfileView.as_view(), name="ui-profile"),
     path("users/<int:user_id>/profile/", ProfileView.as_view(), name="ui-user-profile"),
 ]

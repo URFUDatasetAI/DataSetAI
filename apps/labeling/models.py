@@ -17,6 +17,11 @@ def task_source_upload_to(instance, filename: str) -> str:
     return f"task_sources/room_{instance.room_id}/{uuid4().hex}_{filename}"
 
 
+def frame_source_upload_to(instance, filename: str) -> str:
+    video_id = getattr(instance, "video_id", None) or "unknown"
+    return f"frame_sources/video_{video_id}/{uuid4().hex}_{filename}"
+
+
 class Task(TimeStampedModel):
     """
     Represents a single unit of work in a labeling Room.
@@ -179,3 +184,104 @@ class ValidationVote(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"ValidationVote task={self.task_id} voter={self.voter_id} round={self.round_number}"
+
+
+class VideoSelection(TimeStampedModel):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        GENERATED = "generated", "Generated"
+
+    video = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="video_selections")
+    start_frame = models.PositiveIntegerField()
+    end_frame = models.PositiveIntegerField()
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.ACTIVE)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="video_selections",
+    )
+
+    class Meta:
+        ordering = ("start_frame", "end_frame", "id")
+        indexes = [
+            models.Index(fields=("video", "status"), name="labeling_vs_video_s_2d969e_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"VideoSelection video={self.video_id} frames={self.start_frame}-{self.end_frame}"
+
+
+class FrameAnnotationTask(TimeStampedModel):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        IN_PROGRESS = "in_progress", "In progress"
+        DONE = "done", "Done"
+        SKIPPED = "skipped", "Skipped"
+        UNCERTAIN = "uncertain", "Uncertain"
+
+    video = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="frame_annotation_tasks")
+    frame_index = models.PositiveIntegerField()
+    time_ms = models.PositiveIntegerField(default=0)
+    source_segment = models.ForeignKey(
+        VideoSelection,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="frame_tasks",
+    )
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="frame_annotation_tasks",
+    )
+    frame_image = models.FileField(upload_to=frame_source_upload_to, blank=True)
+
+    class Meta:
+        ordering = ("video_id", "frame_index", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("video", "frame_index"), name="unique_video_frame_annotation_task"),
+        ]
+        indexes = [
+            models.Index(fields=("video", "status"), name="labeling_fat_video__0d6ad5_idx"),
+            models.Index(fields=("assigned_to", "status"), name="labeling_fat_assign_ef78dd_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"FrameAnnotationTask video={self.video_id} frame={self.frame_index}"
+
+
+class FrameAnnotation(TimeStampedModel):
+    class Status(models.TextChoices):
+        ANNOTATED = "annotated", "Annotated"
+        EMPTY = "empty", "Empty"
+        UNCERTAIN = "uncertain", "Uncertain"
+
+    task = models.ForeignKey(FrameAnnotationTask, on_delete=models.CASCADE, related_name="annotations")
+    video = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="frame_annotations")
+    frame_index = models.PositiveIntegerField()
+    status = models.CharField(max_length=16, choices=Status.choices)
+    objects_payload = models.JSONField(db_column="objects", default=list)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="frame_annotations",
+    )
+
+    class Meta:
+        ordering = ("video_id", "frame_index", "id")
+        constraints = [
+            models.UniqueConstraint(fields=("task", "created_by"), name="unique_frame_annotation_task_user"),
+        ]
+        indexes = [
+            models.Index(fields=("video", "status"), name="labeling_fa_video_s_d56b4d_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"FrameAnnotation task={self.task_id} status={self.status}"

@@ -6,7 +6,7 @@ from apps.labeling.selectors import (
     get_task_review_state,
     get_task_validation_vote_summary,
 )
-from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote
+from apps.labeling.models import Annotation, FrameAnnotation, FrameAnnotationTask, Task, TaskAssignment, ValidationVote, VideoSelection
 from apps.labeling.services import get_submission_editability
 
 
@@ -342,3 +342,98 @@ class EditableSubmissionDetailSerializer(serializers.Serializer):
 
 class ReturnForRevisionSerializer(serializers.Serializer):
     annotator_id = serializers.IntegerField(min_value=1)
+
+
+class VideoSelectionSerializer(serializers.ModelSerializer):
+    video_id = serializers.IntegerField(read_only=True)
+    created_by_id = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = VideoSelection
+        fields = (
+            "id",
+            "video_id",
+            "start_frame",
+            "end_frame",
+            "status",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        )
+
+
+class VideoSelectionWriteSerializer(serializers.Serializer):
+    start_frame = serializers.IntegerField(min_value=0)
+    end_frame = serializers.IntegerField(min_value=0)
+
+
+class FrameAnnotationSerializer(serializers.ModelSerializer):
+    task_id = serializers.IntegerField(read_only=True)
+    video_id = serializers.IntegerField(read_only=True)
+    created_by_id = serializers.IntegerField(read_only=True)
+    objects = serializers.JSONField(source="objects_payload")
+
+    class Meta:
+        model = FrameAnnotation
+        fields = (
+            "id",
+            "task_id",
+            "video_id",
+            "frame_index",
+            "status",
+            "objects",
+            "created_by_id",
+            "created_at",
+            "updated_at",
+        )
+
+
+class FrameAnnotationTaskSerializer(serializers.ModelSerializer):
+    video_id = serializers.IntegerField(read_only=True)
+    source_segment_id = serializers.IntegerField(read_only=True)
+    assigned_to_id = serializers.IntegerField(read_only=True)
+    frame_image_url = serializers.SerializerMethodField()
+    annotation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FrameAnnotationTask
+        fields = (
+            "id",
+            "video_id",
+            "frame_index",
+            "time_ms",
+            "source_segment_id",
+            "status",
+            "assigned_to_id",
+            "frame_image_url",
+            "annotation",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_frame_image_url(self, obj):
+        if not obj.frame_image:
+            return None
+        request = self.context.get("request")
+        if request is None:
+            return obj.frame_image.url
+        return request.build_absolute_uri(obj.frame_image.url)
+
+    def get_annotation(self, obj):
+        request = self.context.get("request")
+        annotations = getattr(obj, "annotations", None)
+        if annotations is None:
+            return None
+        annotation = None
+        if request is not None and request.user and request.user.is_authenticated:
+            annotation = annotations.filter(created_by=request.user).order_by("-updated_at", "-id").first()
+        if annotation is None and obj.status in (FrameAnnotationTask.Status.DONE, FrameAnnotationTask.Status.UNCERTAIN):
+            annotation = annotations.order_by("-updated_at", "-id").first()
+        if annotation is None:
+            return None
+        return FrameAnnotationSerializer(annotation).data
+
+
+class FrameAnnotationSaveSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=FrameAnnotation.Status.values)
+    objects = serializers.ListField(child=serializers.JSONField(), required=False, allow_empty=True)

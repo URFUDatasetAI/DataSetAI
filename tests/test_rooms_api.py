@@ -653,9 +653,11 @@ class RoomsApiTests(APITestCase):
         self.assertEqual(room.dataset_type, "video")
         self.assertGreater(room.tasks.count(), 0)
         first_task = room.tasks.order_by("id").first()
-        self.assertEqual(first_task.source_type, Task.SourceType.IMAGE)
-        self.assertEqual(first_task.input_payload["origin_source_type"], Task.SourceType.VIDEO)
-        self.assertTrue(first_task.source_file.name.endswith(".jpg"))
+        self.assertEqual(first_task.source_type, Task.SourceType.VIDEO)
+        self.assertEqual(first_task.input_payload["metadata_source"], "ffprobe")
+        self.assertEqual(first_task.input_payload["fps"], 5)
+        self.assertEqual(first_task.input_payload["frame_count"], 1)
+        self.assertTrue(first_task.source_file.name.endswith(".mp4"))
 
     def test_customer_can_export_native_room_dataset(self):
         room = make_room(customer=self.customer, title="Export room", dataset_type="image")
