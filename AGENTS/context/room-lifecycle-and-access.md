@@ -24,6 +24,7 @@
 - `Room.owner_is_annotator` означает, что владелец комнаты не должен неявно считаться annotator-ом всегда; это сознательно вынесено в отдельную семантику.
 - `Room.default_assignment_quota` - стандартный лимит задач для новых/обычных annotator-ов комнаты. Персональный `RoomAssignmentQuota` является override-ом; очистка персональной квоты возвращает пользователя к стандартной квоте комнаты, а не обязательно к unlimited.
 - Join/access flow должен оставаться согласованным между policies, services, selectors и UI payload-ами.
+- Create-room UI сейчас должен идти сверху вниз по категориям, без правой/левой сводки или боковых категорий. Такой sidebar-frame паттерн признан неудобным до будущего общего редизайна.
 - Image dataset management теперь часть room lifecycle: владелец может после создания комнаты добавить изображения или ZIP-архив и удалить отдельные primary task rows. Этот write-side flow должен оставаться в `apps/rooms/services.py`, а UI/API не должны обходить каскадное удаление задач и связанных результатов.
 - Public direct access по ID комнаты и паролю больше не является продуктовым входом. Новые участники приходят через invite link / join request; `/rooms/` показывает создание комнаты и список уже доступных комнат. Существующий `RoomJoinView` остаётся только explicit join endpoint-ом для комнат, которые actor уже видит через ownership/membership/invite flow; не трактуй его как публичный lookup по произвольному room id.
 

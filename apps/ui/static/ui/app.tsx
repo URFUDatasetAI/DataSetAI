@@ -2403,6 +2403,7 @@ function RoomCreatePage() {
   const hasLabelNameTooLong = labels.some((item) => isTextLimitExceeded(item.name, ROOM_LABEL_NAME_MAX_LENGTH));
   const deadlineError = validateRoomDeadline(deadline);
   const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
+  const selectedFilesSummary = summarizeSelectedFiles(selectedFiles);
 
   function updateLabel(index: number, key: "name" | "color", value: string) {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
@@ -2510,259 +2511,309 @@ function RoomCreatePage() {
 
   return (
     <>
-      <section className="page-topbar">
+      <section className="page-topbar page-topbar--create">
         <div className="page-topbar__copy">
           <span className="eyebrow">Создание комнаты</span>
-          <h1>Новая комната для разметки</h1>
-          <p>Загрузи JSON, фото или видео, задай label palette и пригласи исполнителей в комнату.</p>
+          <h1>Новая комната</h1>
+          <p>Настрой датасет, участников и проверку в одном рабочем потоке.</p>
         </div>
       </section>
 
-      <section className="create-layout">
-        <form className="form-card" onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <label className="field">
-              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
-              <input
-                value={title}
-                name="title"
-                type="text"
-                placeholder="Например, Разметка отзывов Q2"
-                required
-                className={titleTooLong ? "field__control--invalid" : ""}
-                aria-invalid={titleTooLong}
-                onChange={(event) => setTitle(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Пароль комнаты</span>
-              <input
-                value={password}
-                name="password"
-                type="password"
-                placeholder="Например, demo123"
-                className={passwordTooLong ? "field__control--invalid" : ""}
-                aria-invalid={passwordTooLong}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--full">
-              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
-              <textarea
-                value={description}
-                name="description"
-                rows={4}
-                placeholder="Кратко опиши задачу и правила разметки"
-                className={descriptionTooLong ? "field__control--invalid" : ""}
-                aria-invalid={descriptionTooLong}
-                onChange={(event) => setDescription(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            <label className="field">
-              <span>Дедлайн (необязательно)</span>
-              <input
-                value={deadline}
-                name="deadline"
-                type="datetime-local"
-                className={deadlineError ? "field__control--invalid" : ""}
-                aria-invalid={Boolean(deadlineError)}
-                onChange={(event) => setDeadline(event.currentTarget.value)}
-              />
-              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
-            </label>
-            <label className="field">
-              <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
-              <input
-                value={annotatorIds}
-                name="annotator_ids"
-                type="text"
-                placeholder="Например, 2,3,7"
-                className={annotatorIdsTooLong ? "field__control--invalid" : ""}
-                aria-invalid={annotatorIdsTooLong}
-                onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--checkbox">
-              <span>Перекрестная разметка</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Включить</span>
-                <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Пул валидации</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
-                <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Создатель в разметке</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
-                <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field">
-              <span>Стандартная квота задач</span>
-              <input
-                value={defaultAssignmentQuota}
-                name="default_assignment_quota"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="По количеству задач"
-                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Количество независимых исполнителей (n)</span>
-              <input
-                value={crossValidationCount}
-                name="cross_validation_annotators_count"
-                type="number"
-                min="2"
-                max="20"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог сходства (%)</span>
-              <input
-                value={crossValidationThreshold}
-                name="cross_validation_similarity_threshold"
-                type="number"
-                min="1"
-                max="100"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Голосов для решения</span>
-              <input
-                value={reviewVotesRequired}
-                name="review_votes_required"
-                type="number"
-                min="1"
-                max="20"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог принятия (%)</span>
-              <input
-                value={reviewAcceptanceThreshold}
-                name="review_acceptance_threshold"
-                type="number"
-                min="1"
-                max="100"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Тип датасета</span>
-              <select value={datasetMode} name="dataset_mode" onChange={(event) => setDatasetMode(event.currentTarget.value)}>
-                <option value="demo">Demo JSON</option>
-                <option value="json">JSON файл</option>
-                <option value="image">Фото</option>
-                <option value="video">Видео</option>
-              </select>
-            </label>
-            {(datasetMode === "image" || datasetMode === "video") && (
-              <label className="field">
-                <span>Сценарий разметки</span>
-                <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
-                  <option value="standard">Обычная разметка</option>
-                  <option value="text_detect_text">Object detect + text</option>
-                </select>
-              </label>
-            )}
-            <label className="field">
-              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
-              <input
-                value={datasetLabel}
-                name="dataset_label"
-                type="text"
-                className={datasetLabelTooLong ? "field__control--invalid" : ""}
-                aria-invalid={datasetLabelTooLong}
-                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
-              />
-            </label>
-            {datasetMode === "demo" && (
-              <label className="field">
-                <span>Количество тестовых задач</span>
-                <input value={testTaskCount} name="test_task_count" type="number" min="1" max="100" onChange={(event) => setTestTaskCount(event.currentTarget.value)} />
-              </label>
-            )}
-          </div>
-
-          <div className="dataset-box">
-            <div>
-              <h2>Загрузка датасета</h2>
-              <p>{modeConfig.hint}</p>
-            </div>
-            <div className="dataset-box__actions dataset-box__actions--stack">
-              <input
-                ref={fileInputRef}
-                type="file"
-                disabled={!modeConfig.usesFiles}
-                accept={modeConfig.accept}
-                multiple={modeConfig.multiple}
-                onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
-              />
-              <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
-            </div>
-          </div>
-
-          {modeConfig.usesLabels && (
-            <section className="form-card form-card--nested">
-              <div className="panel-card__head">
-                <h2>Лейблы для разметки</h2>
+      <section className="room-create-layout">
+        <form className="room-create-form" onSubmit={handleSubmit}>
+          <div className="room-create-main">
+            <section className="create-section">
+              <div className="create-section__head">
+                <span>01</span>
+                <h2>Основное</h2>
               </div>
-              <p className="panel-note">Цвет каждому label-у назначается случайно, но его можно сразу изменить.</p>
-              <div className="label-editor-list">
-                {labels.map((label, index) => (
-                  <div key={`label-${index}`} className="label-editor-row">
-                    <label className="field">
-                      <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
-                      <input
-                        className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
-                        type="text"
-                        placeholder="Например, car"
-                        value={label.name}
-                        aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
-                        onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
-                      />
-                    </label>
-                    <label className="field field--color">
-                      <span>Цвет</span>
-                      <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
-                    </label>
-                    <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                      Убрать
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="form-actions form-actions--tight">
-                <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
-                  Добавить лейбл
-                </button>
+              <div className="create-section__body create-section__body--grid">
+                <label className="field field--wide">
+                  <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
+                  <input
+                    value={title}
+                    name="title"
+                    type="text"
+                    placeholder="Например, Разметка отзывов Q2"
+                    required
+                    className={titleTooLong ? "field__control--invalid" : ""}
+                    aria-invalid={titleTooLong}
+                    onChange={(event) => setTitle(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Дедлайн</span>
+                  <input
+                    value={deadline}
+                    name="deadline"
+                    type="datetime-local"
+                    className={deadlineError ? "field__control--invalid" : ""}
+                    aria-invalid={Boolean(deadlineError)}
+                    onChange={(event) => setDeadline(event.currentTarget.value)}
+                  />
+                  {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
+                </label>
+                <label className="field">
+                  <span>Пароль комнаты</span>
+                  <input
+                    value={password}
+                    name="password"
+                    type="password"
+                    placeholder="Необязательно"
+                    className={passwordTooLong ? "field__control--invalid" : ""}
+                    aria-invalid={passwordTooLong}
+                    onChange={(event) => setPassword(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="field field--full">
+                  <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
+                  <textarea
+                    value={description}
+                    name="description"
+                    rows={4}
+                    placeholder="Кратко опиши задачу и правила разметки"
+                    className={descriptionTooLong ? "field__control--invalid" : ""}
+                    aria-invalid={descriptionTooLong}
+                    onChange={(event) => setDescription(event.currentTarget.value)}
+                  ></textarea>
+                </label>
               </div>
             </section>
-          )}
 
-          <div className="form-actions">
-            <a className="btn btn--muted" href="/rooms/">
-              Назад к комнатам
-            </a>
-            <button className="btn btn--primary" type="submit" disabled={submitting}>
-              {submitting ? "Создаем комнату..." : "Создать комнату"}
-            </button>
+            <section className="create-section">
+              <div className="create-section__head">
+                <span>02</span>
+                <h2>Датасет</h2>
+              </div>
+              <div className="create-section__body">
+                <div className="segmented-control" role="group" aria-label="Тип датасета">
+                  {(["demo", "json", "image", "video"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      className={`segmented-control__item ${datasetMode === mode ? "is-active" : ""}`}
+                      type="button"
+                      aria-pressed={datasetMode === mode}
+                      onClick={() => setDatasetMode(mode)}
+                    >
+                      {datasetModeLabels[mode]}
+                    </button>
+                  ))}
+                </div>
+                <div className="create-section__body--grid">
+                  <label className="field">
+                    <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                    <input
+                      value={datasetLabel}
+                      name="dataset_label"
+                      type="text"
+                      className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                      aria-invalid={datasetLabelTooLong}
+                      onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                    />
+                  </label>
+                  {(datasetMode === "image" || datasetMode === "video") && (
+                    <label className="field">
+                      <span>Сценарий разметки</span>
+                      <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
+                        <option value="standard">Обычная разметка</option>
+                        <option value="text_detect_text">Object detect + text</option>
+                      </select>
+                    </label>
+                  )}
+                  {datasetMode === "demo" && (
+                    <label className="field">
+                      <span>Количество тестовых задач</span>
+                      <input value={testTaskCount} name="test_task_count" type="number" min="1" max="100" onChange={(event) => setTestTaskCount(event.currentTarget.value)} />
+                    </label>
+                  )}
+                </div>
+                <div className={`dataset-uploader ${modeConfig.usesFiles ? "" : "is-disabled"}`}>
+                  <input
+                    ref={fileInputRef}
+                    className="dataset-uploader__input"
+                    type="file"
+                    disabled={!modeConfig.usesFiles}
+                    accept={modeConfig.accept}
+                    multiple={modeConfig.multiple}
+                    onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
+                  />
+                  <div className="dataset-uploader__copy">
+                    <strong>{modeConfig.usesFiles ? "Файлы датасета" : "Demo-датасет"}</strong>
+                    <span>{modeConfig.hint}</span>
+                  </div>
+                  <div className="dataset-uploader__actions">
+                    <button className="btn btn--muted btn--compact" type="button" disabled={!modeConfig.usesFiles} onClick={() => fileInputRef.current?.click()}>
+                      Выбрать файлы
+                    </button>
+                    <span>{selectedFilesSummary}</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {modeConfig.usesLabels && (
+              <section className="create-section">
+                <div className="create-section__head">
+                  <span>03</span>
+                  <h2>Лейблы</h2>
+                </div>
+                <div className="create-section__body">
+                  <div className="label-editor-list">
+                    {labels.map((label, index) => (
+                      <div key={`label-${index}`} className="label-editor-row label-editor-row--create">
+                        <label className="field">
+                          <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
+                          <input
+                            className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
+                            type="text"
+                            placeholder="Например, car"
+                            value={label.name}
+                            aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
+                            onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
+                          />
+                        </label>
+                        <label className="field field--color">
+                          <span>Цвет</span>
+                          <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
+                        </label>
+                        <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                          Убрать
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="create-section__actions">
+                    <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
+                      Добавить лейбл
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            <section className="create-section">
+              <div className="create-section__head">
+                <span>{modeConfig.usesLabels ? "04" : "03"}</span>
+                <h2>Участники</h2>
+              </div>
+              <div className="create-section__body create-section__body--grid">
+                <label className="field field--wide">
+                  <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
+                  <input
+                    value={annotatorIds}
+                    name="annotator_ids"
+                    type="text"
+                    placeholder="Например, 2,3,7"
+                    className={annotatorIdsTooLong ? "field__control--invalid" : ""}
+                    aria-invalid={annotatorIdsTooLong}
+                    onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Стандартная квота задач</span>
+                  <input
+                    value={defaultAssignmentQuota}
+                    name="default_assignment_quota"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="Без лимита"
+                    onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+                  />
+                </label>
+                <label className="toggle-row field--full">
+                  <span>
+                    <strong>Создатель размечает задачи</strong>
+                    <small>Включить владельца комнаты в пул исполнителей</small>
+                  </span>
+                  <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
+                </label>
+              </div>
+            </section>
+
+            <section className="create-section">
+              <div className="create-section__head">
+                <span>{modeConfig.usesLabels ? "05" : "04"}</span>
+                <h2>Проверка</h2>
+              </div>
+              <div className="create-section__body">
+                <div className="toggle-grid">
+                  <label className="toggle-row">
+                    <span>
+                      <strong>Перекрестная разметка</strong>
+                      <small>Несколько независимых исполнителей на задачу</small>
+                    </span>
+                    <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
+                  </label>
+                  <label className="toggle-row">
+                    <span>
+                      <strong>Пул валидации</strong>
+                      <small>Финальная разметка уходит на голосование</small>
+                    </span>
+                    <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
+                  </label>
+                </div>
+                <div className="create-section__body--grid">
+                  <label className="field">
+                    <span>Независимых исполнителей</span>
+                    <input
+                      value={crossValidationCount}
+                      name="cross_validation_annotators_count"
+                      type="number"
+                      min="2"
+                      max="20"
+                      disabled={!crossValidationEnabled}
+                      onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Порог сходства, %</span>
+                    <input
+                      value={crossValidationThreshold}
+                      name="cross_validation_similarity_threshold"
+                      type="number"
+                      min="1"
+                      max="100"
+                      disabled={!crossValidationEnabled}
+                      onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Голосов для решения</span>
+                    <input
+                      value={reviewVotesRequired}
+                      name="review_votes_required"
+                      type="number"
+                      min="1"
+                      max="20"
+                      disabled={!reviewVotingEnabled}
+                      onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Порог принятия, %</span>
+                    <input
+                      value={reviewAcceptanceThreshold}
+                      name="review_acceptance_threshold"
+                      type="number"
+                      min="1"
+                      max="100"
+                      disabled={!reviewVotingEnabled}
+                      onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+            </section>
+
+            <div className="room-create-actions">
+              <a className="btn btn--muted" href="/rooms/">
+                К комнатам
+              </a>
+              <button className="btn btn--primary" type="submit" disabled={submitting}>
+                {submitting ? "Создаем комнату..." : "Создать комнату"}
+              </button>
+            </div>
           </div>
         </form>
       </section>
