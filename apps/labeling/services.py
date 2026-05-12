@@ -339,9 +339,12 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
         def lock_candidate_queryset(queryset):
             # `skip_locked` lets multiple annotators ask for work concurrently
             # without blocking each other on the same candidate task.
+            select_kwargs = {}
+            if connection.features.has_select_for_update_of:
+                select_kwargs["of"] = ("self",)
             if connection.features.has_select_for_update_skip_locked:
-                return queryset.select_for_update(skip_locked=True)
-            return queryset.select_for_update()
+                select_kwargs["skip_locked"] = True
+            return queryset.select_for_update(**select_kwargs)
 
         def build_new_task_candidates() -> list[Task]:
             queryset = (
