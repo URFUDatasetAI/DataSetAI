@@ -68,6 +68,7 @@ Frontend больше не рендерится как набор независ
 3. `apps/labeling/models.py` и `apps/rooms/models.py` - ключевые доменные сущности и их связи.
 4. `apps/ui/views.py`, `apps/ui/templates/ui/base.html` и `apps/ui/static/ui/app.tsx` - bootstrap-контракт между Django и React.
 5. `tests/test_rooms_api.py` и `tests/test_labeling_api.py` - самые насыщенные сценарии по room/access flow, review, media и cross-validation.
+6. `.github/workflows/deploy.yml` - production deploy workflow после обновления `main`.
 
 ## Быстрый старт локально
 
