@@ -49,6 +49,8 @@
   Главная UI-тема: превратить `room-work` в быстрый редактор под bbox today и расширяемый scenario shell tomorrow, включая review и post-submit edit flow.
 - [tasks/grouped-cross-validation-stabilization.md](tasks/grouped-cross-validation-stabilization.md)
   Backend-тема: удерживать новую grouped distribution согласованной с owner-role semantics, review flow и тестами.
+- [tasks/platform-redesign-rollout.md](tasks/platform-redesign-rollout.md)
+  UI-тема: поэтапно распространить новый Refero/Seline-inspired dashboard style с главной на комнаты, формы, room detail и рабочие редакторы без регрессий в fullscreen/editor UX.
 
 ## Recently Completed Major Changes
 
@@ -58,6 +60,8 @@
 - `room-work` уже вынесен в отдельный fullscreen shell вместо прежнего page-section подхода.
 - Добавлен optional validation voting pool на уровне комнаты: владелец включает его при create/edit, reviewer-ы принимают или отклоняют финальную consensus-разметку голосованием.
 - Добавлен MVP двухэтапной видеоразметки: pre-annotation экран для выбора кадров/интервалов, генерация уникальных frame tasks, ручный SVG bbox-editor по кадрам, статусы `empty`/`uncertain` и JSON-экспорт покадровых аннотаций.
+- Главная страница переведена на новый dashboard-style visual direction и стала входом в сценарное создание комнат через preset query parameters.
+- Экран создания комнаты переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и модальное подтверждение перед созданием без изменения API payload.
 
 ## Where To Look First
 
