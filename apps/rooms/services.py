@@ -1,7 +1,6 @@
 import io
 import json
 import shutil
-import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -11,7 +10,6 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from django.conf import settings
 from django.core.files import File
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.utils import timezone
 
@@ -137,7 +135,7 @@ def create_room(
     Creates a new Room, triggers initial parsing, and invites users.
     
     This is the core entry point for Room creation, separating the UI/Validation layer from the business logic.
-    Depending on the `dataset_mode`, it parses JSON, extracts Images, or breaks video into frames via ffmpeg.
+    Depending on the `dataset_mode`, it parses JSON, stores images, or stores source videos for staged frame annotation.
     
     Important: The entire structure is wrapped in `transaction.atomic()`, ensuring we don't end up
     with an orphaned Room if dataset parsing fails.
@@ -823,9 +821,9 @@ def _create_media_tasks(
         dataset_mode=Room.DatasetType.IMAGE if source_type == Task.SourceType.IMAGE else Room.DatasetType.VIDEO,
         dataset_files=dataset_files,
     )
-    # For image datasets we create one Task per uploaded file.
-    # For video datasets we fan out one uploaded video into many image tasks
-    # (frames), because the rest of the labeling pipeline operates on Task rows.
+    # For image datasets we create one Task per uploaded file. For video
+    # datasets the source video stays intact; frame tasks are generated later
+    # from explicit VideoSelection rows.
     manifest_by_name = {item["name"]: item for item in media_manifest if item.get("name")}
     next_item_number = start_item_number
     created_tasks: list[Task] = []
@@ -833,17 +831,6 @@ def _create_media_tasks(
     for dataset_file in dataset_files:
         file_name = Path(dataset_file.name).name
         metadata = manifest_by_name.get(file_name, {})
-
-        if source_type == Task.SourceType.VIDEO:
-            next_item_number, frame_tasks = _create_video_frame_tasks(
-                room=room,
-                dataset_label=dataset_label,
-                dataset_file=dataset_file,
-                metadata=metadata,
-                start_item_number=next_item_number,
-            )
-            created_tasks.extend(frame_tasks)
-            continue
 
         input_payload = {
             "dataset": dataset_label,
@@ -854,6 +841,20 @@ def _create_media_tasks(
             input_payload["width"] = metadata["width"]
         if metadata.get("height"):
             input_payload["height"] = metadata["height"]
+        if source_type == Task.SourceType.VIDEO:
+            frame_rate = metadata.get("fps") or metadata.get("frame_rate") or 25
+            duration = metadata.get("duration") or 0
+            frame_count = metadata.get("frame_count")
+            if frame_count is None and duration:
+                frame_count = int(round(float(duration) * float(frame_rate)))
+            input_payload.update(
+                {
+                    "fps": frame_rate,
+                    "frame_rate": frame_rate,
+                    "duration": duration,
+                    "frame_count": frame_count or 0,
+                }
+            )
 
         task = Task.objects.create(
             room=room,
@@ -867,10 +868,18 @@ def _create_media_tasks(
             source_file=dataset_file,
             input_payload=input_payload,
         )
+        if source_type == Task.SourceType.VIDEO and task.source_file:
+            try:
+                from apps.labeling.video_services import refresh_video_metadata
+
+                refresh_video_metadata(video=task, force=True)
+            except ConflictError:
+                pass
         created_tasks.append(task)
         next_item_number += 1
 
     return created_tasks
+
 
 
 def _enqueue_video_extraction(*, video_asset: VideoAsset) -> None:
@@ -1022,6 +1031,7 @@ def _create_video_frame_tasks(
             next_item_number += 1
 
         return next_item_number, created_tasks
+
 
 
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:

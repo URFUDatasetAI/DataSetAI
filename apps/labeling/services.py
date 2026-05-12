@@ -349,6 +349,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                     room=room,
                     status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
                 )
+                .exclude(source_type=Task.SourceType.VIDEO, room__dataset_type=Room.DatasetType.VIDEO)
                 .annotate(
                     has_annotator_assignment=Exists(annotator_assignments),
                     round_assignments_count=Coalesce(
@@ -382,6 +383,7 @@ def get_next_task_for_annotator(*, room: Room, annotator: User):
                     room=room,
                     status__in=(Task.Status.PENDING, Task.Status.IN_PROGRESS),
                 )
+                .exclude(source_type=Task.SourceType.VIDEO, room__dataset_type=Room.DatasetType.VIDEO)
                 .annotate(
                     has_skipped_assignment=Exists(skipped_assignments),
                     has_other_submitted_assignment=Exists(other_submitted_assignments),

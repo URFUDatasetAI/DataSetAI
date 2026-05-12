@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('labeling', '0007_task_in_review_validationvote'),
+        ('labeling', '0009_alter_frameannotation_task_and_more'),
         ('rooms', '0014_room_review_voting_settings'),
     ]
 

@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import login
 from django.contrib.auth.views import LogoutView
+from django.core.exceptions import PermissionDenied
 from django.contrib.messages import get_messages
 from django.db import DatabaseError
 from django.db.utils import OperationalError, ProgrammingError
@@ -17,9 +18,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.labeling.models import Task
+from apps.labeling.video_services import get_video_for_workspace
 from apps.rooms.models import Room
 from apps.ui.forms import LoginForm, RegistrationForm
 from apps.users.models import User
+from common.exceptions import AccessDeniedError, NotFoundError
 
 
 class UiContextMixin:
@@ -102,6 +105,7 @@ class UiContextMixin:
             "page_title": self.page_title,
             "active_page": self.active_page,
             "room_id": context.get("room_id"),
+            "video_id": context.get("video_id"),
             "profile_user_id": context.get("profile_user_id"),
             "app_debug_mode": settings.APP_DEBUG_MODE,
             "stats": context.get("stats"),
@@ -137,6 +141,7 @@ class UiContextMixin:
         context["active_page"] = self.active_page
         context["page_key"] = self.page_key
         context["room_id"] = kwargs.get("room_id")
+        context["video_id"] = kwargs.get("video_id")
         context["profile_user_id"] = kwargs.get("user_id")
         context["invite_token"] = kwargs.get("invite_token")
         context["app_debug_mode"] = settings.APP_DEBUG_MODE
@@ -202,6 +207,32 @@ class RoomWorkView(LoginRequiredMixin, UiContextMixin, TemplateView):
     active_page = "rooms"
     page_key = "room-work"
     page_title = "DataSetAI | Работа в комнате"
+
+
+class VideoWorkspaceMixin(LoginRequiredMixin, UiContextMixin, TemplateView):
+    active_page = "rooms"
+
+    def dispatch(self, request, *args, **kwargs):
+        video_id = kwargs.get("video_id")
+        if video_id is None:
+            raise Http404("Video not found.")
+        try:
+            get_video_for_workspace(video_id=video_id, actor=request.user)
+        except NotFoundError as exc:
+            raise Http404("Video not found.") from exc
+        except AccessDeniedError as exc:
+            raise PermissionDenied("You do not have access to this video.") from exc
+        return super().dispatch(request, *args, **kwargs)
+
+
+class VideoPreAnnotationView(VideoWorkspaceMixin):
+    page_key = "video-pre-annotation"
+    page_title = "DataSetAI | Предварительная разметка видео"
+
+
+class FrameAnnotationView(VideoWorkspaceMixin):
+    page_key = "frame-annotation"
+    page_title = "DataSetAI | Покадровая разметка"
 
 
 class RoomInviteLandingView(UiContextMixin, TemplateView):

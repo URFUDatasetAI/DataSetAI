@@ -36,6 +36,7 @@ type BootstrapData = {
   page_title: string;
   active_page: string;
   room_id: number | null;
+  video_id: number | null;
   profile_user_id: number | null;
   app_debug_mode: boolean;
   stats: {
@@ -230,6 +231,12 @@ type RoomDashboard = {
     activity: ActivitySeriesItem[];
   };
   annotators?: DashboardAnnotator[];
+  video_tasks?: Array<{
+    id: number;
+    source_name: string | null;
+    source_file_url: string | null;
+    input_payload: Record<string, any>;
+  }>;
 };
 
 type TaskItem = {
@@ -306,6 +313,75 @@ type RoomDatasetTaskItem = TaskItem & {
 type RoomDatasetUploadResponse = {
   added_count: number;
   tasks: RoomDatasetTaskItem[];
+};
+
+type VideoItem = {
+  id: number;
+  room_id: number;
+  source_name: string | null;
+  source_file_url: string | null;
+  fps: number;
+  width: number;
+  height: number;
+  duration: number;
+  frame_count: number;
+  input_payload: Record<string, any>;
+};
+
+type VideoSelectionItem = {
+  id: number;
+  video_id: number;
+  start_frame: number;
+  end_frame: number;
+  status: string;
+  created_by_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FrameAnnotationObject = {
+  id?: string;
+  label: string;
+  bbox: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+};
+
+type FrameAnnotationPayload = {
+  id: number;
+  task_id: number;
+  video_id: number;
+  frame_index: number;
+  status: "annotated" | "empty" | "uncertain";
+  objects: FrameAnnotationObject[];
+  created_by_id: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type FrameAnnotationTaskItem = {
+  id: number;
+  video_id: number;
+  frame_index: number;
+  time_ms: number;
+  source_segment_id: number | null;
+  status: string;
+  assigned_to_id: number | null;
+  frame_image_url: string | null;
+  annotation: FrameAnnotationPayload | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const frameTaskStatusLabels: Record<string, string> = {
+  pending: "ожидает",
+  in_progress: "в работе",
+  done: "сохранено",
+  skipped: "пропущено",
+  uncertain: "не уверен",
 };
 
 type AnnotationItem = {
@@ -427,6 +503,7 @@ const bootstrap = readJsonScript<BootstrapData>("ui-bootstrap-data") || {
   page_title: "DataSetAI",
   active_page: "home",
   room_id: null,
+  video_id: null,
   profile_user_id: null,
   app_debug_mode: false,
   stats: { users: 0, rooms: 0, tasks: 0 },
@@ -575,6 +652,142 @@ function getErrorMessage(error: unknown) {
     return error.message;
   }
   return String(error || "Неизвестная ошибка.");
+}
+
+function getSearchParam(name: string) {
+  return new URLSearchParams(window.location.search).get(name) || "";
+}
+
+function getBooleanSearchParam(name: string, fallback = false) {
+  const value = getSearchParam(name).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(value)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(value)) {
+    return false;
+  }
+  return fallback;
+}
+
+function getRoomCreatePresetSearch() {
+  const rawDatasetMode = getSearchParam("dataset_mode") || getSearchParam("dataset");
+  const datasetMode = rawDatasetMode !== "demo" && datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "json";
+  const rawWorkflow = getSearchParam("annotation_workflow") || getSearchParam("workflow");
+  const annotationWorkflow =
+    rawWorkflow === "text_detect_text" && (datasetMode === "image" || datasetMode === "video") ? rawWorkflow : "standard";
+  const rawLabel = getSearchParam("label").trim();
+  return {
+    datasetMode,
+    annotationWorkflow,
+    title: getSearchParam("title").trim(),
+    datasetLabel: getSearchParam("dataset_label").trim(),
+    crossValidationEnabled: getBooleanSearchParam("cross_validation"),
+    reviewVotingEnabled: getBooleanSearchParam("review_voting"),
+    labels:
+      rawLabel && datasetModeConfig[datasetMode]?.usesLabels
+        ? [{ name: rawLabel, color: pickRandomLabelColor() }]
+        : ([] as Array<{ name: string; color: string }>),
+  };
+}
+
+type RoomCreateScenarioPreset = {
+  id: string;
+  title: string;
+  summary: string;
+  meta: string;
+  datasetMode: string;
+  annotationWorkflow: string;
+  defaultTitle: string;
+  datasetLabel: string;
+  labelName?: string;
+};
+
+type RoomCreateStepId = "scenario" | "main" | "data" | "team" | "quality";
+
+const roomCreateScenarioPresets: RoomCreateScenarioPreset[] = [
+  {
+    id: "json",
+    title: "JSON / текст",
+    summary: "Импорт текстовых задач из JSON или ZIP-архива.",
+    meta: "Файл",
+    datasetMode: "json",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка текстового датасета",
+    datasetLabel: "Текстовый датасет",
+  },
+  {
+    id: "image",
+    title: "Фото bbox",
+    summary: "Покадровые изображения с ручной bbox-разметкой.",
+    meta: "Изображения",
+    datasetMode: "image",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка изображений",
+    datasetLabel: "Датасет изображений",
+    labelName: "object",
+  },
+  {
+    id: "video",
+    title: "Видео по кадрам",
+    summary: "Видео с выбором интервалов и ручной bbox-разметкой кадров.",
+    meta: "Видео",
+    datasetMode: "video",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка видео",
+    datasetLabel: "Видеодатасет",
+    labelName: "object",
+  },
+];
+
+const roomCreateWizardSteps: Array<{
+  id: RoomCreateStepId;
+  title: string;
+  eyebrow: string;
+  description: string;
+}> = [
+  {
+    id: "scenario",
+    title: "Сценарий",
+    eyebrow: "Шаг 1",
+    description: "Выбери тип комнаты, чтобы форма подстроила датасет, workflow и стартовые labels.",
+  },
+  {
+    id: "main",
+    title: "Основное",
+    eyebrow: "Шаг 2",
+    description: "Название, датасет, описание и дедлайн, которые увидит команда.",
+  },
+  {
+    id: "data",
+    title: "Данные",
+    eyebrow: "Шаг 3",
+    description: "Источник задач, файлы и label palette для bbox-сценариев.",
+  },
+  {
+    id: "team",
+    title: "Команда",
+    eyebrow: "Шаг 4",
+    description: "Доступ, приглашённые участники и лимиты задач.",
+  },
+  {
+    id: "quality",
+    title: "Контроль качества",
+    eyebrow: "Шаг 5",
+    description: "Перекрестная разметка, валидация и пороги принятия.",
+  },
+];
+
+function getRoomCreateScenarioId(input: { datasetMode: string; annotationWorkflow: string }) {
+  if (input.datasetMode === "video") {
+    return "video";
+  }
+  if (input.datasetMode === "image") {
+    return "image";
+  }
+  if (input.datasetMode === "json") {
+    return "json";
+  }
+  return "json";
 }
 
 function normalizeToastType(type?: string): ToastType {
@@ -728,6 +941,54 @@ async function downloadRoomExport(roomId: number, exportFormat: string, authUser
   link.click();
   link.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+async function downloadVideoFrameExport(videoId: number, authUser: AuthUser) {
+  if (!authUser) {
+    throw new Error("Сначала войди в аккаунт.");
+  }
+
+  const response = await fetch(`/api/v1/videos/${videoId}/export/`, {
+    method: "GET",
+    headers: {
+      "X-User-Id": String(authUser.id),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      data = { detail: text || `Ошибка HTTP ${response.status}` };
+    }
+    throw new Error(data?.detail || `Ошибка HTTP ${response.status}`);
+  }
+
+  const disposition = response.headers.get("content-disposition") || "";
+  const filenameMatch = disposition.match(/filename="([^"]+)"/i);
+  const filename = filenameMatch?.[1] || `video-${videoId}-frame-annotations.json`;
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function formatVideoTime(seconds: number) {
+  const safeSeconds = Math.max(0, Number(seconds || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds - minutes * 60;
+  return `${String(minutes).padStart(2, "0")}:${rest.toFixed(2).padStart(5, "0")}`;
 }
 
 function formatPercent(value: number | null | undefined) {
@@ -1166,12 +1427,15 @@ function readVideoMetadata(file: File) {
 
     video.onloadedmetadata = () => {
       URL.revokeObjectURL(objectUrl);
+      const frameRate = 25;
+      const duration = Number(video.duration.toFixed(3));
       resolve({
         name: file.name,
         width: video.videoWidth,
         height: video.videoHeight,
-        duration: Number(video.duration.toFixed(3)),
-        frame_rate: 25,
+        duration,
+        frame_rate: frameRate,
+        frame_count: Math.max(1, Math.round(duration * frameRate)),
       });
     };
     video.onerror = () => {
@@ -1679,6 +1943,10 @@ function PageRouter() {
       return <RoomDetailPage />;
     case "room-work":
       return <RoomWorkPage />;
+    case "video-pre-annotation":
+      return <VideoPreAnnotationPage />;
+    case "frame-annotation":
+      return <FrameAnnotationPage />;
     case "room-invite":
       return <RoomInvitePage />;
     case "auth-login":
@@ -1691,68 +1959,147 @@ function PageRouter() {
 }
 
 function LandingPage() {
-  const { bootstrap } = useApp();
+  const { bootstrap, authUser } = useApp();
+  const stats = [
+    { label: "Пользователи", value: bootstrap.stats.users },
+    { label: "Комнаты", value: bootstrap.stats.rooms },
+    { label: "Задачи", value: bootstrap.stats.tasks },
+  ];
+  const scenarios = [
+    {
+      label: "Text",
+      title: "Текстовая разметка",
+      text: "Очереди задач, отправка ответов, ревью и экспорт результатов.",
+      href: "/rooms/create/?dataset_mode=json&title=Текстовая%20разметка&dataset_label=Текстовый%20датасет",
+    },
+    {
+      label: "Image",
+      title: "Image bbox",
+      text: "Ручная bbox-разметка изображений с сохранением нормализованных координат.",
+      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&title=Image%20bbox&dataset_label=Изображения",
+    },
+    {
+      label: "Video",
+      title: "Видеоинтервалы",
+      text: "Предварительный выбор кадров и интервалов перед детальной разметкой.",
+      href: "/rooms/create/?dataset_mode=video&workflow=standard&label=object&title=Видеоразметка&dataset_label=Видео",
+    },
+    {
+      label: "Review",
+      title: "Cross-validation",
+      text: "Несколько независимых разметок, consensus и ручная проверка спорных задач.",
+      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&cross_validation=1&review_voting=1&title=Разметка%20с%20проверкой&dataset_label=Контроль%20качества",
+    },
+  ];
+  const primaryHref = authUser ? "/rooms/" : "/auth/register/";
+  const primaryLabel = authUser ? "Открыть комнаты" : "Начать работу";
 
   return (
-    <>
-      <section className="hero-card hero-card--landing">
-        <div className="hero-card__main">
-          <span className="eyebrow hero-card__eyebrow">Crowdsourcing MVP</span>
-          <h1>Backend + интерфейс для разметки датасетов</h1>
-          <p>
-            Этот проект дает заказчику возможность создавать комнаты для разметки, приглашать исполнителей, выдавать задачи и
-            собирать результаты. Архитектура рассчитана на локальный запуск, корпоративное разворачивание и дальнейшее
-            развитие API без болезненного рефакторинга.
-          </p>
+    <main className="landing-shell">
+      <section className="landing-hero" aria-labelledby="landing-title">
+        <span className="landing-chip">DataSetAI Workspace</span>
+        <h1 id="landing-title">Разметка датасетов в одном рабочем контуре</h1>
+        <p>
+          Комнаты, роли, очереди задач, ручная разметка изображений и видео, cross-validation и экспорт собраны в спокойный
+          интерфейс для ежедневной командной работы.
+        </p>
+        <div className="landing-actions">
+          <a className="btn btn--primary" href={primaryHref}>
+            {primaryLabel}
+          </a>
+          <a className="btn btn--muted" href="/rooms/">
+            Посмотреть комнаты
+          </a>
         </div>
-        <div className="hero-card__stats">
-          <div className="metric-card">
-            <span>Пользователи</span>
-            <strong>{bootstrap.stats.users}</strong>
+        <div className="landing-stats" aria-label="Сводная статистика">
+          {stats.map((item) => (
+            <div className="landing-stat-pill" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-dashboard" aria-label="Рабочая сводка DataSetAI">
+        <div className="landing-dashboard__top">
+          <div>
+            <span>Room overview</span>
+            <strong>Dataset Quality Run</strong>
           </div>
-          <div className="metric-card">
-            <span>Комнаты</span>
-            <strong>{bootstrap.stats.rooms}</strong>
+          <a className="landing-dashboard__link" href="/rooms/">
+            Все комнаты
+          </a>
+        </div>
+        <div className="landing-dashboard__grid">
+          <div className="landing-dashboard-card landing-dashboard-card--large">
+            <div className="landing-card-head">
+              <span>Очередь разметки</span>
+              <strong>72%</strong>
+            </div>
+            <div className="landing-progress">
+              <span style={{ width: "72%" }}></span>
+            </div>
+            <div className="landing-queue">
+              <span>Image bbox</span>
+              <strong>148 задач</strong>
+            </div>
+            <div className="landing-queue">
+              <span>Video frames</span>
+              <strong>326 кадров</strong>
+            </div>
           </div>
-          <div className="metric-card">
-            <span>Задачи</span>
-            <strong>{bootstrap.stats.tasks}</strong>
+          <div className="landing-dashboard-card">
+            <span>Ревью</span>
+            <strong>24</strong>
+            <small>ожидают проверки</small>
+          </div>
+          <div className="landing-dashboard-card">
+            <span>Consensus</span>
+            <strong>91%</strong>
+            <small>согласовано</small>
+          </div>
+          <div className="landing-dashboard-card landing-dashboard-card--preview">
+            <div className="landing-frame-preview">
+              <span className="landing-frame-box landing-frame-box--one"></span>
+              <span className="landing-frame-box landing-frame-box--two"></span>
+            </div>
+            <small>ручная bbox-разметка</small>
           </div>
         </div>
       </section>
 
-      <section className="card-grid card-grid--three card-grid--compact">
-        <article className="info-card">
-          <h2>Что делает заказчик</h2>
-          <p>Создает комнаты, добавляет тестовый датасет, задает пароль, дедлайн и приглашает разметчиков.</p>
-        </article>
-        <article className="info-card">
-          <h2>Что делает разметчик</h2>
-          <p>Видит только доступные ему комнаты, заходит в рабочую среду, берет задачи и отправляет разметку.</p>
-        </article>
-        <article className="info-card">
-          <h2>Что уже заложено</h2>
-          <p>PostgreSQL, DRF API, mock identification, dashboard по комнате и профиль со статистикой активности.</p>
-        </article>
+      <section className="landing-section">
+        <div className="landing-section__head">
+          <span className="landing-chip">Workflows</span>
+          <h2>Сценарии разметки без лишнего переключения контекста</h2>
+        </div>
+        <div className="landing-scenario-grid">
+          {scenarios.map((item) => (
+            <a className="landing-scenario-card" href={item.href} key={item.title}>
+              <span>{item.label}</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+              <strong className="landing-scenario-card__action">Создать комнату</strong>
+            </a>
+          ))}
+        </div>
       </section>
 
-      <section className="wide-card wide-card--landing">
-        <div className="wide-card__column">
-          <h2>Текущая цель MVP</h2>
-          <p>
-            Быстро дать команде рабочий контур системы, где можно руками проверить основной пользовательский путь: создать
-            комнату, открыть ее, выполнить разметку и увидеть прогресс по работе.
-          </p>
+      <section className="landing-flow">
+        <div>
+          <span className="landing-chip">Pipeline</span>
+          <h2>От загрузки данных до JSON-экспорта</h2>
         </div>
-        <div className="wide-card__column">
-          <h2>Следующий естественный шаг</h2>
-          <p>
-            Подключить полноценную аутентификацию, реальную загрузку датасетов и управление жизненным циклом задач без
-            изменения базовой структуры проекта.
-          </p>
+        <div className="landing-flow__steps">
+          <span>Комната</span>
+          <span>Назначение</span>
+          <span>Разметка</span>
+          <span>Ревью</span>
+          <span>Экспорт</span>
         </div>
       </section>
-    </>
+    </main>
   );
 }
 
@@ -2405,29 +2752,35 @@ function RoomInvitePage() {
 function RoomCreatePage() {
   const { api, addToast, clearToasts } = useApp();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [title, setTitle] = useState("");
+  const presetRef = useRef(getRoomCreatePresetSearch());
+  const preset = presetRef.current;
+  const [title, setTitle] = useState(preset.title);
   const [password, setPassword] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [annotatorIds, setAnnotatorIds] = useState("");
-  const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
+  const [crossValidationEnabled, setCrossValidationEnabled] = useState(preset.crossValidationEnabled);
   const [crossValidationCount, setCrossValidationCount] = useState("2");
   const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
-  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(false);
+  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(preset.reviewVotingEnabled);
   const [reviewVotesRequired, setReviewVotesRequired] = useState("1");
   const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = useState("100");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
-  const [datasetMode, setDatasetMode] = useState("demo");
-  const [annotationWorkflow, setAnnotationWorkflow] = useState("standard");
-  const [datasetLabel, setDatasetLabel] = useState("Тестовый датасет");
+  const [datasetMode, setDatasetMode] = useState(preset.datasetMode);
+  const [annotationWorkflow, setAnnotationWorkflow] = useState(preset.annotationWorkflow);
+  const [datasetLabel, setDatasetLabel] = useState(preset.datasetLabel || "Тестовый датасет");
   const [testTaskCount, setTestTaskCount] = useState("12");
   const [videoExtractionFps, setVideoExtractionFps] = useState("");
   const [videoFrameStep, setVideoFrameStep] = useState("1");
   const [videoMaxFrames, setVideoMaxFrames] = useState("1000");
   const [videoManualKeyframePercent, setVideoManualKeyframePercent] = useState("10");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [labels, setLabels] = useState<Array<{ name: string; color: string }>>([]);
+  const [labels, setLabels] = useState<Array<{ name: string; color: string }>>(preset.labels);
+  const [selectedScenarioId, setSelectedScenarioId] = useState(getRoomCreateScenarioId(preset));
+  const [currentStep, setCurrentStep] = useState<RoomCreateStepId>("scenario");
+  const [maxUnlockedStepIndex, setMaxUnlockedStepIndex] = useState(0);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -2441,9 +2794,31 @@ function RoomCreatePage() {
     if (config?.usesLabels && !labels.length) {
       setLabels([{ name: "", color: pickRandomLabelColor() }]);
     }
-  }, [datasetMode]);
+    if (datasetMode !== "image" && datasetMode !== "video" && annotationWorkflow !== "standard") {
+      setAnnotationWorkflow("standard");
+    }
+  }, [datasetMode, annotationWorkflow, labels.length]);
+
+  useEffect(() => {
+    setSelectedScenarioId(getRoomCreateScenarioId({ datasetMode, annotationWorkflow }));
+  }, [datasetMode, annotationWorkflow]);
 
   const modeConfig = datasetModeConfig[datasetMode];
+  const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
+  const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
+  const filesPreview = modeConfig.usesFiles
+    ? selectedFiles.length
+      ? `${selectedFiles.length} файл(ов) выбрано`
+      : "Файлы ещё не выбраны"
+    : "Загрузка файлов не нужна";
+  const qualityPreview = crossValidationEnabled
+    ? `Перекрестная разметка: ${crossValidationCount || 2} исполнителя`
+    : "Обычная разметка";
+  const reviewPreview = reviewVotingEnabled ? `Пул валидации: ${reviewVotesRequired || 1} голос(ов)` : "Без пула валидации";
+  const currentStepIndex = Math.max(
+    roomCreateWizardSteps.findIndex((item) => item.id === currentStep),
+    0
+  );
   const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
   const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
   const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
@@ -2459,58 +2834,57 @@ function RoomCreatePage() {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    clearToasts();
-    setSubmitting(true);
+  function applyScenarioPreset(scenario: RoomCreateScenarioPreset) {
+    const knownTitles = roomCreateScenarioPresets.map((item) => item.defaultTitle);
+    setSelectedScenarioId(scenario.id);
+    setDatasetMode(scenario.datasetMode);
+    setAnnotationWorkflow(scenario.annotationWorkflow);
+    if (!title.trim() || knownTitles.includes(title.trim())) {
+      setTitle(scenario.defaultTitle);
+    }
+    if (!datasetLabel.trim() || datasetLabel === "Тестовый датасет" || roomCreateScenarioPresets.some((item) => item.datasetLabel === datasetLabel)) {
+      setDatasetLabel(scenario.datasetLabel);
+    }
+    if (datasetModeConfig[scenario.datasetMode]?.usesLabels) {
+      setLabels((current) => [{ name: scenario.labelName || current[0]?.name || "object", color: current[0]?.color || pickRandomLabelColor() }]);
+    } else {
+      setLabels([]);
+    }
+  }
 
-    try {
-      const normalizedAnnotatorIds = annotatorIds
-        .split(",")
-        .map((item) => Number(item.trim()))
-        .filter((item) => Number.isInteger(item) && item > 0);
-      const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
-      const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
-      const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
-      const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
-      const normalizedVideoFps = videoExtractionFps.trim() === "" ? null : Number(videoExtractionFps.trim());
-      const normalizedVideoFrameStep = Number(videoFrameStep || 1);
-      const normalizedVideoMaxFrames = Number(videoMaxFrames || 1000);
-      const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
 
+  function validateRoomCreateStep(stepId: RoomCreateStepId) {
+    const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+    const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+    const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
+    const normalizedVideoFps = videoExtractionFps.trim() === "" ? null : Number(videoExtractionFps.trim());
+    const normalizedVideoFrameStep = Number(videoFrameStep || 1);
+    const normalizedVideoMaxFrames = Number(videoMaxFrames || 1000);
+    const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
+
+
+    if (stepId === "main") {
+      if (!title.trim()) {
+        throw new Error("Укажи название комнаты.");
+      }
+      if (titleTooLong || descriptionTooLong || datasetLabelTooLong) {
+        throw new Error("Сократи текст в основных полях, которые выделены красным.");
+      }
+      if (deadlineError) {
+        throw new Error(deadlineError);
+      }
+    }
+
+    if (stepId === "data") {
       if (datasetMode !== "demo" && !selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
       }
-
       if (labelsRequired && !normalizedLabels.length) {
         throw new Error("Добавь хотя бы один лейбл для фото или видео.");
       }
-
-      if (crossValidationEnabled && Number(crossValidationCount) < 2) {
-        throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      if (hasLabelNameTooLong) {
+        throw new Error("Сократи название лейбла, которое выделено красным.");
       }
-
-      if (
-        reviewVotingEnabled &&
-        (!Number.isFinite(normalizedReviewVotesRequired) ||
-          normalizedReviewVotesRequired < 1 ||
-          normalizedReviewVotesRequired > 20 ||
-          !Number.isInteger(normalizedReviewVotesRequired))
-      ) {
-        throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
-      }
-
-      if (
-        normalizedDefaultQuota !== null &&
-        (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
-      ) {
-        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
-      }
-
-      if (hasCreateTextLimitError) {
-        throw new Error("Сократи текст в полях, которые выделены красным.");
-      }
-
       if (
         datasetMode === "video" &&
         (
@@ -2528,10 +2902,210 @@ function RoomCreatePage() {
       ) {
         throw new Error("Проверь настройки разбиения видео: FPS, шаг, лимит кадров и процент keyframe должны быть в допустимых пределах.");
       }
+    }
 
-      if (deadlineError) {
-        throw new Error(deadlineError);
+    if (stepId === "team") {
+      if (passwordTooLong || annotatorIdsTooLong) {
+        throw new Error("Сократи текст в полях команды, которые выделены красным.");
       }
+      if (
+        normalizedDefaultQuota !== null &&
+        (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
+      ) {
+        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
+      }
+    }
+
+    if (stepId === "quality") {
+      if (crossValidationEnabled && Number(crossValidationCount) < 2) {
+        throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+      }
+      if (
+        reviewVotingEnabled &&
+        (!Number.isFinite(normalizedReviewVotesRequired) ||
+          normalizedReviewVotesRequired < 1 ||
+          normalizedReviewVotesRequired > 20 ||
+          !Number.isInteger(normalizedReviewVotesRequired))
+      ) {
+        throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
+      }
+    }
+  }
+
+  function validateRoomCreateWizard() {
+    for (const [index, step] of roomCreateWizardSteps.entries()) {
+      try {
+        validateRoomCreateStep(step.id);
+      } catch (error) {
+        setCurrentStep(step.id);
+        setMaxUnlockedStepIndex((current) => Math.max(current, index));
+        throw error;
+      }
+    }
+  }
+
+  function getRoomCreateStepSummary(stepId: RoomCreateStepId) {
+    if (stepId === "scenario") {
+      return currentScenario.title;
+    }
+    if (stepId === "main") {
+      return `${title.trim() || currentScenario.defaultTitle} · ${datasetLabel.trim() || "Датасет без названия"}`;
+    }
+    if (stepId === "data") {
+      return `${translateDatasetMode(datasetMode)} · ${filesPreview}`;
+    }
+    if (stepId === "team") {
+      const invitedCount = annotatorIds
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean).length;
+      return invitedCount ? `Приглашено ID: ${invitedCount} · ${ownerIsAnnotator ? "создатель размечает" : "создатель не размечает"}` : ownerIsAnnotator ? "Создатель размечает задачи" : "Создатель не размечает задачи";
+    }
+    return `${qualityPreview} · ${reviewPreview}`;
+  }
+
+
+  function openRoomCreateStep(stepId: RoomCreateStepId) {
+    const nextIndex = roomCreateWizardSteps.findIndex((item) => item.id === stepId);
+    if (nextIndex > -1 && nextIndex <= maxUnlockedStepIndex) {
+      setCurrentStep(stepId);
+    }
+  }
+
+  function goToNextRoomCreateStep() {
+    clearToasts();
+    try {
+      validateRoomCreateStep(currentStep);
+      const nextIndex = Math.min(currentStepIndex + 1, roomCreateWizardSteps.length - 1);
+      setMaxUnlockedStepIndex((current) => Math.max(current, nextIndex));
+      setCurrentStep(roomCreateWizardSteps[nextIndex].id);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  function goToPreviousRoomCreateStep() {
+    const previousIndex = Math.max(currentStepIndex - 1, 0);
+    setCurrentStep(roomCreateWizardSteps[previousIndex].id);
+  }
+
+  function getNormalizedRoomCreateValues() {
+    const normalizedAnnotatorIds = annotatorIds
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item > 0);
+    const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+    const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+    const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
+    const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
+    const normalizedVideoFps = videoExtractionFps.trim() === "" ? null : Number(videoExtractionFps.trim());
+    const normalizedVideoFrameStep = Number(videoFrameStep || 1);
+    const normalizedVideoMaxFrames = Number(videoMaxFrames || 1000);
+    const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
+
+    if (datasetMode !== "demo" && !selectedFiles.length) {
+      throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
+    }
+
+    if (labelsRequired && !normalizedLabels.length) {
+      throw new Error("Добавь хотя бы один лейбл для фото или видео.");
+    }
+
+    if (crossValidationEnabled && Number(crossValidationCount) < 2) {
+      throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+    }
+
+    if (
+      reviewVotingEnabled &&
+      (!Number.isFinite(normalizedReviewVotesRequired) ||
+        normalizedReviewVotesRequired < 1 ||
+        normalizedReviewVotesRequired > 20 ||
+        !Number.isInteger(normalizedReviewVotesRequired))
+    ) {
+      throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
+    }
+
+    if (
+      normalizedDefaultQuota !== null &&
+      (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
+    ) {
+      throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
+    }
+
+    if (
+      datasetMode === "video" &&
+      (
+        (normalizedVideoFps !== null && (!Number.isInteger(normalizedVideoFps) || normalizedVideoFps < 1 || normalizedVideoFps > 120)) ||
+        !Number.isInteger(normalizedVideoFrameStep) ||
+        normalizedVideoFrameStep < 1 ||
+        normalizedVideoFrameStep > 1000 ||
+        !Number.isInteger(normalizedVideoMaxFrames) ||
+        normalizedVideoMaxFrames < 1 ||
+        normalizedVideoMaxFrames > 100000 ||
+        !Number.isInteger(normalizedVideoManualPercent) ||
+        normalizedVideoManualPercent < 1 ||
+        normalizedVideoManualPercent > 100
+        )
+    ) {
+      throw new Error("Проверь настройки разбиения видео: FPS, шаг, лимит кадров и процент keyframe должны быть в допустимых пределах.");
+    }
+
+    if (hasCreateTextLimitError) {
+      throw new Error("Сократи текст в полях, которые выделены красным.");
+    }
+
+    if (deadlineError) {
+      throw new Error(deadlineError);
+    }
+
+    return {
+      normalizedAnnotatorIds,
+      normalizedLabels,
+      normalizedDefaultQuota,
+      normalizedReviewVotesRequired,
+      normalizedReviewAcceptanceThreshold,
+      normalizedVideoFps,
+      normalizedVideoFrameStep,
+      normalizedVideoMaxFrames,
+      normalizedVideoManualPercent,
+    };
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    clearToasts();
+
+    if (currentStepIndex < roomCreateWizardSteps.length - 1) {
+      goToNextRoomCreateStep();
+      return;
+    }
+
+    try {
+      validateRoomCreateWizard();
+      getNormalizedRoomCreateValues();
+      setConfirmationOpen(true);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  async function submitRoomCreate() {
+    clearToasts();
+    setSubmitting(true);
+
+    try {
+      const {
+        normalizedAnnotatorIds,
+        normalizedLabels,
+        normalizedDefaultQuota,
+        normalizedReviewVotesRequired,
+        normalizedReviewAcceptanceThreshold,
+        normalizedVideoFps,
+        normalizedVideoFrameStep,
+        normalizedVideoMaxFrames,
+        normalizedVideoManualPercent,
+      } = getNormalizedRoomCreateValues();
+
 
       const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
       const payload = new FormData();
@@ -2578,6 +3152,7 @@ function RoomCreatePage() {
         method: "POST",
         formData: payload,
       });
+      setConfirmationOpen(false);
       addToast(`Комната #${room.id} создана. Переходим к ней.`, "success");
       window.setTimeout(() => {
         window.location.href = `/rooms/${room.id}/`;
@@ -2587,6 +3162,68 @@ function RoomCreatePage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function renderRoomCreateStep(stepId: RoomCreateStepId, children: React.ReactNode) {
+    const stepIndex = roomCreateWizardSteps.findIndex((item) => item.id === stepId);
+    const step = roomCreateWizardSteps[stepIndex];
+    const isActive = currentStep === stepId;
+    const isUnlocked = stepIndex <= maxUnlockedStepIndex;
+
+    if (!step) {
+      return null;
+    }
+
+    return (
+      <section key={step.id} className={`room-create-section room-create-wizard-section ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`}>
+        <div className="room-create-wizard-head">
+          <button
+            className="room-create-wizard-head__main"
+            type="button"
+            disabled={!isUnlocked || isActive}
+            onClick={() => openRoomCreateStep(step.id)}
+          >
+            <span className="room-create-step-number">{stepIndex + 1}</span>
+            <span className="room-create-wizard-head__copy">
+              <span className="eyebrow">{step.eyebrow}</span>
+              <strong>{step.title}</strong>
+              <small>{isActive ? step.description : getRoomCreateStepSummary(step.id)}</small>
+            </span>
+          </button>
+          {!isActive && isUnlocked ? (
+            <button className="btn btn--muted btn--compact" type="button" onClick={() => openRoomCreateStep(step.id)}>
+              Изменить
+            </button>
+          ) : null}
+        </div>
+
+        {isActive ? (
+          <div className="room-create-step-body">
+            {children}
+            <div className="room-create-step-actions">
+              {currentStepIndex > 0 ? (
+                <button className="btn btn--muted" type="button" onClick={goToPreviousRoomCreateStep}>
+                  Назад
+                </button>
+              ) : (
+                <a className="btn btn--muted" href="/rooms/">
+                  Назад к комнатам
+                </a>
+              )}
+              {currentStepIndex < roomCreateWizardSteps.length - 1 ? (
+                <button className="btn btn--primary" type="button" onClick={goToNextRoomCreateStep}>
+                  Далее
+                </button>
+              ) : (
+                <button className="btn btn--primary" type="submit" disabled={submitting}>
+                  Проверить и создать
+                </button>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
   }
 
   return (
@@ -2599,338 +3236,447 @@ function RoomCreatePage() {
         </div>
       </section>
 
-      <section className="room-create-layout">
-        <form className="room-create-form" onSubmit={handleSubmit}>
-          <div className="room-create-main">
-            <section className="create-section">
-              <div className="create-section__head">
-                <span>01</span>
-                <h2>Основное</h2>
-              </div>
-              <div className="create-section__body create-section__body--grid">
-                <label className="field field--wide">
-                  <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
-                  <input
-                    value={title}
-                    name="title"
-                    type="text"
-                    placeholder="Например, Разметка отзывов Q2"
-                    required
-                    className={titleTooLong ? "field__control--invalid" : ""}
-                    aria-invalid={titleTooLong}
-                    onChange={(event) => setTitle(event.currentTarget.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Дедлайн</span>
-                  <input
-                    value={deadline}
-                    name="deadline"
-                    type="datetime-local"
-                    className={deadlineError ? "field__control--invalid" : ""}
-                    aria-invalid={Boolean(deadlineError)}
-                    onChange={(event) => setDeadline(event.currentTarget.value)}
-                  />
-                  {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
-                </label>
-                <label className="field">
-                  <span>Пароль комнаты</span>
-                  <input
-                    value={password}
-                    name="password"
-                    type="password"
-                    placeholder="Необязательно"
-                    className={passwordTooLong ? "field__control--invalid" : ""}
-                    aria-invalid={passwordTooLong}
-                    onChange={(event) => setPassword(event.currentTarget.value)}
-                  />
-                </label>
-                <label className="field field--full">
-                  <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
-                  <textarea
-                    value={description}
-                    name="description"
-                    rows={4}
-                    placeholder="Кратко опиши задачу и правила разметки"
-                    className={descriptionTooLong ? "field__control--invalid" : ""}
-                    aria-invalid={descriptionTooLong}
-                    onChange={(event) => setDescription(event.currentTarget.value)}
-                  ></textarea>
-                </label>
-              </div>
-            </section>
 
-            <section className="create-section">
-              <div className="create-section__head">
-                <span>02</span>
-                <h2>Датасет</h2>
+      <section className="create-layout create-layout--room-create">
+        <form id="room-create-form" className="room-create-form" onSubmit={handleSubmit}>
+          <div className="room-create-stepper" aria-label="Шаги создания комнаты">
+            {roomCreateWizardSteps.map((step, index) => {
+              const isActive = currentStep === step.id;
+              const isUnlocked = index <= maxUnlockedStepIndex;
+              return (
+                <button
+                  key={step.id}
+                  className={`room-create-stepper__item ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`}
+                  type="button"
+                  disabled={!isUnlocked}
+                  aria-current={isActive ? "step" : undefined}
+                  onClick={() => openRoomCreateStep(step.id)}
+                >
+                  <span>{index + 1}</span>
+                  <strong>{step.title}</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          {renderRoomCreateStep(
+            "scenario",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Сценарий</span>
+                <h2>Выбери стартовый сценарий</h2>
               </div>
-              <div className="create-section__body">
-                <div className="segmented-control" role="group" aria-label="Тип датасета">
-                  {(["demo", "json", "image", "video"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      className={`segmented-control__item ${datasetMode === mode ? "is-active" : ""}`}
-                      type="button"
-                      aria-pressed={datasetMode === mode}
-                      onClick={() => setDatasetMode(mode)}
-                    >
-                      {datasetModeLabels[mode]}
-                    </button>
-                  ))}
-                </div>
-                <div className="create-section__body--grid">
+              <p>Карточка заполняет тип датасета, workflow, название и базовый label. Все параметры ниже можно изменить вручную.</p>
+            </div>
+            <div className="room-create-scenario-grid">
+              {roomCreateScenarioPresets.map((scenario) => (
+                <button
+                  key={scenario.id}
+                  className={`room-create-scenario-card ${scenario.id === selectedScenarioId ? "is-active" : ""}`}
+                  type="button"
+                  aria-pressed={scenario.id === selectedScenarioId}
+                  onClick={() => applyScenarioPreset(scenario)}
+                >
+                  <span>{scenario.meta}</span>
+                  <strong>{scenario.title}</strong>
+                  <p>{scenario.summary}</p>
+                </button>
+              ))}
+            </div>
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "main",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Основное</span>
+                <h2>Название и контекст</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
+                <input
+                  value={title}
+                  name="title"
+                  type="text"
+                  placeholder="Например, Разметка отзывов Q2"
+                  required
+                  className={titleTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={titleTooLong}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                <input
+                  value={datasetLabel}
+                  name="dataset_label"
+                  type="text"
+                  className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={datasetLabelTooLong}
+                  onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field field--full">
+                <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
+                <textarea
+                  value={description}
+                  name="description"
+                  rows={4}
+                  placeholder="Кратко опиши задачу и правила разметки"
+                  className={descriptionTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={descriptionTooLong}
+                  onChange={(event) => setDescription(event.currentTarget.value)}
+                ></textarea>
+              </label>
+              <label className="field">
+                <span>Дедлайн (необязательно)</span>
+                <input
+                  value={deadline}
+                  name="deadline"
+                  type="datetime-local"
+                  className={deadlineError ? "field__control--invalid" : ""}
+                  aria-invalid={Boolean(deadlineError)}
+                  onChange={(event) => setDeadline(event.currentTarget.value)}
+                />
+                {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
+              </label>
+            </div>
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "data",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Данные</span>
+                <h2>Источник и разметка</h2>
+              </div>
+              <p>{modeConfig.hint}</p>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <span>Тип датасета</span>
+                <select value={datasetMode} name="dataset_mode" onChange={(event) => setDatasetMode(event.currentTarget.value)}>
+                  <option value="json">JSON файл</option>
+                  <option value="image">Фото</option>
+                  <option value="video">Видео</option>
+                </select>
+              </label>
+              {(datasetMode === "image" || datasetMode === "video") && (
+                <label className="field">
+                  <span>Сценарий разметки</span>
+                  <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
+                    <option value="standard">Обычная разметка</option>
+                    <option value="text_detect_text">Object detect + text</option>
+                  </select>
+                </label>
+              )}
+              {datasetMode === "video" && (
+                <>
                   <label className="field">
-                    <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                    <span>FPS извлечения</span>
                     <input
-                      value={datasetLabel}
-                      name="dataset_label"
-                      type="text"
-                      className={datasetLabelTooLong ? "field__control--invalid" : ""}
-                      aria-invalid={datasetLabelTooLong}
-                      onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                      value={videoExtractionFps}
+                      name="video_extraction_fps"
+                      type="number"
+                      min="1"
+                      max="120"
+                      placeholder="Все кадры"
+                      onChange={(event) => setVideoExtractionFps(event.currentTarget.value)}
                     />
                   </label>
-                  {(datasetMode === "image" || datasetMode === "video") && (
-                    <label className="field">
-                      <span>Сценарий разметки</span>
-                      <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
-                        <option value="standard">Обычная разметка</option>
-                        <option value="text_detect_text">Object detect + text</option>
-                      </select>
-                    </label>
-                  )}
-                  {datasetMode === "demo" && (
-                    <label className="field">
-                      <span>Количество тестовых задач</span>
-                      <input value={testTaskCount} name="test_task_count" type="number" min="1" max="100" onChange={(event) => setTestTaskCount(event.currentTarget.value)} />
-                    </label>
-                  )}
-                  {datasetMode === "video" && (
-                    <>
-                      <label className="field">
-                        <span>FPS извлечения</span>
-                        <input
-                          value={videoExtractionFps}
-                          name="video_extraction_fps"
-                          type="number"
-                          min="1"
-                          max="120"
-                          placeholder="Все кадры"
-                          onChange={(event) => setVideoExtractionFps(event.currentTarget.value)}
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Шаг кадров</span>
-                        <input value={videoFrameStep} name="video_frame_step" type="number" min="1" max="1000" onChange={(event) => setVideoFrameStep(event.currentTarget.value)} />
-                      </label>
-                      <label className="field">
-                        <span>Лимит кадров на видео</span>
-                        <input value={videoMaxFrames} name="video_max_frames" type="number" min="1" max="100000" onChange={(event) => setVideoMaxFrames(event.currentTarget.value)} />
-                      </label>
-                      <label className="field">
-                        <span>Ручные keyframe, %</span>
-                        <input
-                          value={videoManualKeyframePercent}
-                          name="video_manual_keyframe_percent"
-                          type="number"
-                          min="1"
-                          max="100"
-                          onChange={(event) => setVideoManualKeyframePercent(event.currentTarget.value)}
-                        />
-                      </label>
-                    </>
-                  )}
-                </div>
-                <div className={`dataset-uploader ${modeConfig.usesFiles ? "" : "is-disabled"}`}>
-                  <input
-                    ref={fileInputRef}
-                    className="dataset-uploader__input"
-                    type="file"
-                    disabled={!modeConfig.usesFiles}
-                    accept={modeConfig.accept}
-                    multiple={modeConfig.multiple}
-                    onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
-                  />
-                  <div className="dataset-uploader__copy">
-                    <strong>{modeConfig.usesFiles ? "Файлы датасета" : "Demo-датасет"}</strong>
-                    <span>{modeConfig.hint}</span>
-                  </div>
-                  <div className="dataset-uploader__actions">
-                    <button className="btn btn--muted btn--compact" type="button" disabled={!modeConfig.usesFiles} onClick={() => fileInputRef.current?.click()}>
-                      Выбрать файлы
-                    </button>
-                    <span>{selectedFilesSummary}</span>
-                  </div>
-                </div>
+                  <label className="field">
+                    <span>Шаг кадров</span>
+                    <input value={videoFrameStep} name="video_frame_step" type="number" min="1" max="1000" onChange={(event) => setVideoFrameStep(event.currentTarget.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Лимит кадров на видео</span>
+                    <input value={videoMaxFrames} name="video_max_frames" type="number" min="1" max="100000" onChange={(event) => setVideoMaxFrames(event.currentTarget.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Ручные keyframe, %</span>
+                    <input
+                      value={videoManualKeyframePercent}
+                      name="video_manual_keyframe_percent"
+                      type="number"
+                      min="1"
+                      max="100"
+                      onChange={(event) => setVideoManualKeyframePercent(event.currentTarget.value)}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+
+            <div className="dataset-box room-create-upload-box">
+              <div>
+                <h2>Загрузка датасета</h2>
+                <p>{modeConfig.usesFiles ? "Выбери файлы, которые станут задачами комнаты." : "Demo-комната создаст задачи автоматически."}</p>
               </div>
-            </section>
+              <div className="dataset-box__actions dataset-box__actions--stack">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  disabled={!modeConfig.usesFiles}
+                  accept={modeConfig.accept}
+                  multiple={modeConfig.multiple}
+                  onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
+                />
+                <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
+              </div>
+            </div>
 
             {modeConfig.usesLabels && (
-              <section className="create-section">
-                <div className="create-section__head">
-                  <span>03</span>
-                  <h2>Лейблы</h2>
+              <div className="room-create-labels">
+                <div className="room-create-section__head room-create-section__head--compact">
+                  <div>
+                    <span className="eyebrow">Labels</span>
+                    <h2>Лейблы для bbox</h2>
+                  </div>
+                  <p>Цвет каждому label-у назначается случайно, но его можно сразу изменить.</p>
                 </div>
-                <div className="create-section__body">
-                  <div className="label-editor-list">
-                    {labels.map((label, index) => (
-                      <div key={`label-${index}`} className="label-editor-row label-editor-row--create">
-                        <label className="field">
-                          <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
-                          <input
-                            className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
-                            type="text"
-                            placeholder="Например, car"
-                            value={label.name}
-                            aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
-                            onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
-                          />
-                        </label>
-                        <label className="field field--color">
-                          <span>Цвет</span>
-                          <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
-                        </label>
-                        <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                          Убрать
-                        </button>
-                      </div>
+                <div className="label-editor-list">
+                  {labels.map((label, index) => (
+                    <div key={`label-${index}`} className="label-editor-row">
+                      <label className="field">
+                        <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
+                        <input
+                          className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
+                          type="text"
+                          placeholder="Например, car"
+                          value={label.name}
+                          aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
+                          onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
+                        />
+                      </label>
+                      <label className="field field--color">
+                        <span>Цвет</span>
+                        <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
+                      </label>
+                      <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                        Убрать
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="form-actions form-actions--tight">
+                  <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
+                    Добавить лейбл
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "team",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Команда</span>
+                <h2>Доступ и квоты</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <span>Пароль комнаты</span>
+                <input
+                  value={password}
+                  name="password"
+                  type="password"
+                  placeholder="Например, demo123"
+                  className={passwordTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={passwordTooLong}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
+                <input
+                  value={annotatorIds}
+                  name="annotator_ids"
+                  type="text"
+                  placeholder="Например, 2,3,7"
+                  className={annotatorIdsTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={annotatorIdsTooLong}
+                  onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Стандартная квота задач</span>
+                <input
+                  value={defaultAssignmentQuota}
+                  name="default_assignment_quota"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="По количеству задач"
+                  onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field field--checkbox">
+                <span>Создатель в разметке</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                  <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
+                </span>
+              </label>
+            </div>
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "quality",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Контроль качества</span>
+                <h2>Перекрестная разметка и ревью</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field field--checkbox">
+                <span>Перекрестная разметка</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Включить независимых исполнителей</span>
+                  <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Пул валидации</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                  <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field">
+                <span>Количество независимых исполнителей (n)</span>
+                <input
+                  value={crossValidationCount}
+                  name="cross_validation_annotators_count"
+                  type="number"
+                  min="2"
+                  max="20"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог сходства (%)</span>
+                <input
+                  value={crossValidationThreshold}
+                  name="cross_validation_similarity_threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Голосов для решения</span>
+                <input
+                  value={reviewVotesRequired}
+                  name="review_votes_required"
+                  type="number"
+                  min="1"
+                  max="20"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог принятия (%)</span>
+                <input
+                  value={reviewAcceptanceThreshold}
+                  name="review_acceptance_threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
+                />
+              </label>
+            </div>
+            </>
+          )}
+
+        </form>
+
+        {confirmationOpen ? (
+          <div className="modal-shell" role="presentation" onClick={() => (submitting ? undefined : setConfirmationOpen(false))}>
+            <div
+              className="modal-card modal-card--room-create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="room-create-confirm-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-card__head">
+                <span className="eyebrow">Подтверждение</span>
+                <h2 id="room-create-confirm-title">Создать комнату?</h2>
+                <p>Проверь основные параметры перед созданием. После создания комнату можно будет открыть и продолжить настройку доступа.</p>
+              </div>
+              <div className="room-create-confirm-grid">
+                <div>
+                  <span>Название</span>
+                  <strong>{title.trim() || currentScenario.defaultTitle}</strong>
+                </div>
+                <div>
+                  <span>Сценарий</span>
+                  <strong>{currentScenario.title}</strong>
+                </div>
+                <div>
+                  <span>Датасет</span>
+                  <strong>{translateDatasetMode(datasetMode)}</strong>
+                </div>
+                <div>
+                  <span>Workflow</span>
+                  <strong>{translateAnnotationWorkflow(annotationWorkflow)}</strong>
+                </div>
+                <div>
+                  <span>Файлы</span>
+                  <strong>{filesPreview}</strong>
+                </div>
+                <div>
+                  <span>Качество</span>
+                  <strong>{qualityPreview}</strong>
+                </div>
+                <div>
+                  <span>Ревью</span>
+                  <strong>{reviewPreview}</strong>
+                </div>
+              </div>
+              <div className="room-create-confirm-labels">
+                <span>Лейблы</span>
+                {normalizedLabelsPreview.length ? (
+                  <div>
+                    {normalizedLabelsPreview.map((label) => (
+                      <strong key={label}>{label}</strong>
                     ))}
                   </div>
-                  <div className="create-section__actions">
-                    <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
-                      Добавить лейбл
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )}
-
-            <section className="create-section">
-              <div className="create-section__head">
-                <span>{modeConfig.usesLabels ? "04" : "03"}</span>
-                <h2>Участники</h2>
+                ) : (
+                  <p>{modeConfig.usesLabels ? "Лейблы не заполнены." : "Для этого сценария label palette не нужен."}</p>
+                )}
               </div>
-              <div className="create-section__body create-section__body--grid">
-                <label className="field field--wide">
-                  <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
-                  <input
-                    value={annotatorIds}
-                    name="annotator_ids"
-                    type="text"
-                    placeholder="Например, 2,3,7"
-                    className={annotatorIdsTooLong ? "field__control--invalid" : ""}
-                    aria-invalid={annotatorIdsTooLong}
-                    onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
-                  />
-                </label>
-                <label className="field">
-                  <span>Стандартная квота задач</span>
-                  <input
-                    value={defaultAssignmentQuota}
-                    name="default_assignment_quota"
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="Без лимита"
-                    onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
-                  />
-                </label>
-                <label className="toggle-row field--full">
-                  <span>
-                    <strong>Создатель размечает задачи</strong>
-                    <small>Включить владельца комнаты в пул исполнителей</small>
-                  </span>
-                  <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
-                </label>
+              <div className="modal-card__actions">
+                <button className="btn btn--muted" type="button" disabled={submitting} onClick={() => setConfirmationOpen(false)}>
+                  Вернуться к форме
+                </button>
+                <button className="btn btn--primary" type="button" disabled={submitting} onClick={submitRoomCreate}>
+                  {submitting ? "Создаем..." : "Подтвердить создание"}
+                </button>
               </div>
-            </section>
-
-            <section className="create-section">
-              <div className="create-section__head">
-                <span>{modeConfig.usesLabels ? "05" : "04"}</span>
-                <h2>Проверка</h2>
-              </div>
-              <div className="create-section__body">
-                <div className="toggle-grid">
-                  <label className="toggle-row">
-                    <span>
-                      <strong>Перекрестная разметка</strong>
-                      <small>Несколько независимых исполнителей на задачу</small>
-                    </span>
-                    <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
-                  </label>
-                  <label className="toggle-row">
-                    <span>
-                      <strong>Пул валидации</strong>
-                      <small>Финальная разметка уходит на голосование</small>
-                    </span>
-                    <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
-                  </label>
-                </div>
-                <div className="create-section__body--grid">
-                  <label className="field">
-                    <span>Независимых исполнителей</span>
-                    <input
-                      value={crossValidationCount}
-                      name="cross_validation_annotators_count"
-                      type="number"
-                      min="2"
-                      max="20"
-                      disabled={!crossValidationEnabled}
-                      onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Порог сходства, %</span>
-                    <input
-                      value={crossValidationThreshold}
-                      name="cross_validation_similarity_threshold"
-                      type="number"
-                      min="1"
-                      max="100"
-                      disabled={!crossValidationEnabled}
-                      onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Голосов для решения</span>
-                    <input
-                      value={reviewVotesRequired}
-                      name="review_votes_required"
-                      type="number"
-                      min="1"
-                      max="20"
-                      disabled={!reviewVotingEnabled}
-                      onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Порог принятия, %</span>
-                    <input
-                      value={reviewAcceptanceThreshold}
-                      name="review_acceptance_threshold"
-                      type="number"
-                      min="1"
-                      max="100"
-                      disabled={!reviewVotingEnabled}
-                      onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
-                    />
-                  </label>
-                </div>
-              </div>
-            </section>
-
-            <div className="room-create-actions">
-              <a className="btn btn--muted" href="/rooms/">
-                К комнатам
-              </a>
-              <button className="btn btn--primary" type="submit" disabled={submitting}>
-                {submitting ? "Создаем комнату..." : "Создать комнату"}
-              </button>
             </div>
           </div>
-        </form>
+        ) : null}
       </section>
     </>
   );
@@ -3436,7 +4182,7 @@ function RoomDetailPage() {
       const nextDashboard = await api<RoomDashboard>(`/api/v1/rooms/${roomId}/dashboard/`);
       setDashboard(nextDashboard);
 
-      if (nextDashboard.actor.can_edit_room && nextDashboard.room.dataset_type === "image" && manageSectionOpen) {
+      if (nextDashboard.actor.can_edit_room && ["image", "video"].includes(nextDashboard.room.dataset_type) && manageSectionOpen) {
         await loadDatasetTasks(roomId);
       } else {
         setDatasetTasksLoading(false);
@@ -3480,7 +4226,7 @@ function RoomDetailPage() {
   }, [dashboard?.actor.can_review, reviewSectionOpen]);
 
   useEffect(() => {
-    if (!dashboard?.actor.can_edit_room || dashboard.room.dataset_type !== "image" || !manageSectionOpen) {
+    if (!dashboard?.actor.can_edit_room || !["image", "video"].includes(dashboard.room.dataset_type) || !manageSectionOpen) {
       return;
     }
 
@@ -3879,7 +4625,9 @@ function RoomDetailPage() {
     dashboard &&
       (dashboard.actor.can_edit_room || dashboard.actor.can_delete_room || dashboard.actor.can_export || dashboard.actor.can_invite)
   );
+  const firstVideoTask = dashboard?.video_tasks?.[0] || null;
   const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
+  const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
 
   return (
     <>
@@ -3916,7 +4664,11 @@ function RoomDetailPage() {
           )}
           {dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? (
             <div className="room-header-cta" aria-label="Действия комнаты">
-              {dashboard.actor.can_annotate ? (
+              {dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? (
+                <a className="btn btn--primary room-header-cta__button" href={`/videos/${firstVideoTask.id}/pre-annotate/`}>
+                  Выбрать кадры
+                </a>
+              ) : dashboard.actor.can_annotate ? (
                 <a className="btn btn--primary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/`}>
                   Приступить к работе
                 </a>
@@ -4160,6 +4912,58 @@ function RoomDetailPage() {
                               </div>
                             ) : null}
                           </>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {canManageVideoDataset ? (
+                      <div className="panel-card manage-card-legacy manage-card-legacy--dataset">
+                        <div className="panel-card__head">
+                          <h2>Видео датасет</h2>
+                          <span className="eyebrow room-settings-panel__eyebrow">2 этапа</span>
+                        </div>
+                        <label className="field panel-search">
+                          <span>Поиск по видео</span>
+                          <input
+                            value={datasetTaskSearch}
+                            type="text"
+                            placeholder="Файл или ID"
+                            onChange={(event) => setDatasetTaskSearch(event.currentTarget.value)}
+                          />
+                        </label>
+                        <div className="summary-stack dataset-manager-summary">
+                          <div className="summary-row">
+                            <span>Видео</span>
+                            <strong>{datasetTasks.length}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>По фильтру</span>
+                            <strong>{filteredDatasetTasks.length}</strong>
+                          </div>
+                        </div>
+                        {datasetTasksLoading ? (
+                          <div className="empty-card">Загружаем видео датасета.</div>
+                        ) : !datasetTasks.length ? (
+                          <div className="empty-card">В датасете пока нет видео.</div>
+                        ) : !filteredDatasetTasks.length ? (
+                          <div className="empty-card">По этому запросу видео не найдены.</div>
+                        ) : (
+                          <div className="dataset-task-list" aria-label="Видео датасета">
+                            {displayedDatasetTasks.map((task) => (
+                              <div key={task.id} className="dataset-task-row dataset-task-row--video">
+                                <span className="dataset-task-row__thumb dataset-task-row__thumb--empty" aria-hidden="true"></span>
+                                <span className="dataset-task-row__meta">
+                                  <strong>{task.source_name || `Видео #${task.id}`}</strong>
+                                  <span>
+                                    #{task.id} · {Number(task.input_payload?.frame_count || 0)} кадров · {translateTaskStatus(task.status)}
+                                  </span>
+                                </span>
+                                <a className="btn btn--primary btn--compact" href={`/videos/${task.id}/pre-annotate/`}>
+                                  Выбрать кадры
+                                </a>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
                     ) : null}
@@ -4599,6 +5403,1098 @@ function RoomDetailPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function VideoPreAnnotationPage() {
+  const { bootstrap, api, addToast, clearToasts } = useApp();
+  const videoId = bootstrap.video_id;
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [video, setVideo] = useState<VideoItem | null>(null);
+  const [selections, setSelections] = useState<VideoSelectionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [rangeStart, setRangeStart] = useState<number | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<number | null>(null);
+
+  const fps = Number(video?.fps || 25);
+  const frameCount = Number(video?.frame_count || 0);
+  const currentFrame = clampNumber(Math.floor(currentTime * fps), 0, Math.max(frameCount - 1, 0));
+  const timelineProgress = frameCount > 1 ? (currentFrame / (frameCount - 1)) * 100 : 0;
+
+  async function refresh() {
+    if (!videoId) {
+      addToast("Не удалось определить видео из URL.", "error");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [nextVideo, nextSelections] = await Promise.all([
+        api<VideoItem>(`/api/v1/videos/${videoId}/`),
+        api<VideoSelectionItem[]>(`/api/v1/videos/${videoId}/selections/`),
+      ]);
+      setVideo(nextVideo);
+      setSelections(nextSelections || []);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (event.code === "Space") {
+        event.preventDefault();
+        handlePlayPause();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        seekToFrame(currentFrame - 1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        seekToFrame(currentFrame + 1);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentFrame, fps, frameCount, playing]);
+
+  function seekToFrame(frameIndex: number) {
+    const videoElement = videoRef.current;
+    if (!videoElement || !video) {
+      return;
+    }
+    const clampedFrame = clampNumber(frameIndex, 0, Math.max(video.frame_count - 1, 0));
+    videoElement.currentTime = clampedFrame / fps;
+    setCurrentTime(videoElement.currentTime);
+  }
+
+  function handlePlayPause() {
+    const videoElement = videoRef.current;
+    if (!videoElement) {
+      return;
+    }
+    if (videoElement.paused) {
+      videoElement.play();
+    } else {
+      videoElement.pause();
+    }
+  }
+
+  function handleVideoMetadata(event: React.SyntheticEvent<HTMLVideoElement>) {
+    event.currentTarget.currentTime = 0;
+    setCurrentTime(0);
+    setPlaying(false);
+  }
+
+  async function createSelection(startFrame: number, endFrame: number) {
+    if (!videoId) {
+      return;
+    }
+    clearToasts();
+    setBusy(true);
+    try {
+      const selection = await api<VideoSelectionItem>(`/api/v1/videos/${videoId}/selections/`, {
+        method: "POST",
+        body: { start_frame: startFrame, end_frame: endFrame },
+      });
+      setSelections((current) => [...current, selection].sort((a, b) => a.start_frame - b.start_frame || a.id - b.id));
+      addToast(startFrame === endFrame ? `Кадр ${startFrame} добавлен.` : `Интервал ${startFrame}-${endFrame} добавлен.`, "success");
+      if (startFrame !== endFrame) {
+        setRangeStart(null);
+        setRangeEnd(null);
+      }
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateSelection(selection: VideoSelectionItem) {
+    clearToasts();
+    setBusy(true);
+    try {
+      const updated = await api<VideoSelectionItem>(`/api/v1/video-selections/${selection.id}/`, {
+        method: "PATCH",
+        body: { start_frame: selection.start_frame, end_frame: selection.end_frame },
+      });
+      setSelections((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      addToast("Интервал обновлен.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSelection(selectionId: number) {
+    clearToasts();
+    setBusy(true);
+    try {
+      await api(`/api/v1/video-selections/${selectionId}/`, { method: "DELETE" });
+      setSelections((current) => current.filter((item) => item.id !== selectionId));
+      addToast("Выбор удален.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function generateFrameTasksForSelection(selection: VideoSelectionItem) {
+    clearToasts();
+    setBusy(true);
+    try {
+      const result = await api<{ created_count: number; skipped_duplicates_count: number }>(
+        `/api/v1/video-selections/${selection.id}/generate-frame-tasks/`,
+        {
+          method: "POST",
+          body: {},
+        }
+      );
+      addToast(
+        `${formatSelectionTitle(selection)}: создано задач ${result.created_count}, уже существовало ${result.skipped_duplicates_count}.`,
+        "success"
+      );
+      await refresh();
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startSelectionAnnotation(selection: VideoSelectionItem) {
+    if (!videoId) {
+      return;
+    }
+    clearToasts();
+    setBusy(true);
+    try {
+      const updated = await api<VideoSelectionItem>(`/api/v1/video-selections/${selection.id}/`, {
+        method: "PATCH",
+        body: { start_frame: selection.start_frame, end_frame: selection.end_frame },
+      });
+      await api(`/api/v1/video-selections/${updated.id}/generate-frame-tasks/`, {
+        method: "POST",
+        body: {},
+      });
+      window.location.href = `/videos/${videoId}/frames/?selection=${updated.id}`;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setBusy(false);
+    }
+  }
+
+  const persistedSelectedFramesCount = selections.reduce((sum, item) => sum + Math.abs(item.end_frame - item.start_frame) + 1, 0);
+  const draftRangeFramesCount =
+    rangeStart == null || rangeEnd == null ? 0 : Math.abs(Number(rangeEnd) - Number(rangeStart)) + 1;
+  const generatedSelectionsCount = selections.filter((item) => item.status === "generated").length;
+
+  function getSelectionFrameCount(selection: VideoSelectionItem) {
+    return Math.abs(selection.end_frame - selection.start_frame) + 1;
+  }
+
+  function formatSelectionTitle(selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return startFrame === endFrame ? `Кадр ${startFrame}` : `Интервал ${startFrame}-${endFrame}`;
+  }
+
+  return (
+    <section className="video-workspace">
+      <header className="video-workspace__header">
+        <div>
+          <span className="eyebrow">Предварительная разметка видео</span>
+          <h1>{video?.source_name || "Предварительная разметка видео"}</h1>
+        </div>
+        <div className="video-workspace__actions">
+          {video?.room_id ? (
+            <a className="btn btn--muted btn--compact" href={`/rooms/${video.room_id}/`}>
+              К комнате
+            </a>
+          ) : null}
+          {videoId ? (
+            <a className="btn btn--primary btn--compact" href={`/videos/${videoId}/frames/`}>
+              Покадровая разметка
+            </a>
+          ) : null}
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="empty-card">Загружаем видео.</div>
+      ) : video ? (
+        <div className="video-preannotator">
+          <div className="video-preannotator__stage">
+            {video.source_file_url ? (
+              <video
+                ref={videoRef}
+                className="video-preannotator__player"
+                src={video.source_file_url}
+                preload="metadata"
+                onLoadedMetadata={handleVideoMetadata}
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+                onSeeked={(event) => setCurrentTime(event.currentTarget.currentTime)}
+              ></video>
+            ) : (
+              <div className="empty-card">У видео нет исходного файла.</div>
+            )}
+            <div className="video-preannotator__timeline">
+              <input
+                type="range"
+                min="0"
+                max={Math.max(frameCount - 1, 0)}
+                value={currentFrame}
+                style={{ ["--timeline-progress" as any]: `${timelineProgress}%` }}
+                onChange={(event) => seekToFrame(Number(event.currentTarget.value))}
+              />
+              <div className="video-preannotator__meta">
+                <span>Кадр {currentFrame}</span>
+                <span>{formatVideoTime(currentTime)}</span>
+                <span>{video.width}×{video.height}</span>
+                <span>{frameCount} кадров</span>
+              </div>
+            </div>
+            <div className="video-preannotator__controls">
+              <button className="btn btn--secondary btn--compact" type="button" onClick={handlePlayPause}>
+                {playing ? "Пауза" : "Воспроизвести"}
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => seekToFrame(currentFrame - 1)}>
+                Предыдущий кадр
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => seekToFrame(currentFrame + 1)}>
+                Следующий кадр
+              </button>
+              <button className="btn btn--primary btn--compact" type="button" disabled={busy} onClick={() => createSelection(currentFrame, currentFrame)}>
+                Отметить кадр
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => setRangeStart(currentFrame)}>
+                Начало интервала
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" onClick={() => setRangeEnd(currentFrame)}>
+                Конец интервала
+              </button>
+              <button
+                className="btn btn--primary btn--compact"
+                type="button"
+                disabled={busy || rangeStart == null || rangeEnd == null}
+                onClick={() => {
+                  if (rangeStart != null && rangeEnd != null) {
+                    createSelection(rangeStart, rangeEnd);
+                  }
+                }}
+              >
+                Добавить интервал
+              </button>
+            </div>
+          </div>
+
+          <aside className="video-preannotator__side">
+            <div className="panel-card video-selection-summary">
+              <div className="video-selection-summary__head">
+                <span className="eyebrow">Интервалы</span>
+                <strong>{selections.length}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Начало интервала</span>
+                <strong>{rangeStart ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Конец интервала</span>
+                <strong>{rangeEnd ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Кадров в интервале</span>
+                <strong>{draftRangeFramesCount || "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Добавлено кадров</span>
+                <strong>{persistedSelectedFramesCount}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Готовых интервалов</span>
+                <strong>{generatedSelectionsCount}</strong>
+              </div>
+            </div>
+
+            <div className="video-selection-list">
+              {selections.length ? (
+                selections.map((selection) => {
+                  const isGenerated = selection.status === "generated";
+                  return (
+                    <div key={selection.id} className={`video-selection-row ${isGenerated ? "is-generated" : ""}`}>
+                      <div className="video-selection-row__head">
+                        <div className="video-selection-row__title">
+                          <strong>{formatSelectionTitle(selection)}</strong>
+                          <span>{getSelectionFrameCount(selection)} кадров</span>
+                        </div>
+                        <span className="video-selection-row__status">{isGenerated ? "задачи созданы" : "ожидает"}</span>
+                      </div>
+                      <div className="video-selection-row__inputs">
+                        <label>
+                          <span>Начало</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={selection.start_frame}
+                            onChange={(event) =>
+                              setSelections((current) =>
+                                current.map((item) =>
+                                  item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>Конец</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={selection.end_frame}
+                            onChange={(event) =>
+                              setSelections((current) =>
+                                current.map((item) =>
+                                  item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="video-selection-row__actions">
+                        <button className="btn btn--muted btn--compact" type="button" disabled={busy} onClick={() => updateSelection(selection)}>
+                          Сохранить интервал
+                        </button>
+                        <button
+                          className="btn btn--muted btn--compact"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => generateFrameTasksForSelection(selection)}
+                        >
+                          {isGenerated ? "Обновить задачи" : "Создать задачи"}
+                        </button>
+                        <button
+                          className="btn btn--primary btn--compact"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => startSelectionAnnotation(selection)}
+                        >
+                          Начать разметку
+                        </button>
+                        <button className="btn btn--danger btn--compact" type="button" disabled={busy} onClick={() => deleteSelection(selection.id)}>
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="empty-card">Выбери кадр или интервал, чтобы сформировать очередь второго этапа.</div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="empty-card">Видео не найдено.</div>
+      )}
+    </section>
+  );
+}
+
+function normalizeFrameObjects(objects: FrameAnnotationObject[] | undefined) {
+  return (objects || []).map((item, index) => ({
+    id: item.id || `box-${Date.now()}-${index}`,
+    label: item.label || "object",
+    bbox: {
+      x: Number(item.bbox?.x || 0),
+      y: Number(item.bbox?.y || 0),
+      width: Number(item.bbox?.width || 0),
+      height: Number(item.bbox?.height || 0),
+    },
+  }));
+}
+
+function serializeFrameObjects(objects: FrameAnnotationObject[]) {
+  return objects.map((item) => ({
+    label: item.label || "object",
+    bbox: {
+      x: Number(item.bbox.x.toFixed(6)),
+      y: Number(item.bbox.y.toFixed(6)),
+      width: Number(item.bbox.width.toFixed(6)),
+      height: Number(item.bbox.height.toFixed(6)),
+    },
+  }));
+}
+
+function buildFrameAnnotationSnapshot(status: FrameAnnotationPayload["status"], objects: FrameAnnotationObject[]) {
+  const normalizedStatus = status === "empty" ? "empty" : "annotated";
+  return JSON.stringify({
+    status: normalizedStatus,
+    objects: normalizedStatus === "empty" ? [] : serializeFrameObjects(objects),
+  });
+}
+
+function readPositiveIntegerSearchParam(name: string) {
+  const value = Number(new URLSearchParams(window.location.search).get(name));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function replaceFrameAnnotationSelectionQuery(selectionId: number | null) {
+  const url = new URL(window.location.href);
+  if (selectionId) {
+    url.searchParams.set("selection", String(selectionId));
+  } else {
+    url.searchParams.delete("selection");
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function FrameAnnotationPage() {
+  const { bootstrap, authUser, api, addToast, clearToasts } = useApp();
+  const videoId = bootstrap.video_id;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const initialSelectionIdRef = useRef<number | null>(readPositiveIntegerSearchParam("selection"));
+  const loadedFrameSnapshotRef = useRef<string>(buildFrameAnnotationSnapshot("annotated", []));
+  const interactionRef = useRef<{
+    type: "draw" | "move" | "resize";
+    id?: string;
+    startX: number;
+    startY: number;
+    original?: FrameAnnotationObject["bbox"];
+    corner?: string;
+  } | null>(null);
+  const [video, setVideo] = useState<VideoItem | null>(null);
+  const [frameSelections, setFrameSelections] = useState<VideoSelectionItem[]>([]);
+  const [frameTasks, setFrameTasks] = useState<FrameAnnotationTaskItem[]>([]);
+  const [selectedSelectionId, setSelectedSelectionId] = useState<number | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+  const [activeTask, setActiveTask] = useState<FrameAnnotationTaskItem | null>(null);
+  const [objects, setObjects] = useState<FrameAnnotationObject[]>([]);
+  const [draftBox, setDraftBox] = useState<FrameAnnotationObject["bbox"] | null>(null);
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [frameStatus, setFrameStatus] = useState<FrameAnnotationPayload["status"]>("annotated");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  function formatFrameSelectionTitle(selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return startFrame === endFrame ? `Кадр ${startFrame}` : `Интервал ${startFrame}-${endFrame}`;
+  }
+
+  function frameTaskBelongsToSelection(task: FrameAnnotationTaskItem, selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return task.source_segment_id === selection.id || (task.frame_index >= startFrame && task.frame_index <= endFrame);
+  }
+
+  function getFrameTasksForSelection(
+    selectionId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    if (selectionId == null) {
+      return tasks;
+    }
+    const selection = selections.find((item) => item.id === selectionId);
+    if (!selection) {
+      return tasks;
+    }
+    return tasks.filter((task) => frameTaskBelongsToSelection(task, selection));
+  }
+
+  function findSelectionForFrameTask(
+    taskId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    if (taskId == null) {
+      return null;
+    }
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      return null;
+    }
+    return selections.find((selection) => frameTaskBelongsToSelection(task, selection)) || null;
+  }
+
+  function pickFrameTaskForSelection(
+    selectionId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    const scopedTasks = getFrameTasksForSelection(selectionId, tasks, selections);
+    return scopedTasks.find((task) => task.status !== "done") || scopedTasks[0] || null;
+  }
+
+  async function refreshQueue(preferredTaskId?: number | null, preferredSelectionId?: number | null) {
+    if (!videoId) {
+      addToast("Не удалось определить видео из URL.", "error");
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [nextVideo, nextTasks, nextSelections] = await Promise.all([
+        api<VideoItem>(`/api/v1/videos/${videoId}/`),
+        api<FrameAnnotationTaskItem[]>(`/api/v1/frame-tasks/?video_id=${videoId}`),
+        api<VideoSelectionItem[]>(`/api/v1/videos/${videoId}/selections/`),
+      ]);
+      const safeTasks = nextTasks || [];
+      const safeSelections = nextSelections || [];
+      setVideo(nextVideo);
+      setFrameTasks(safeTasks);
+      setFrameSelections(safeSelections);
+      const requestedSelectionId = preferredSelectionId !== undefined ? preferredSelectionId : initialSelectionIdRef.current;
+      initialSelectionIdRef.current = null;
+      const selectionFromPreferredTask = findSelectionForFrameTask(preferredTaskId || null, safeTasks, safeSelections);
+      const firstSelectionWithTasks =
+        safeSelections.find((selection) => getFrameTasksForSelection(selection.id, safeTasks, safeSelections).length)?.id || null;
+      const nextSelectionId =
+        requestedSelectionId && safeSelections.some((selection) => selection.id === requestedSelectionId)
+          ? requestedSelectionId
+          : selectionFromPreferredTask?.id || firstSelectionWithTasks;
+      const scopedTasks = getFrameTasksForSelection(nextSelectionId, safeTasks, safeSelections);
+      const nextSelectedId =
+        preferredTaskId && scopedTasks.some((task) => task.id === preferredTaskId)
+          ? preferredTaskId
+          : (pickFrameTaskForSelection(nextSelectionId, safeTasks, safeSelections) || safeTasks.find((task) => task.status !== "done") || safeTasks[0])?.id ||
+            null;
+      setSelectedSelectionId(nextSelectionId);
+      setSelectedTaskId(nextSelectedId);
+      if (nextSelectedId) {
+        await loadFrameTask(nextSelectedId, safeTasks);
+      }
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadFrameTask(taskId: number, knownTasks = frameTasks) {
+    const task = knownTasks.find((item) => item.id === taskId);
+    if (!task || !videoId) {
+      return;
+    }
+    try {
+      const detail = await api<FrameAnnotationTaskItem>(`/api/v1/videos/${videoId}/frames/${task.frame_index}/`);
+      const nextObjects = normalizeFrameObjects(detail.annotation?.objects);
+      const nextStatus = detail.annotation?.status === "empty" ? "empty" : "annotated";
+      setActiveTask(detail);
+      setFrameTasks((current) => current.map((item) => (item.id === detail.id ? detail : item)));
+      setObjects(nextObjects);
+      setFrameStatus(nextStatus);
+      setSelectedBoxId(null);
+      setDraftBox(null);
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(nextStatus, nextObjects);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  useEffect(() => {
+    refreshQueue();
+  }, []);
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      loadFrameTask(selectedTaskId);
+    }
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToAdjacentTask(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goToAdjacentTask(1);
+      } else if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveAnnotation();
+      } else if (event.key === "Delete") {
+        event.preventDefault();
+        deleteSelectedBox();
+      } else if (event.key.toLowerCase() === "e") {
+        event.preventDefault();
+        setFrameStatus("empty");
+        setObjects([]);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedTaskId, selectedSelectionId, frameTasks, frameSelections, activeTask, objects, frameStatus]);
+
+  function getSvgPoint(event: React.PointerEvent<SVGElement>) {
+    const svg = svgRef.current;
+    if (!svg) {
+      return { x: 0, y: 0 };
+    }
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: clampNumber((event.clientX - rect.left) / Math.max(rect.width, 1), 0, 1),
+      y: clampNumber((event.clientY - rect.top) / Math.max(rect.height, 1), 0, 1),
+    };
+  }
+
+  function normalizeBbox(x1: number, y1: number, x2: number, y2: number) {
+    const x = clampNumber(Math.min(x1, x2), 0, 1);
+    const y = clampNumber(Math.min(y1, y2), 0, 1);
+    const width = clampNumber(Math.abs(x2 - x1), 0, 1 - x);
+    const height = clampNumber(Math.abs(y2 - y1), 0, 1 - y);
+    return { x, y, width, height };
+  }
+
+  function moveBbox(box: FrameAnnotationObject["bbox"], dx: number, dy: number) {
+    return {
+      ...box,
+      x: clampNumber(box.x + dx, 0, 1 - box.width),
+      y: clampNumber(box.y + dy, 0, 1 - box.height),
+    };
+  }
+
+  function resizeBbox(box: FrameAnnotationObject["bbox"], dx: number, dy: number, corner: string) {
+    let x1 = box.x;
+    let y1 = box.y;
+    let x2 = box.x + box.width;
+    let y2 = box.y + box.height;
+    if (corner.includes("left")) {
+      x1 += dx;
+    } else {
+      x2 += dx;
+    }
+    if (corner.includes("top")) {
+      y1 += dy;
+    } else {
+      y2 += dy;
+    }
+    return normalizeBbox(x1, y1, x2, y2);
+  }
+
+  function handleSvgPointerDown(event: React.PointerEvent<SVGSVGElement>) {
+    if (event.target !== event.currentTarget || frameStatus === "empty") {
+      return;
+    }
+    const point = getSvgPoint(event);
+    interactionRef.current = { type: "draw", startX: point.x, startY: point.y };
+    setDraftBox({ x: point.x, y: point.y, width: 0, height: 0 });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleBoxPointerDown(event: React.PointerEvent<SVGGraphicsElement>, boxId: string, corner?: string) {
+    event.stopPropagation();
+    const point = getSvgPoint(event);
+    const box = objects.find((item) => item.id === boxId);
+    if (!box) {
+      return;
+    }
+    setSelectedBoxId(boxId);
+    interactionRef.current = {
+      type: corner ? "resize" : "move",
+      id: boxId,
+      startX: point.x,
+      startY: point.y,
+      original: { ...box.bbox },
+      corner,
+    };
+    svgRef.current?.setPointerCapture(event.pointerId);
+  }
+
+  function handleSvgPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const interaction = interactionRef.current;
+    if (!interaction) {
+      return;
+    }
+    const point = getSvgPoint(event);
+    if (interaction.type === "draw") {
+      setDraftBox(normalizeBbox(interaction.startX, interaction.startY, point.x, point.y));
+      return;
+    }
+    const dx = point.x - interaction.startX;
+    const dy = point.y - interaction.startY;
+    setObjects((current) =>
+      current.map((item) => {
+        if (item.id !== interaction.id || !interaction.original) {
+          return item;
+        }
+        return {
+          ...item,
+          bbox:
+            interaction.type === "move"
+              ? moveBbox(interaction.original, dx, dy)
+              : resizeBbox(interaction.original, dx, dy, interaction.corner || "bottom-right"),
+        };
+      })
+    );
+  }
+
+  function handleSvgPointerUp() {
+    const interaction = interactionRef.current;
+    if (interaction?.type === "draw" && draftBox && draftBox.width > 0.003 && draftBox.height > 0.003) {
+      const id = `box-${Date.now()}`;
+      setObjects((current) => [...current, { id, label: "object", bbox: draftBox }]);
+      setSelectedBoxId(id);
+      setFrameStatus("annotated");
+    }
+    interactionRef.current = null;
+    setDraftBox(null);
+  }
+
+  function deleteSelectedBox() {
+    if (!selectedBoxId) {
+      return;
+    }
+    setObjects((current) => current.filter((item) => item.id !== selectedBoxId));
+    setSelectedBoxId(null);
+  }
+
+  function hasUnsavedFrameChanges() {
+    if (!activeTask) {
+      return false;
+    }
+    return buildFrameAnnotationSnapshot(frameStatus, objects) !== loadedFrameSnapshotRef.current;
+  }
+
+  function requestTaskSwitch(taskId: number) {
+    if (saving || taskId === selectedTaskId) {
+      return;
+    }
+    if (hasUnsavedFrameChanges() && !window.confirm("Несохраненная разметка текущего кадра будет потеряна. Перейти к другой задаче?")) {
+      return;
+    }
+    const nextTask = frameTasks.find((task) => task.id === taskId);
+    const currentSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+    const nextSelection =
+      nextTask && currentSelection && frameTaskBelongsToSelection(nextTask, currentSelection)
+        ? currentSelection
+        : findSelectionForFrameTask(taskId);
+    if (nextSelection && nextSelection.id !== selectedSelectionId) {
+      setSelectedSelectionId(nextSelection.id);
+      replaceFrameAnnotationSelectionQuery(nextSelection.id);
+    }
+    setSelectedTaskId(taskId);
+  }
+
+  function requestSelectionSwitch(selectionId: number | null) {
+    if (saving || selectionId === selectedSelectionId) {
+      return;
+    }
+    if (hasUnsavedFrameChanges() && !window.confirm("Несохраненная разметка текущего кадра будет потеряна. Перейти к другому интервалу?")) {
+      return;
+    }
+    const nextTask = pickFrameTaskForSelection(selectionId);
+    setSelectedSelectionId(selectionId);
+    replaceFrameAnnotationSelectionQuery(selectionId);
+    setSelectedTaskId(nextTask?.id || null);
+    if (!nextTask) {
+      setActiveTask(null);
+      setObjects([]);
+      setFrameStatus("annotated");
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot("annotated", []);
+    }
+  }
+
+  function goToAdjacentTask(direction: -1 | 1) {
+    const scopedTasks = getFrameTasksForSelection(selectedSelectionId);
+    if (!selectedTaskId || !scopedTasks.length) {
+      return;
+    }
+    const currentIndex = scopedTasks.findIndex((task) => task.id === selectedTaskId);
+    const nextTask = scopedTasks[clampNumber(currentIndex + direction, 0, scopedTasks.length - 1)];
+    if (nextTask) {
+      requestTaskSwitch(nextTask.id);
+    }
+  }
+
+  async function saveAnnotation() {
+    if (!activeTask) {
+      return;
+    }
+    clearToasts();
+    setSaving(true);
+    try {
+      const status = frameStatus === "empty" ? "empty" : "annotated";
+      const payloadObjects = status === "empty" ? [] : serializeFrameObjects(objects);
+      const response = await api<{ task: FrameAnnotationTaskItem }>(`/api/v1/frame-tasks/${activeTask.id}/annotation/`, {
+        method: "PUT",
+        body: { status, objects: payloadObjects },
+      });
+      setActiveTask(response.task);
+      setFrameTasks((current) => current.map((task) => (task.id === response.task.id ? response.task : task)));
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(status, status === "empty" ? [] : objects);
+      addToast(`Кадр ${activeTask.frame_index} сохранен.`, "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleExport() {
+    if (!videoId) {
+      return;
+    }
+    try {
+      await downloadVideoFrameExport(videoId, authUser);
+      addToast("JSON-экспорт покадровых аннотаций подготовлен.", "success");
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  const intervalOptions = frameSelections.filter((selection) => getFrameTasksForSelection(selection.id).length);
+  const visibleFrameTasks = intervalOptions.length ? getFrameTasksForSelection(selectedSelectionId) : frameTasks;
+  const selectedSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+  const activeIndex = selectedTaskId ? visibleFrameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
+  const completedCount = visibleFrameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+  const hasPreviousTask = activeIndex > 0;
+  const hasNextTask = activeIndex >= 0 && activeIndex < visibleFrameTasks.length - 1;
+  return (
+    <section className="video-workspace frame-workspace">
+      <header className="video-workspace__header">
+        <div>
+          <span className="eyebrow">Покадровая разметка</span>
+          <h1>{video?.source_name || "Покадровая разметка"}</h1>
+        </div>
+        <div className="video-workspace__actions">
+          {videoId ? (
+            <a className="btn btn--muted btn--compact" href={`/videos/${videoId}/pre-annotate/`}>
+              Выбор кадров
+            </a>
+          ) : null}
+          <button className="btn btn--secondary btn--compact" type="button" onClick={handleExport}>
+            Экспорт JSON
+          </button>
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="empty-card">Загружаем очередь кадров.</div>
+      ) : frameTasks.length ? (
+        <div className="frame-annotator">
+          <aside className="frame-annotator__queue">
+            <div className="panel-card">
+              <div className="summary-row">
+                <span>Интервалов</span>
+                <strong>{intervalOptions.length || "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Текущий интервал</span>
+                <strong>{selectedSelection ? formatFrameSelectionTitle(selectedSelection) : "Все кадры"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Кадров в интервале</span>
+                <strong>{visibleFrameTasks.length}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Сохранено</span>
+                <strong>{completedCount}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Текущий кадр</span>
+                <strong>{activeIndex >= 0 ? activeIndex + 1 : "-"}</strong>
+              </div>
+            </div>
+
+            {intervalOptions.length ? (
+              <>
+                <div className="frame-queue-section-title">Интервалы</div>
+                <div className="frame-interval-list">
+                  {intervalOptions.map((selection, index) => {
+                    const selectionTasks = getFrameTasksForSelection(selection.id);
+                    const selectionCompletedCount = selectionTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+                    return (
+                      <button
+                        key={selection.id}
+                        className={`frame-interval-row ${selection.id === selectedSelectionId ? "is-active" : ""}`}
+                        type="button"
+                        onClick={() => requestSelectionSwitch(selection.id)}
+                        disabled={saving}
+                        aria-current={selection.id === selectedSelectionId ? "true" : undefined}
+                      >
+                        <strong>{index + 1}. {formatFrameSelectionTitle(selection)}</strong>
+                        <span>{selectionCompletedCount}/{selectionTasks.length} кадров</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+
+            <div className="frame-queue-section-title">Кадры интервала</div>
+            <div className="frame-task-list">
+              {visibleFrameTasks.map((task, index) => (
+                <button
+                  key={task.id}
+                  className={`frame-task-row ${task.id === selectedTaskId ? "is-active" : ""}`}
+                  type="button"
+                  onClick={() => requestTaskSwitch(task.id)}
+                  disabled={saving}
+                  aria-current={task.id === selectedTaskId ? "true" : undefined}
+                >
+                  <strong>Задача {index + 1}: кадр {task.frame_index}</strong>
+                  <span>{frameTaskStatusLabels[task.status] || task.status}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <main className="frame-annotator__stage">
+            <div className="frame-annotator__toolbar">
+              <button className="btn btn--muted btn--compact" type="button" disabled={!hasPreviousTask || saving} onClick={() => goToAdjacentTask(-1)}>
+                Предыдущий
+              </button>
+              <button className="btn btn--muted btn--compact" type="button" disabled={!hasNextTask || saving} onClick={() => goToAdjacentTask(1)}>
+                Следующий
+              </button>
+              <button
+                className={`btn btn--muted btn--compact ${frameStatus === "empty" ? "is-active" : ""}`}
+                type="button"
+                onClick={() => {
+                  setFrameStatus("empty");
+                  setObjects([]);
+                }}
+              >
+                Объект отсутствует
+              </button>
+              <button className="btn btn--danger btn--compact" type="button" disabled={!selectedBoxId} onClick={deleteSelectedBox}>
+                Удалить bbox
+              </button>
+              <button className="btn btn--primary btn--compact" type="button" disabled={saving || !activeTask} onClick={saveAnnotation}>
+                {saving ? "Сохраняем..." : "Сохранить"}
+              </button>
+            </div>
+
+            <div className="frame-canvas">
+              {activeTask?.frame_image_url ? (
+                <div className="frame-canvas__media">
+                  <img src={activeTask.frame_image_url} alt={`Кадр ${activeTask.frame_index}`} draggable={false} />
+                  <svg
+                    ref={svgRef}
+                    className="frame-canvas__overlay"
+                    viewBox="0 0 1 1"
+                    preserveAspectRatio="none"
+                    onPointerDown={handleSvgPointerDown}
+                    onPointerMove={handleSvgPointerMove}
+                    onPointerUp={handleSvgPointerUp}
+                    onPointerCancel={handleSvgPointerUp}
+                  >
+                    {objects.map((item) => (
+                      <g key={item.id} className={`frame-bbox-group ${item.id === selectedBoxId ? "is-selected" : ""}`}>
+                        <rect
+                          className="frame-bbox"
+                          x={item.bbox.x}
+                          y={item.bbox.y}
+                          width={item.bbox.width}
+                          height={item.bbox.height}
+                          vectorEffect="non-scaling-stroke"
+                          onPointerDown={(event) => handleBoxPointerDown(event, item.id || "", undefined)}
+                        />
+                        <foreignObject
+                          className="frame-bbox-label-wrap"
+                          x={item.bbox.x}
+                          y={Math.max(item.bbox.y - 0.055, 0)}
+                          width="0.22"
+                          height="0.045"
+                          pointerEvents="none"
+                        >
+                          <div className="frame-bbox-label">{(item.label || "object") === "object" ? "Объект" : item.label}</div>
+                        </foreignObject>
+                        {["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => {
+                          const cx = corner.includes("left") ? item.bbox.x : item.bbox.x + item.bbox.width;
+                          const cy = corner.includes("top") ? item.bbox.y : item.bbox.y + item.bbox.height;
+                          return (
+                            <circle
+                              key={corner}
+                              className="frame-bbox-handle"
+                              cx={cx}
+                              cy={cy}
+                              r="0.008"
+                              vectorEffect="non-scaling-stroke"
+                              onPointerDown={(event) => handleBoxPointerDown(event, item.id || "", corner)}
+                            />
+                          );
+                        })}
+                      </g>
+                    ))}
+                    {draftBox ? (
+                      <rect
+                        className="frame-bbox frame-bbox--draft"
+                        x={draftBox.x}
+                        y={draftBox.y}
+                        width={draftBox.width}
+                        height={draftBox.height}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ) : null}
+                  </svg>
+                </div>
+              ) : (
+                <div className="empty-card">Кадр еще не извлечен или FFmpeg недоступен на сервере.</div>
+              )}
+            </div>
+          </main>
+
+          <aside className="frame-annotator__side">
+            <div className="panel-card">
+              <div className="summary-row">
+                <span>Кадр</span>
+                <strong>{activeTask?.frame_index ?? "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Время</span>
+                <strong>{activeTask ? `${activeTask.time_ms} мс` : "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Bbox</span>
+                <strong>{objects.length}</strong>
+              </div>
+            </div>
+            <div className="frame-object-list">
+              {objects.length ? (
+                objects.map((item, index) => (
+                  <button
+                    key={item.id}
+                    className={`frame-object-row ${item.id === selectedBoxId ? "is-active" : ""}`}
+                    type="button"
+                    onClick={() => setSelectedBoxId(item.id || null)}
+                  >
+                    <strong>{(item.label || "object") === "object" ? "Объект" : item.label} #{index + 1}</strong>
+                    <span>
+                      {item.bbox.x.toFixed(3)}, {item.bbox.y.toFixed(3)} · {item.bbox.width.toFixed(3)}×{item.bbox.height.toFixed(3)}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <div className="empty-card">Нарисуй bbox поверх кадра или выбери статус «объект отсутствует».</div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="empty-card">Сначала сгенерируй задачи покадровой разметки на экране выбора кадров.</div>
+      )}
+    </section>
   );
 }
 
