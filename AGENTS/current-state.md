@@ -5,7 +5,7 @@
 - DataSetAI остаётся Django-монолитом с React UI-shell, REST API и PostgreSQL.
 - Канонический frontend entrypoint по-прежнему один: Django рендерит `apps/ui/templates/ui/base.html`, а React выбирает экран через bootstrap-contract в `apps/ui/static/ui/app.tsx`.
 - Проект уже вышел за рамки только текстовой разметки: image/video и workflow `text_detect_text` считаются first-class сценариями.
-- Видеоразметка теперь поддерживает двухэтапный flow: исходное видео хранится как `Task(source_type=video)`, выбранные кадры/интервалы живут в `VideoSelection`, а ручная покадровая bbox-разметка идёт через `FrameAnnotationTask` и `FrameAnnotation`. Для video cross-validation одна `FrameAnnotationTask` может иметь несколько `FrameAnnotation` - по одной на разметчика.
+- Видеоразметка теперь поддерживает двухэтапный flow: исходное видео хранится как `Task(source_type=video)`, выбранные кадры/интервалы живут в `VideoSelection`, задачи можно генерировать отдельно из каждого интервала, а ручная покадровая bbox-разметка идёт через `FrameAnnotationTask` и `FrameAnnotation`. Для video cross-validation одна `FrameAnnotationTask` может иметь несколько `FrameAnnotation` - по одной на разметчика.
 - Cross-validation больше не только “равномерная раздача по людям”: в кодовой базе уже живёт deterministic grouped distribution с fallback на legacy strategy.
 - Владелец комнаты теперь не обязан быть annotator: это управляется `Room.owner_is_annotator` и затрагивает доступ, eligible pools и room payload-ы.
 - `room-work` развивается как отдельная fullscreen рабочая поверхность, а не как секция длинной страницы комнаты. Этот shell больше не annotator-only: внутри него теперь должны жить и очередь задач, и редактирование своих submit-ов, и reviewer-native проверка.

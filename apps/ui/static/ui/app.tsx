@@ -4730,6 +4730,10 @@ function VideoPreAnnotationPage() {
       });
       setSelections((current) => [...current, selection].sort((a, b) => a.start_frame - b.start_frame || a.id - b.id));
       addToast(startFrame === endFrame ? `Кадр ${startFrame} добавлен.` : `Интервал ${startFrame}-${endFrame} добавлен.`, "success");
+      if (startFrame !== endFrame) {
+        setRangeStart(null);
+        setRangeEnd(null);
+      }
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     } finally {
@@ -4768,18 +4772,21 @@ function VideoPreAnnotationPage() {
     }
   }
 
-  async function generateFrameTasks() {
-    if (!videoId) {
-      return;
-    }
+  async function generateFrameTasksForSelection(selection: VideoSelectionItem) {
     clearToasts();
     setBusy(true);
     try {
-      const result = await api<{ created_count: number; skipped_duplicates_count: number }>(`/api/v1/videos/${videoId}/generate-frame-tasks/`, {
-        method: "POST",
-        body: {},
-      });
-      addToast(`Создано задач: ${result.created_count}. Дубликатов пропущено: ${result.skipped_duplicates_count}.`, "success");
+      const result = await api<{ created_count: number; skipped_duplicates_count: number }>(
+        `/api/v1/video-selections/${selection.id}/generate-frame-tasks/`,
+        {
+          method: "POST",
+          body: {},
+        }
+      );
+      addToast(
+        `${formatSelectionTitle(selection)}: создано задач ${result.created_count}, уже существовало ${result.skipped_duplicates_count}.`,
+        "success"
+      );
       await refresh();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
@@ -4788,9 +4795,42 @@ function VideoPreAnnotationPage() {
     }
   }
 
+  async function startSelectionAnnotation(selection: VideoSelectionItem) {
+    if (!videoId) {
+      return;
+    }
+    clearToasts();
+    setBusy(true);
+    try {
+      const updated = await api<VideoSelectionItem>(`/api/v1/video-selections/${selection.id}/`, {
+        method: "PATCH",
+        body: { start_frame: selection.start_frame, end_frame: selection.end_frame },
+      });
+      await api(`/api/v1/video-selections/${updated.id}/generate-frame-tasks/`, {
+        method: "POST",
+        body: {},
+      });
+      window.location.href = `/videos/${videoId}/frames/?selection=${updated.id}`;
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+      setBusy(false);
+    }
+  }
+
   const persistedSelectedFramesCount = selections.reduce((sum, item) => sum + Math.abs(item.end_frame - item.start_frame) + 1, 0);
   const draftRangeFramesCount =
     rangeStart == null || rangeEnd == null ? 0 : Math.abs(Number(rangeEnd) - Number(rangeStart)) + 1;
+  const generatedSelectionsCount = selections.filter((item) => item.status === "generated").length;
+
+  function getSelectionFrameCount(selection: VideoSelectionItem) {
+    return Math.abs(selection.end_frame - selection.start_frame) + 1;
+  }
+
+  function formatSelectionTitle(selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return startFrame === endFrame ? `Кадр ${startFrame}` : `Интервал ${startFrame}-${endFrame}`;
+  }
 
   return (
     <section className="video-workspace">
@@ -4885,6 +4925,10 @@ function VideoPreAnnotationPage() {
 
           <aside className="video-preannotator__side">
             <div className="panel-card video-selection-summary">
+              <div className="video-selection-summary__head">
+                <span className="eyebrow">Интервалы</span>
+                <strong>{selections.length}</strong>
+              </div>
               <div className="summary-row">
                 <span>Начало интервала</span>
                 <strong>{rangeStart ?? "-"}</strong>
@@ -4901,48 +4945,84 @@ function VideoPreAnnotationPage() {
                 <span>Добавлено кадров</span>
                 <strong>{persistedSelectedFramesCount}</strong>
               </div>
-              <button className="btn btn--primary" type="button" disabled={busy || !selections.length} onClick={generateFrameTasks}>
-                Создать задачи по кадрам
-              </button>
+              <div className="summary-row">
+                <span>Готовых интервалов</span>
+                <strong>{generatedSelectionsCount}</strong>
+              </div>
             </div>
 
             <div className="video-selection-list">
               {selections.length ? (
-                selections.map((selection) => (
-                  <div key={selection.id} className="video-selection-row">
-                    <div className="video-selection-row__inputs">
-                      <input
-                        type="number"
-                        min="0"
-                        value={selection.start_frame}
-                        onChange={(event) =>
-                          setSelections((current) =>
-                            current.map((item) => (item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item))
-                          )
-                        }
-                      />
-                      <input
-                        type="number"
-                        min="0"
-                        value={selection.end_frame}
-                        onChange={(event) =>
-                          setSelections((current) =>
-                            current.map((item) => (item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item))
-                          )
-                        }
-                      />
+                selections.map((selection) => {
+                  const isGenerated = selection.status === "generated";
+                  return (
+                    <div key={selection.id} className={`video-selection-row ${isGenerated ? "is-generated" : ""}`}>
+                      <div className="video-selection-row__head">
+                        <div className="video-selection-row__title">
+                          <strong>{formatSelectionTitle(selection)}</strong>
+                          <span>{getSelectionFrameCount(selection)} кадров</span>
+                        </div>
+                        <span className="video-selection-row__status">{isGenerated ? "задачи созданы" : "ожидает"}</span>
+                      </div>
+                      <div className="video-selection-row__inputs">
+                        <label>
+                          <span>Начало</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={selection.start_frame}
+                            onChange={(event) =>
+                              setSelections((current) =>
+                                current.map((item) =>
+                                  item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>Конец</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={selection.end_frame}
+                            onChange={(event) =>
+                              setSelections((current) =>
+                                current.map((item) =>
+                                  item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                      <div className="video-selection-row__actions">
+                        <button className="btn btn--muted btn--compact" type="button" disabled={busy} onClick={() => updateSelection(selection)}>
+                          Сохранить интервал
+                        </button>
+                        <button
+                          className="btn btn--muted btn--compact"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => generateFrameTasksForSelection(selection)}
+                        >
+                          {isGenerated ? "Обновить задачи" : "Создать задачи"}
+                        </button>
+                        <button
+                          className="btn btn--primary btn--compact"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => startSelectionAnnotation(selection)}
+                        >
+                          Начать разметку
+                        </button>
+                        <button className="btn btn--danger btn--compact" type="button" disabled={busy} onClick={() => deleteSelection(selection.id)}>
+                          Удалить
+                        </button>
+                      </div>
                     </div>
-                    <small>{selection.status === "generated" ? "задачи созданы" : "активно"}</small>
-                    <div className="video-selection-row__actions">
-                      <button className="btn btn--muted btn--compact" type="button" disabled={busy} onClick={() => updateSelection(selection)}>
-                        Сохранить
-                      </button>
-                      <button className="btn btn--danger btn--compact" type="button" disabled={busy} onClick={() => deleteSelection(selection.id)}>
-                        Удалить
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="empty-card">Выбери кадр или интервал, чтобы сформировать очередь второго этапа.</div>
               )}
@@ -4981,10 +5061,35 @@ function serializeFrameObjects(objects: FrameAnnotationObject[]) {
   }));
 }
 
+function buildFrameAnnotationSnapshot(status: FrameAnnotationPayload["status"], objects: FrameAnnotationObject[]) {
+  const normalizedStatus = status === "empty" ? "empty" : "annotated";
+  return JSON.stringify({
+    status: normalizedStatus,
+    objects: normalizedStatus === "empty" ? [] : serializeFrameObjects(objects),
+  });
+}
+
+function readPositiveIntegerSearchParam(name: string) {
+  const value = Number(new URLSearchParams(window.location.search).get(name));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function replaceFrameAnnotationSelectionQuery(selectionId: number | null) {
+  const url = new URL(window.location.href);
+  if (selectionId) {
+    url.searchParams.set("selection", String(selectionId));
+  } else {
+    url.searchParams.delete("selection");
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 function FrameAnnotationPage() {
   const { bootstrap, authUser, api, addToast, clearToasts } = useApp();
   const videoId = bootstrap.video_id;
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const initialSelectionIdRef = useRef<number | null>(readPositiveIntegerSearchParam("selection"));
+  const loadedFrameSnapshotRef = useRef<string>(buildFrameAnnotationSnapshot("annotated", []));
   const interactionRef = useRef<{
     type: "draw" | "move" | "resize";
     id?: string;
@@ -4994,7 +5099,9 @@ function FrameAnnotationPage() {
     corner?: string;
   } | null>(null);
   const [video, setVideo] = useState<VideoItem | null>(null);
+  const [frameSelections, setFrameSelections] = useState<VideoSelectionItem[]>([]);
   const [frameTasks, setFrameTasks] = useState<FrameAnnotationTaskItem[]>([]);
+  const [selectedSelectionId, setSelectedSelectionId] = useState<number | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [activeTask, setActiveTask] = useState<FrameAnnotationTaskItem | null>(null);
   const [objects, setObjects] = useState<FrameAnnotationObject[]>([]);
@@ -5004,7 +5111,58 @@ function FrameAnnotationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  async function refreshQueue(preferredTaskId?: number | null) {
+  function formatFrameSelectionTitle(selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return startFrame === endFrame ? `Кадр ${startFrame}` : `Интервал ${startFrame}-${endFrame}`;
+  }
+
+  function frameTaskBelongsToSelection(task: FrameAnnotationTaskItem, selection: VideoSelectionItem) {
+    const startFrame = Math.min(selection.start_frame, selection.end_frame);
+    const endFrame = Math.max(selection.start_frame, selection.end_frame);
+    return task.source_segment_id === selection.id || (task.frame_index >= startFrame && task.frame_index <= endFrame);
+  }
+
+  function getFrameTasksForSelection(
+    selectionId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    if (selectionId == null) {
+      return tasks;
+    }
+    const selection = selections.find((item) => item.id === selectionId);
+    if (!selection) {
+      return tasks;
+    }
+    return tasks.filter((task) => frameTaskBelongsToSelection(task, selection));
+  }
+
+  function findSelectionForFrameTask(
+    taskId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    if (taskId == null) {
+      return null;
+    }
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) {
+      return null;
+    }
+    return selections.find((selection) => frameTaskBelongsToSelection(task, selection)) || null;
+  }
+
+  function pickFrameTaskForSelection(
+    selectionId: number | null,
+    tasks: FrameAnnotationTaskItem[] = frameTasks,
+    selections: VideoSelectionItem[] = frameSelections
+  ) {
+    const scopedTasks = getFrameTasksForSelection(selectionId, tasks, selections);
+    return scopedTasks.find((task) => task.status !== "done") || scopedTasks[0] || null;
+  }
+
+  async function refreshQueue(preferredTaskId?: number | null, preferredSelectionId?: number | null) {
     if (!videoId) {
       addToast("Не удалось определить видео из URL.", "error");
       setLoading(false);
@@ -5012,19 +5170,35 @@ function FrameAnnotationPage() {
     }
     setLoading(true);
     try {
-      const [nextVideo, nextTasks] = await Promise.all([
+      const [nextVideo, nextTasks, nextSelections] = await Promise.all([
         api<VideoItem>(`/api/v1/videos/${videoId}/`),
         api<FrameAnnotationTaskItem[]>(`/api/v1/frame-tasks/?video_id=${videoId}`),
+        api<VideoSelectionItem[]>(`/api/v1/videos/${videoId}/selections/`),
       ]);
+      const safeTasks = nextTasks || [];
+      const safeSelections = nextSelections || [];
       setVideo(nextVideo);
-      setFrameTasks(nextTasks || []);
+      setFrameTasks(safeTasks);
+      setFrameSelections(safeSelections);
+      const requestedSelectionId = preferredSelectionId !== undefined ? preferredSelectionId : initialSelectionIdRef.current;
+      initialSelectionIdRef.current = null;
+      const selectionFromPreferredTask = findSelectionForFrameTask(preferredTaskId || null, safeTasks, safeSelections);
+      const firstSelectionWithTasks =
+        safeSelections.find((selection) => getFrameTasksForSelection(selection.id, safeTasks, safeSelections).length)?.id || null;
+      const nextSelectionId =
+        requestedSelectionId && safeSelections.some((selection) => selection.id === requestedSelectionId)
+          ? requestedSelectionId
+          : selectionFromPreferredTask?.id || firstSelectionWithTasks;
+      const scopedTasks = getFrameTasksForSelection(nextSelectionId, safeTasks, safeSelections);
       const nextSelectedId =
-        preferredTaskId && nextTasks.some((task) => task.id === preferredTaskId)
+        preferredTaskId && scopedTasks.some((task) => task.id === preferredTaskId)
           ? preferredTaskId
-          : nextTasks.find((task) => task.status !== "done")?.id || nextTasks[0]?.id || null;
+          : (pickFrameTaskForSelection(nextSelectionId, safeTasks, safeSelections) || safeTasks.find((task) => task.status !== "done") || safeTasks[0])?.id ||
+            null;
+      setSelectedSelectionId(nextSelectionId);
       setSelectedTaskId(nextSelectedId);
       if (nextSelectedId) {
-        await loadFrameTask(nextSelectedId, nextTasks);
+        await loadFrameTask(nextSelectedId, safeTasks);
       }
     } catch (error) {
       addToast(getErrorMessage(error), "error");
@@ -5040,12 +5214,15 @@ function FrameAnnotationPage() {
     }
     try {
       const detail = await api<FrameAnnotationTaskItem>(`/api/v1/videos/${videoId}/frames/${task.frame_index}/`);
+      const nextObjects = normalizeFrameObjects(detail.annotation?.objects);
+      const nextStatus = detail.annotation?.status === "empty" ? "empty" : "annotated";
       setActiveTask(detail);
       setFrameTasks((current) => current.map((item) => (item.id === detail.id ? detail : item)));
-      setObjects(normalizeFrameObjects(detail.annotation?.objects));
-      setFrameStatus(detail.annotation?.status === "empty" ? "empty" : "annotated");
+      setObjects(nextObjects);
+      setFrameStatus(nextStatus);
       setSelectedBoxId(null);
       setDraftBox(null);
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(nextStatus, nextObjects);
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     }
@@ -5086,7 +5263,7 @@ function FrameAnnotationPage() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedTaskId, frameTasks, activeTask, objects, frameStatus]);
+  }, [selectedTaskId, selectedSelectionId, frameTasks, frameSelections, activeTask, objects, frameStatus]);
 
   function getSvgPoint(event: React.PointerEvent<SVGElement>) {
     const svg = svgRef.current;
@@ -5211,14 +5388,61 @@ function FrameAnnotationPage() {
     setSelectedBoxId(null);
   }
 
-  function goToAdjacentTask(direction: -1 | 1) {
-    if (!selectedTaskId || !frameTasks.length) {
+  function hasUnsavedFrameChanges() {
+    if (!activeTask) {
+      return false;
+    }
+    return buildFrameAnnotationSnapshot(frameStatus, objects) !== loadedFrameSnapshotRef.current;
+  }
+
+  function requestTaskSwitch(taskId: number) {
+    if (saving || taskId === selectedTaskId) {
       return;
     }
-    const currentIndex = frameTasks.findIndex((task) => task.id === selectedTaskId);
-    const nextTask = frameTasks[clampNumber(currentIndex + direction, 0, frameTasks.length - 1)];
+    if (hasUnsavedFrameChanges() && !window.confirm("Несохраненная разметка текущего кадра будет потеряна. Перейти к другой задаче?")) {
+      return;
+    }
+    const nextTask = frameTasks.find((task) => task.id === taskId);
+    const currentSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+    const nextSelection =
+      nextTask && currentSelection && frameTaskBelongsToSelection(nextTask, currentSelection)
+        ? currentSelection
+        : findSelectionForFrameTask(taskId);
+    if (nextSelection && nextSelection.id !== selectedSelectionId) {
+      setSelectedSelectionId(nextSelection.id);
+      replaceFrameAnnotationSelectionQuery(nextSelection.id);
+    }
+    setSelectedTaskId(taskId);
+  }
+
+  function requestSelectionSwitch(selectionId: number | null) {
+    if (saving || selectionId === selectedSelectionId) {
+      return;
+    }
+    if (hasUnsavedFrameChanges() && !window.confirm("Несохраненная разметка текущего кадра будет потеряна. Перейти к другому интервалу?")) {
+      return;
+    }
+    const nextTask = pickFrameTaskForSelection(selectionId);
+    setSelectedSelectionId(selectionId);
+    replaceFrameAnnotationSelectionQuery(selectionId);
+    setSelectedTaskId(nextTask?.id || null);
+    if (!nextTask) {
+      setActiveTask(null);
+      setObjects([]);
+      setFrameStatus("annotated");
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot("annotated", []);
+    }
+  }
+
+  function goToAdjacentTask(direction: -1 | 1) {
+    const scopedTasks = getFrameTasksForSelection(selectedSelectionId);
+    if (!selectedTaskId || !scopedTasks.length) {
+      return;
+    }
+    const currentIndex = scopedTasks.findIndex((task) => task.id === selectedTaskId);
+    const nextTask = scopedTasks[clampNumber(currentIndex + direction, 0, scopedTasks.length - 1)];
     if (nextTask) {
-      setSelectedTaskId(nextTask.id);
+      requestTaskSwitch(nextTask.id);
     }
   }
 
@@ -5237,6 +5461,7 @@ function FrameAnnotationPage() {
       });
       setActiveTask(response.task);
       setFrameTasks((current) => current.map((task) => (task.id === response.task.id ? response.task : task)));
+      loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(status, status === "empty" ? [] : objects);
       addToast(`Кадр ${activeTask.frame_index} сохранен.`, "success");
     } catch (error) {
       addToast(getErrorMessage(error), "error");
@@ -5257,8 +5482,13 @@ function FrameAnnotationPage() {
     }
   }
 
-  const activeIndex = selectedTaskId ? frameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
-  const completedCount = frameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+  const intervalOptions = frameSelections.filter((selection) => getFrameTasksForSelection(selection.id).length);
+  const visibleFrameTasks = intervalOptions.length ? getFrameTasksForSelection(selectedSelectionId) : frameTasks;
+  const selectedSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+  const activeIndex = selectedTaskId ? visibleFrameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
+  const completedCount = visibleFrameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+  const hasPreviousTask = activeIndex > 0;
+  const hasNextTask = activeIndex >= 0 && activeIndex < visibleFrameTasks.length - 1;
   return (
     <section className="video-workspace frame-workspace">
       <header className="video-workspace__header">
@@ -5285,27 +5515,64 @@ function FrameAnnotationPage() {
           <aside className="frame-annotator__queue">
             <div className="panel-card">
               <div className="summary-row">
-                <span>Всего задач</span>
-                <strong>{frameTasks.length}</strong>
+                <span>Интервалов</span>
+                <strong>{intervalOptions.length || "-"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Текущий интервал</span>
+                <strong>{selectedSelection ? formatFrameSelectionTitle(selectedSelection) : "Все кадры"}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Кадров в интервале</span>
+                <strong>{visibleFrameTasks.length}</strong>
               </div>
               <div className="summary-row">
                 <span>Сохранено</span>
                 <strong>{completedCount}</strong>
               </div>
               <div className="summary-row">
-                <span>Текущая</span>
+                <span>Текущий кадр</span>
                 <strong>{activeIndex >= 0 ? activeIndex + 1 : "-"}</strong>
               </div>
             </div>
+
+            {intervalOptions.length ? (
+              <>
+                <div className="frame-queue-section-title">Интервалы</div>
+                <div className="frame-interval-list">
+                  {intervalOptions.map((selection, index) => {
+                    const selectionTasks = getFrameTasksForSelection(selection.id);
+                    const selectionCompletedCount = selectionTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+                    return (
+                      <button
+                        key={selection.id}
+                        className={`frame-interval-row ${selection.id === selectedSelectionId ? "is-active" : ""}`}
+                        type="button"
+                        onClick={() => requestSelectionSwitch(selection.id)}
+                        disabled={saving}
+                        aria-current={selection.id === selectedSelectionId ? "true" : undefined}
+                      >
+                        <strong>{index + 1}. {formatFrameSelectionTitle(selection)}</strong>
+                        <span>{selectionCompletedCount}/{selectionTasks.length} кадров</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : null}
+
+            <div className="frame-queue-section-title">Кадры интервала</div>
             <div className="frame-task-list">
-              {frameTasks.map((task) => (
+              {visibleFrameTasks.map((task, index) => (
                 <button
                   key={task.id}
                   className={`frame-task-row ${task.id === selectedTaskId ? "is-active" : ""}`}
                   type="button"
-                  onClick={() => setSelectedTaskId(task.id)}
+                  onClick={() => requestTaskSwitch(task.id)}
+                  disabled={saving}
+                  aria-current={task.id === selectedTaskId ? "true" : undefined}
                 >
-                  <strong>Кадр {task.frame_index}</strong>
+                  <strong>Задача {index + 1}: кадр {task.frame_index}</strong>
                   <span>{frameTaskStatusLabels[task.status] || task.status}</span>
                 </button>
               ))}
@@ -5314,10 +5581,10 @@ function FrameAnnotationPage() {
 
           <main className="frame-annotator__stage">
             <div className="frame-annotator__toolbar">
-              <button className="btn btn--muted btn--compact" type="button" onClick={() => goToAdjacentTask(-1)}>
+              <button className="btn btn--muted btn--compact" type="button" disabled={!hasPreviousTask || saving} onClick={() => goToAdjacentTask(-1)}>
                 Предыдущий
               </button>
-              <button className="btn btn--muted btn--compact" type="button" onClick={() => goToAdjacentTask(1)}>
+              <button className="btn btn--muted btn--compact" type="button" disabled={!hasNextTask || saving} onClick={() => goToAdjacentTask(1)}>
                 Следующий
               </button>
               <button

@@ -50,6 +50,7 @@ from apps.labeling.video_services import (
     delete_video_selection,
     ensure_frame_image,
     export_frame_annotations_json,
+    generate_frame_tasks_from_selection,
     generate_frame_tasks_from_selections,
     get_frame_task_or_404,
     get_video_for_workspace,
@@ -330,6 +331,22 @@ class VideoGenerateFrameTasksView(APIView):
     def post(self, request, video_id: int):
         video = get_video_for_workspace(video_id=video_id, actor=request.user)
         result = generate_frame_tasks_from_selections(video=video, actor=request.user)
+        return Response(
+            {
+                "created_count": result["created_count"],
+                "skipped_duplicates_count": result["skipped_duplicates_count"],
+                "tasks": FrameAnnotationTaskSerializer(result["tasks"], many=True, context={"request": request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VideoSelectionGenerateFrameTasksView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, selection_id: int):
+        selection = _get_video_selection_or_404(selection_id=selection_id)
+        result = generate_frame_tasks_from_selection(selection=selection, actor=request.user)
         return Response(
             {
                 "created_count": result["created_count"],
