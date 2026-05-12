@@ -627,6 +627,142 @@ function getErrorMessage(error: unknown) {
   return String(error || "Неизвестная ошибка.");
 }
 
+function getSearchParam(name: string) {
+  return new URLSearchParams(window.location.search).get(name) || "";
+}
+
+function getBooleanSearchParam(name: string, fallback = false) {
+  const value = getSearchParam(name).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(value)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(value)) {
+    return false;
+  }
+  return fallback;
+}
+
+function getRoomCreatePresetSearch() {
+  const rawDatasetMode = getSearchParam("dataset_mode") || getSearchParam("dataset");
+  const datasetMode = rawDatasetMode !== "demo" && datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "json";
+  const rawWorkflow = getSearchParam("annotation_workflow") || getSearchParam("workflow");
+  const annotationWorkflow =
+    rawWorkflow === "text_detect_text" && (datasetMode === "image" || datasetMode === "video") ? rawWorkflow : "standard";
+  const rawLabel = getSearchParam("label").trim();
+  return {
+    datasetMode,
+    annotationWorkflow,
+    title: getSearchParam("title").trim(),
+    datasetLabel: getSearchParam("dataset_label").trim(),
+    crossValidationEnabled: getBooleanSearchParam("cross_validation"),
+    reviewVotingEnabled: getBooleanSearchParam("review_voting"),
+    labels:
+      rawLabel && datasetModeConfig[datasetMode]?.usesLabels
+        ? [{ name: rawLabel, color: pickRandomLabelColor() }]
+        : ([] as Array<{ name: string; color: string }>),
+  };
+}
+
+type RoomCreateScenarioPreset = {
+  id: string;
+  title: string;
+  summary: string;
+  meta: string;
+  datasetMode: string;
+  annotationWorkflow: string;
+  defaultTitle: string;
+  datasetLabel: string;
+  labelName?: string;
+};
+
+type RoomCreateStepId = "scenario" | "main" | "data" | "team" | "quality";
+
+const roomCreateScenarioPresets: RoomCreateScenarioPreset[] = [
+  {
+    id: "json",
+    title: "JSON / текст",
+    summary: "Импорт текстовых задач из JSON или ZIP-архива.",
+    meta: "Файл",
+    datasetMode: "json",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка текстового датасета",
+    datasetLabel: "Текстовый датасет",
+  },
+  {
+    id: "image",
+    title: "Фото bbox",
+    summary: "Покадровые изображения с ручной bbox-разметкой.",
+    meta: "Изображения",
+    datasetMode: "image",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка изображений",
+    datasetLabel: "Датасет изображений",
+    labelName: "object",
+  },
+  {
+    id: "video",
+    title: "Видео по кадрам",
+    summary: "Видео с выбором интервалов и ручной bbox-разметкой кадров.",
+    meta: "Видео",
+    datasetMode: "video",
+    annotationWorkflow: "standard",
+    defaultTitle: "Разметка видео",
+    datasetLabel: "Видеодатасет",
+    labelName: "object",
+  },
+];
+
+const roomCreateWizardSteps: Array<{
+  id: RoomCreateStepId;
+  title: string;
+  eyebrow: string;
+  description: string;
+}> = [
+  {
+    id: "scenario",
+    title: "Сценарий",
+    eyebrow: "Шаг 1",
+    description: "Выбери тип комнаты, чтобы форма подстроила датасет, workflow и стартовые labels.",
+  },
+  {
+    id: "main",
+    title: "Основное",
+    eyebrow: "Шаг 2",
+    description: "Название, датасет, описание и дедлайн, которые увидит команда.",
+  },
+  {
+    id: "data",
+    title: "Данные",
+    eyebrow: "Шаг 3",
+    description: "Источник задач, файлы и label palette для bbox-сценариев.",
+  },
+  {
+    id: "team",
+    title: "Команда",
+    eyebrow: "Шаг 4",
+    description: "Доступ, приглашённые участники и лимиты задач.",
+  },
+  {
+    id: "quality",
+    title: "Контроль качества",
+    eyebrow: "Шаг 5",
+    description: "Перекрестная разметка, валидация и пороги принятия.",
+  },
+];
+
+function getRoomCreateScenarioId(input: { datasetMode: string; annotationWorkflow: string }) {
+  if (input.datasetMode === "video") {
+    return "video";
+  }
+  if (input.datasetMode === "image") {
+    return "image";
+  }
+  if (input.datasetMode === "json") {
+    return "json";
+  }
+  return "json";
+}
+
 function normalizeToastType(type?: string): ToastType {
   switch (type) {
     case "error":
@@ -1777,68 +1913,147 @@ function PageRouter() {
 }
 
 function LandingPage() {
-  const { bootstrap } = useApp();
+  const { bootstrap, authUser } = useApp();
+  const stats = [
+    { label: "Пользователи", value: bootstrap.stats.users },
+    { label: "Комнаты", value: bootstrap.stats.rooms },
+    { label: "Задачи", value: bootstrap.stats.tasks },
+  ];
+  const scenarios = [
+    {
+      label: "Text",
+      title: "Текстовая разметка",
+      text: "Очереди задач, отправка ответов, ревью и экспорт результатов.",
+      href: "/rooms/create/?dataset_mode=json&title=Текстовая%20разметка&dataset_label=Текстовый%20датасет",
+    },
+    {
+      label: "Image",
+      title: "Image bbox",
+      text: "Ручная bbox-разметка изображений с сохранением нормализованных координат.",
+      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&title=Image%20bbox&dataset_label=Изображения",
+    },
+    {
+      label: "Video",
+      title: "Видеоинтервалы",
+      text: "Предварительный выбор кадров и интервалов перед детальной разметкой.",
+      href: "/rooms/create/?dataset_mode=video&workflow=standard&label=object&title=Видеоразметка&dataset_label=Видео",
+    },
+    {
+      label: "Review",
+      title: "Cross-validation",
+      text: "Несколько независимых разметок, consensus и ручная проверка спорных задач.",
+      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&cross_validation=1&review_voting=1&title=Разметка%20с%20проверкой&dataset_label=Контроль%20качества",
+    },
+  ];
+  const primaryHref = authUser ? "/rooms/" : "/auth/register/";
+  const primaryLabel = authUser ? "Открыть комнаты" : "Начать работу";
 
   return (
-    <>
-      <section className="hero-card hero-card--landing">
-        <div className="hero-card__main">
-          <span className="eyebrow hero-card__eyebrow">Crowdsourcing MVP</span>
-          <h1>Backend + интерфейс для разметки датасетов</h1>
-          <p>
-            Этот проект дает заказчику возможность создавать комнаты для разметки, приглашать исполнителей, выдавать задачи и
-            собирать результаты. Архитектура рассчитана на локальный запуск, корпоративное разворачивание и дальнейшее
-            развитие API без болезненного рефакторинга.
-          </p>
+    <main className="landing-shell">
+      <section className="landing-hero" aria-labelledby="landing-title">
+        <span className="landing-chip">DataSetAI Workspace</span>
+        <h1 id="landing-title">Разметка датасетов в одном рабочем контуре</h1>
+        <p>
+          Комнаты, роли, очереди задач, ручная разметка изображений и видео, cross-validation и экспорт собраны в спокойный
+          интерфейс для ежедневной командной работы.
+        </p>
+        <div className="landing-actions">
+          <a className="btn btn--primary" href={primaryHref}>
+            {primaryLabel}
+          </a>
+          <a className="btn btn--muted" href="/rooms/">
+            Посмотреть комнаты
+          </a>
         </div>
-        <div className="hero-card__stats">
-          <div className="metric-card">
-            <span>Пользователи</span>
-            <strong>{bootstrap.stats.users}</strong>
+        <div className="landing-stats" aria-label="Сводная статистика">
+          {stats.map((item) => (
+            <div className="landing-stat-pill" key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="landing-dashboard" aria-label="Рабочая сводка DataSetAI">
+        <div className="landing-dashboard__top">
+          <div>
+            <span>Room overview</span>
+            <strong>Dataset Quality Run</strong>
           </div>
-          <div className="metric-card">
-            <span>Комнаты</span>
-            <strong>{bootstrap.stats.rooms}</strong>
+          <a className="landing-dashboard__link" href="/rooms/">
+            Все комнаты
+          </a>
+        </div>
+        <div className="landing-dashboard__grid">
+          <div className="landing-dashboard-card landing-dashboard-card--large">
+            <div className="landing-card-head">
+              <span>Очередь разметки</span>
+              <strong>72%</strong>
+            </div>
+            <div className="landing-progress">
+              <span style={{ width: "72%" }}></span>
+            </div>
+            <div className="landing-queue">
+              <span>Image bbox</span>
+              <strong>148 задач</strong>
+            </div>
+            <div className="landing-queue">
+              <span>Video frames</span>
+              <strong>326 кадров</strong>
+            </div>
           </div>
-          <div className="metric-card">
-            <span>Задачи</span>
-            <strong>{bootstrap.stats.tasks}</strong>
+          <div className="landing-dashboard-card">
+            <span>Ревью</span>
+            <strong>24</strong>
+            <small>ожидают проверки</small>
+          </div>
+          <div className="landing-dashboard-card">
+            <span>Consensus</span>
+            <strong>91%</strong>
+            <small>согласовано</small>
+          </div>
+          <div className="landing-dashboard-card landing-dashboard-card--preview">
+            <div className="landing-frame-preview">
+              <span className="landing-frame-box landing-frame-box--one"></span>
+              <span className="landing-frame-box landing-frame-box--two"></span>
+            </div>
+            <small>ручная bbox-разметка</small>
           </div>
         </div>
       </section>
 
-      <section className="card-grid card-grid--three card-grid--compact">
-        <article className="info-card">
-          <h2>Что делает заказчик</h2>
-          <p>Создает комнаты, добавляет тестовый датасет, задает пароль, дедлайн и приглашает разметчиков.</p>
-        </article>
-        <article className="info-card">
-          <h2>Что делает разметчик</h2>
-          <p>Видит только доступные ему комнаты, заходит в рабочую среду, берет задачи и отправляет разметку.</p>
-        </article>
-        <article className="info-card">
-          <h2>Что уже заложено</h2>
-          <p>PostgreSQL, DRF API, mock identification, dashboard по комнате и профиль со статистикой активности.</p>
-        </article>
+      <section className="landing-section">
+        <div className="landing-section__head">
+          <span className="landing-chip">Workflows</span>
+          <h2>Сценарии разметки без лишнего переключения контекста</h2>
+        </div>
+        <div className="landing-scenario-grid">
+          {scenarios.map((item) => (
+            <a className="landing-scenario-card" href={item.href} key={item.title}>
+              <span>{item.label}</span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+              <strong className="landing-scenario-card__action">Создать комнату</strong>
+            </a>
+          ))}
+        </div>
       </section>
 
-      <section className="wide-card wide-card--landing">
-        <div className="wide-card__column">
-          <h2>Текущая цель MVP</h2>
-          <p>
-            Быстро дать команде рабочий контур системы, где можно руками проверить основной пользовательский путь: создать
-            комнату, открыть ее, выполнить разметку и увидеть прогресс по работе.
-          </p>
+      <section className="landing-flow">
+        <div>
+          <span className="landing-chip">Pipeline</span>
+          <h2>От загрузки данных до JSON-экспорта</h2>
         </div>
-        <div className="wide-card__column">
-          <h2>Следующий естественный шаг</h2>
-          <p>
-            Подключить полноценную аутентификацию, реальную загрузку датасетов и управление жизненным циклом задач без
-            изменения базовой структуры проекта.
-          </p>
+        <div className="landing-flow__steps">
+          <span>Комната</span>
+          <span>Назначение</span>
+          <span>Разметка</span>
+          <span>Ревью</span>
+          <span>Экспорт</span>
         </div>
       </section>
-    </>
+    </main>
   );
 }
 
@@ -2491,25 +2706,31 @@ function RoomInvitePage() {
 function RoomCreatePage() {
   const { api, addToast, clearToasts } = useApp();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [title, setTitle] = useState("");
+  const presetRef = useRef(getRoomCreatePresetSearch());
+  const preset = presetRef.current;
+  const [title, setTitle] = useState(preset.title);
   const [password, setPassword] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
   const [annotatorIds, setAnnotatorIds] = useState("");
-  const [crossValidationEnabled, setCrossValidationEnabled] = useState(false);
+  const [crossValidationEnabled, setCrossValidationEnabled] = useState(preset.crossValidationEnabled);
   const [crossValidationCount, setCrossValidationCount] = useState("2");
   const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
-  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(false);
+  const [reviewVotingEnabled, setReviewVotingEnabled] = useState(preset.reviewVotingEnabled);
   const [reviewVotesRequired, setReviewVotesRequired] = useState("1");
   const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = useState("100");
   const [ownerIsAnnotator, setOwnerIsAnnotator] = useState(true);
   const [defaultAssignmentQuota, setDefaultAssignmentQuota] = useState("");
-  const [datasetMode, setDatasetMode] = useState("demo");
-  const [annotationWorkflow, setAnnotationWorkflow] = useState("standard");
-  const [datasetLabel, setDatasetLabel] = useState("Тестовый датасет");
+  const [datasetMode, setDatasetMode] = useState(preset.datasetMode);
+  const [annotationWorkflow, setAnnotationWorkflow] = useState(preset.annotationWorkflow);
+  const [datasetLabel, setDatasetLabel] = useState(preset.datasetLabel || "Тестовый датасет");
   const [testTaskCount, setTestTaskCount] = useState("12");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [labels, setLabels] = useState<Array<{ name: string; color: string }>>([]);
+  const [labels, setLabels] = useState<Array<{ name: string; color: string }>>(preset.labels);
+  const [selectedScenarioId, setSelectedScenarioId] = useState(getRoomCreateScenarioId(preset));
+  const [currentStep, setCurrentStep] = useState<RoomCreateStepId>("scenario");
+  const [maxUnlockedStepIndex, setMaxUnlockedStepIndex] = useState(0);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -2523,9 +2744,31 @@ function RoomCreatePage() {
     if (config?.usesLabels && !labels.length) {
       setLabels([{ name: "", color: pickRandomLabelColor() }]);
     }
-  }, [datasetMode]);
+    if (datasetMode !== "image" && datasetMode !== "video" && annotationWorkflow !== "standard") {
+      setAnnotationWorkflow("standard");
+    }
+  }, [datasetMode, annotationWorkflow, labels.length]);
+
+  useEffect(() => {
+    setSelectedScenarioId(getRoomCreateScenarioId({ datasetMode, annotationWorkflow }));
+  }, [datasetMode, annotationWorkflow]);
 
   const modeConfig = datasetModeConfig[datasetMode];
+  const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
+  const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
+  const filesPreview = modeConfig.usesFiles
+    ? selectedFiles.length
+      ? `${selectedFiles.length} файл(ов) выбрано`
+      : "Файлы ещё не выбраны"
+    : "Загрузка файлов не нужна";
+  const qualityPreview = crossValidationEnabled
+    ? `Перекрестная разметка: ${crossValidationCount || 2} исполнителя`
+    : "Обычная разметка";
+  const reviewPreview = reviewVotingEnabled ? `Пул валидации: ${reviewVotesRequired || 1} голос(ов)` : "Без пула валидации";
+  const currentStepIndex = Math.max(
+    roomCreateWizardSteps.findIndex((item) => item.id === currentStep),
+    0
+  );
   const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
   const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
   const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
@@ -2540,33 +2783,69 @@ function RoomCreatePage() {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    clearToasts();
-    setSubmitting(true);
+  function applyScenarioPreset(scenario: RoomCreateScenarioPreset) {
+    const knownTitles = roomCreateScenarioPresets.map((item) => item.defaultTitle);
+    setSelectedScenarioId(scenario.id);
+    setDatasetMode(scenario.datasetMode);
+    setAnnotationWorkflow(scenario.annotationWorkflow);
+    if (!title.trim() || knownTitles.includes(title.trim())) {
+      setTitle(scenario.defaultTitle);
+    }
+    if (!datasetLabel.trim() || datasetLabel === "Тестовый датасет" || roomCreateScenarioPresets.some((item) => item.datasetLabel === datasetLabel)) {
+      setDatasetLabel(scenario.datasetLabel);
+    }
+    if (datasetModeConfig[scenario.datasetMode]?.usesLabels) {
+      setLabels((current) => [{ name: scenario.labelName || current[0]?.name || "object", color: current[0]?.color || pickRandomLabelColor() }]);
+    } else {
+      setLabels([]);
+    }
+  }
 
-    try {
-      const normalizedAnnotatorIds = annotatorIds
-        .split(",")
-        .map((item) => Number(item.trim()))
-        .filter((item) => Number.isInteger(item) && item > 0);
-      const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
-      const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
-      const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
-      const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
+  function validateRoomCreateStep(stepId: RoomCreateStepId) {
+    const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+    const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+    const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
 
+    if (stepId === "main") {
+      if (!title.trim()) {
+        throw new Error("Укажи название комнаты.");
+      }
+      if (titleTooLong || descriptionTooLong || datasetLabelTooLong) {
+        throw new Error("Сократи текст в основных полях, которые выделены красным.");
+      }
+      if (deadlineError) {
+        throw new Error(deadlineError);
+      }
+    }
+
+    if (stepId === "data") {
       if (datasetMode !== "demo" && !selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
       }
-
       if (labelsRequired && !normalizedLabels.length) {
         throw new Error("Добавь хотя бы один лейбл для фото или видео.");
       }
+      if (hasLabelNameTooLong) {
+        throw new Error("Сократи название лейбла, которое выделено красным.");
+      }
+    }
 
+    if (stepId === "team") {
+      if (passwordTooLong || annotatorIdsTooLong) {
+        throw new Error("Сократи текст в полях команды, которые выделены красным.");
+      }
+      if (
+        normalizedDefaultQuota !== null &&
+        (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
+      ) {
+        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
+      }
+    }
+
+    if (stepId === "quality") {
       if (crossValidationEnabled && Number(crossValidationCount) < 2) {
         throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
       }
-
       if (
         reviewVotingEnabled &&
         (!Number.isFinite(normalizedReviewVotesRequired) ||
@@ -2576,21 +2855,151 @@ function RoomCreatePage() {
       ) {
         throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
       }
+    }
+  }
 
-      if (
-        normalizedDefaultQuota !== null &&
-        (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
-      ) {
-        throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
+  function validateRoomCreateWizard() {
+    for (const [index, step] of roomCreateWizardSteps.entries()) {
+      try {
+        validateRoomCreateStep(step.id);
+      } catch (error) {
+        setCurrentStep(step.id);
+        setMaxUnlockedStepIndex((current) => Math.max(current, index));
+        throw error;
       }
+    }
+  }
 
-      if (hasCreateTextLimitError) {
-        throw new Error("Сократи текст в полях, которые выделены красным.");
-      }
+  function getRoomCreateStepSummary(stepId: RoomCreateStepId) {
+    if (stepId === "scenario") {
+      return currentScenario.title;
+    }
+    if (stepId === "main") {
+      return `${title.trim() || currentScenario.defaultTitle} · ${datasetLabel.trim() || "Датасет без названия"}`;
+    }
+    if (stepId === "data") {
+      return `${translateDatasetMode(datasetMode)} · ${filesPreview}`;
+    }
+    if (stepId === "team") {
+      const invitedCount = annotatorIds
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean).length;
+      return invitedCount ? `Приглашено ID: ${invitedCount} · ${ownerIsAnnotator ? "создатель размечает" : "создатель не размечает"}` : ownerIsAnnotator ? "Создатель размечает задачи" : "Создатель не размечает задачи";
+    }
+    return `${qualityPreview} · ${reviewPreview}`;
+  }
 
-      if (deadlineError) {
-        throw new Error(deadlineError);
-      }
+  function openRoomCreateStep(stepId: RoomCreateStepId) {
+    const nextIndex = roomCreateWizardSteps.findIndex((item) => item.id === stepId);
+    if (nextIndex > -1 && nextIndex <= maxUnlockedStepIndex) {
+      setCurrentStep(stepId);
+    }
+  }
+
+  function goToNextRoomCreateStep() {
+    clearToasts();
+    try {
+      validateRoomCreateStep(currentStep);
+      const nextIndex = Math.min(currentStepIndex + 1, roomCreateWizardSteps.length - 1);
+      setMaxUnlockedStepIndex((current) => Math.max(current, nextIndex));
+      setCurrentStep(roomCreateWizardSteps[nextIndex].id);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  function goToPreviousRoomCreateStep() {
+    const previousIndex = Math.max(currentStepIndex - 1, 0);
+    setCurrentStep(roomCreateWizardSteps[previousIndex].id);
+  }
+
+  function getNormalizedRoomCreateValues() {
+    const normalizedAnnotatorIds = annotatorIds
+      .split(",")
+      .map((item) => Number(item.trim()))
+      .filter((item) => Number.isInteger(item) && item > 0);
+    const normalizedLabels = labels.map((item) => ({ name: item.name.trim(), color: item.color })).filter((item) => item.name);
+    const normalizedDefaultQuota = defaultAssignmentQuota.trim() === "" ? null : Number(defaultAssignmentQuota.trim());
+    const normalizedReviewVotesRequired = Number(reviewVotesRequired || 1);
+    const normalizedReviewAcceptanceThreshold = clamp(Number(reviewAcceptanceThreshold || 100), 1, 100);
+
+    if (datasetMode !== "demo" && !selectedFiles.length) {
+      throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
+    }
+
+    if (labelsRequired && !normalizedLabels.length) {
+      throw new Error("Добавь хотя бы один лейбл для фото или видео.");
+    }
+
+    if (crossValidationEnabled && Number(crossValidationCount) < 2) {
+      throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
+    }
+
+    if (
+      reviewVotingEnabled &&
+      (!Number.isFinite(normalizedReviewVotesRequired) ||
+        normalizedReviewVotesRequired < 1 ||
+        normalizedReviewVotesRequired > 20 ||
+        !Number.isInteger(normalizedReviewVotesRequired))
+    ) {
+      throw new Error("Для пула валидации укажи от 1 до 20 голосов.");
+    }
+
+    if (
+      normalizedDefaultQuota !== null &&
+      (!Number.isFinite(normalizedDefaultQuota) || normalizedDefaultQuota < 0 || !Number.isInteger(normalizedDefaultQuota))
+    ) {
+      throw new Error("Стандартная квота должна быть целым числом 0 или больше.");
+    }
+
+    if (hasCreateTextLimitError) {
+      throw new Error("Сократи текст в полях, которые выделены красным.");
+    }
+
+    if (deadlineError) {
+      throw new Error(deadlineError);
+    }
+
+    return {
+      normalizedAnnotatorIds,
+      normalizedLabels,
+      normalizedDefaultQuota,
+      normalizedReviewVotesRequired,
+      normalizedReviewAcceptanceThreshold,
+    };
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    clearToasts();
+
+    if (currentStepIndex < roomCreateWizardSteps.length - 1) {
+      goToNextRoomCreateStep();
+      return;
+    }
+
+    try {
+      validateRoomCreateWizard();
+      getNormalizedRoomCreateValues();
+      setConfirmationOpen(true);
+    } catch (error) {
+      addToast(getErrorMessage(error), "error");
+    }
+  }
+
+  async function submitRoomCreate() {
+    clearToasts();
+    setSubmitting(true);
+
+    try {
+      const {
+        normalizedAnnotatorIds,
+        normalizedLabels,
+        normalizedDefaultQuota,
+        normalizedReviewVotesRequired,
+        normalizedReviewAcceptanceThreshold,
+      } = getNormalizedRoomCreateValues();
 
       const mediaManifest = await buildMediaManifest(selectedFiles, datasetMode);
       const payload = new FormData();
@@ -2629,6 +3038,7 @@ function RoomCreatePage() {
         method: "POST",
         formData: payload,
       });
+      setConfirmationOpen(false);
       addToast(`Комната #${room.id} создана. Переходим к ней.`, "success");
       window.setTimeout(() => {
         window.location.href = `/rooms/${room.id}/`;
@@ -2638,6 +3048,68 @@ function RoomCreatePage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function renderRoomCreateStep(stepId: RoomCreateStepId, children: React.ReactNode) {
+    const stepIndex = roomCreateWizardSteps.findIndex((item) => item.id === stepId);
+    const step = roomCreateWizardSteps[stepIndex];
+    const isActive = currentStep === stepId;
+    const isUnlocked = stepIndex <= maxUnlockedStepIndex;
+
+    if (!step) {
+      return null;
+    }
+
+    return (
+      <section key={step.id} className={`room-create-section room-create-wizard-section ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`}>
+        <div className="room-create-wizard-head">
+          <button
+            className="room-create-wizard-head__main"
+            type="button"
+            disabled={!isUnlocked || isActive}
+            onClick={() => openRoomCreateStep(step.id)}
+          >
+            <span className="room-create-step-number">{stepIndex + 1}</span>
+            <span className="room-create-wizard-head__copy">
+              <span className="eyebrow">{step.eyebrow}</span>
+              <strong>{step.title}</strong>
+              <small>{isActive ? step.description : getRoomCreateStepSummary(step.id)}</small>
+            </span>
+          </button>
+          {!isActive && isUnlocked ? (
+            <button className="btn btn--muted btn--compact" type="button" onClick={() => openRoomCreateStep(step.id)}>
+              Изменить
+            </button>
+          ) : null}
+        </div>
+
+        {isActive ? (
+          <div className="room-create-step-body">
+            {children}
+            <div className="room-create-step-actions">
+              {currentStepIndex > 0 ? (
+                <button className="btn btn--muted" type="button" onClick={goToPreviousRoomCreateStep}>
+                  Назад
+                </button>
+              ) : (
+                <a className="btn btn--muted" href="/rooms/">
+                  Назад к комнатам
+                </a>
+              )}
+              {currentStepIndex < roomCreateWizardSteps.length - 1 ? (
+                <button className="btn btn--primary" type="button" onClick={goToNextRoomCreateStep}>
+                  Далее
+                </button>
+              ) : (
+                <button className="btn btn--primary" type="submit" disabled={submitting}>
+                  Проверить и создать
+                </button>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
   }
 
   return (
@@ -2650,253 +3122,410 @@ function RoomCreatePage() {
         </div>
       </section>
 
-      <section className="create-layout">
-        <form className="form-card" onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <label className="field">
-              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
-              <input
-                value={title}
-                name="title"
-                type="text"
-                placeholder="Например, Разметка отзывов Q2"
-                required
-                className={titleTooLong ? "field__control--invalid" : ""}
-                aria-invalid={titleTooLong}
-                onChange={(event) => setTitle(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Пароль комнаты</span>
-              <input
-                value={password}
-                name="password"
-                type="password"
-                placeholder="Например, demo123"
-                className={passwordTooLong ? "field__control--invalid" : ""}
-                aria-invalid={passwordTooLong}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--full">
-              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
-              <textarea
-                value={description}
-                name="description"
-                rows={4}
-                placeholder="Кратко опиши задачу и правила разметки"
-                className={descriptionTooLong ? "field__control--invalid" : ""}
-                aria-invalid={descriptionTooLong}
-                onChange={(event) => setDescription(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            <label className="field">
-              <span>Дедлайн (необязательно)</span>
-              <input
-                value={deadline}
-                name="deadline"
-                type="datetime-local"
-                className={deadlineError ? "field__control--invalid" : ""}
-                aria-invalid={Boolean(deadlineError)}
-                onChange={(event) => setDeadline(event.currentTarget.value)}
-              />
-              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
-            </label>
-            <label className="field">
-              <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
-              <input
-                value={annotatorIds}
-                name="annotator_ids"
-                type="text"
-                placeholder="Например, 2,3,7"
-                className={annotatorIdsTooLong ? "field__control--invalid" : ""}
-                aria-invalid={annotatorIdsTooLong}
-                onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--checkbox">
-              <span>Перекрестная разметка</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Включить</span>
-                <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Пул валидации</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
-                <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Создатель в разметке</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
-                <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field">
-              <span>Стандартная квота задач</span>
-              <input
-                value={defaultAssignmentQuota}
-                name="default_assignment_quota"
-                type="number"
-                min="0"
-                step="1"
-                placeholder="По количеству задач"
-                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Количество независимых исполнителей (n)</span>
-              <input
-                value={crossValidationCount}
-                name="cross_validation_annotators_count"
-                type="number"
-                min="2"
-                max="20"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог сходства (%)</span>
-              <input
-                value={crossValidationThreshold}
-                name="cross_validation_similarity_threshold"
-                type="number"
-                min="1"
-                max="100"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Голосов для решения</span>
-              <input
-                value={reviewVotesRequired}
-                name="review_votes_required"
-                type="number"
-                min="1"
-                max="20"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог принятия (%)</span>
-              <input
-                value={reviewAcceptanceThreshold}
-                name="review_acceptance_threshold"
-                type="number"
-                min="1"
-                max="100"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Тип датасета</span>
-              <select value={datasetMode} name="dataset_mode" onChange={(event) => setDatasetMode(event.currentTarget.value)}>
-                <option value="demo">Demo JSON</option>
-                <option value="json">JSON файл</option>
-                <option value="image">Фото</option>
-                <option value="video">Видео</option>
-              </select>
-            </label>
-            {(datasetMode === "image" || datasetMode === "video") && (
-              <label className="field">
-                <span>Сценарий разметки</span>
-                <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
-                  <option value="standard">Обычная разметка</option>
-                  <option value="text_detect_text">Object detect + text</option>
-                </select>
-              </label>
-            )}
-            <label className="field">
-              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
-              <input
-                value={datasetLabel}
-                name="dataset_label"
-                type="text"
-                className={datasetLabelTooLong ? "field__control--invalid" : ""}
-                aria-invalid={datasetLabelTooLong}
-                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
-              />
-            </label>
-            {datasetMode === "demo" && (
-              <label className="field">
-                <span>Количество тестовых задач</span>
-                <input value={testTaskCount} name="test_task_count" type="number" min="1" max="100" onChange={(event) => setTestTaskCount(event.currentTarget.value)} />
-              </label>
-            )}
-          </div>
-
-          <div className="dataset-box">
-            <div>
-              <h2>Загрузка датасета</h2>
-              <p>{modeConfig.hint}</p>
-            </div>
-            <div className="dataset-box__actions dataset-box__actions--stack">
-              <input
-                ref={fileInputRef}
-                type="file"
-                disabled={!modeConfig.usesFiles}
-                accept={modeConfig.accept}
-                multiple={modeConfig.multiple}
-                onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
-              />
-              <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
-            </div>
-          </div>
-
-          {modeConfig.usesLabels && (
-            <section className="form-card form-card--nested">
-              <div className="panel-card__head">
-                <h2>Лейблы для разметки</h2>
-              </div>
-              <p className="panel-note">Цвет каждому label-у назначается случайно, но его можно сразу изменить.</p>
-              <div className="label-editor-list">
-                {labels.map((label, index) => (
-                  <div key={`label-${index}`} className="label-editor-row">
-                    <label className="field">
-                      <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
-                      <input
-                        className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
-                        type="text"
-                        placeholder="Например, car"
-                        value={label.name}
-                        aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
-                        onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
-                      />
-                    </label>
-                    <label className="field field--color">
-                      <span>Цвет</span>
-                      <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
-                    </label>
-                    <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
-                      Убрать
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="form-actions form-actions--tight">
-                <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
-                  Добавить лейбл
+      <section className="create-layout create-layout--room-create">
+        <form id="room-create-form" className="room-create-form" onSubmit={handleSubmit}>
+          <div className="room-create-stepper" aria-label="Шаги создания комнаты">
+            {roomCreateWizardSteps.map((step, index) => {
+              const isActive = currentStep === step.id;
+              const isUnlocked = index <= maxUnlockedStepIndex;
+              return (
+                <button
+                  key={step.id}
+                  className={`room-create-stepper__item ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`}
+                  type="button"
+                  disabled={!isUnlocked}
+                  aria-current={isActive ? "step" : undefined}
+                  onClick={() => openRoomCreateStep(step.id)}
+                >
+                  <span>{index + 1}</span>
+                  <strong>{step.title}</strong>
                 </button>
+              );
+            })}
+          </div>
+
+          {renderRoomCreateStep(
+            "scenario",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Сценарий</span>
+                <h2>Выбери стартовый сценарий</h2>
               </div>
-            </section>
+              <p>Карточка заполняет тип датасета, workflow, название и базовый label. Все параметры ниже можно изменить вручную.</p>
+            </div>
+            <div className="room-create-scenario-grid">
+              {roomCreateScenarioPresets.map((scenario) => (
+                <button
+                  key={scenario.id}
+                  className={`room-create-scenario-card ${scenario.id === selectedScenarioId ? "is-active" : ""}`}
+                  type="button"
+                  aria-pressed={scenario.id === selectedScenarioId}
+                  onClick={() => applyScenarioPreset(scenario)}
+                >
+                  <span>{scenario.meta}</span>
+                  <strong>{scenario.title}</strong>
+                  <p>{scenario.summary}</p>
+                </button>
+              ))}
+            </div>
+            </>
           )}
 
-          <div className="form-actions">
-            <a className="btn btn--muted" href="/rooms/">
-              Назад к комнатам
-            </a>
-            <button className="btn btn--primary" type="submit" disabled={submitting}>
-              {submitting ? "Создаем комнату..." : "Создать комнату"}
-            </button>
-          </div>
+          {renderRoomCreateStep(
+            "main",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Основное</span>
+                <h2>Название и контекст</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
+                <input
+                  value={title}
+                  name="title"
+                  type="text"
+                  placeholder="Например, Разметка отзывов Q2"
+                  required
+                  className={titleTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={titleTooLong}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                <input
+                  value={datasetLabel}
+                  name="dataset_label"
+                  type="text"
+                  className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={datasetLabelTooLong}
+                  onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field field--full">
+                <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
+                <textarea
+                  value={description}
+                  name="description"
+                  rows={4}
+                  placeholder="Кратко опиши задачу и правила разметки"
+                  className={descriptionTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={descriptionTooLong}
+                  onChange={(event) => setDescription(event.currentTarget.value)}
+                ></textarea>
+              </label>
+              <label className="field">
+                <span>Дедлайн (необязательно)</span>
+                <input
+                  value={deadline}
+                  name="deadline"
+                  type="datetime-local"
+                  className={deadlineError ? "field__control--invalid" : ""}
+                  aria-invalid={Boolean(deadlineError)}
+                  onChange={(event) => setDeadline(event.currentTarget.value)}
+                />
+                {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
+              </label>
+            </div>
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "data",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Данные</span>
+                <h2>Источник и разметка</h2>
+              </div>
+              <p>{modeConfig.hint}</p>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <span>Тип датасета</span>
+                <select value={datasetMode} name="dataset_mode" onChange={(event) => setDatasetMode(event.currentTarget.value)}>
+                  <option value="json">JSON файл</option>
+                  <option value="image">Фото</option>
+                  <option value="video">Видео</option>
+                </select>
+              </label>
+              {(datasetMode === "image" || datasetMode === "video") && (
+                <label className="field">
+                  <span>Сценарий разметки</span>
+                  <select value={annotationWorkflow} name="annotation_workflow" onChange={(event) => setAnnotationWorkflow(event.currentTarget.value)}>
+                    <option value="standard">Обычная разметка</option>
+                    <option value="text_detect_text">Object detect + text</option>
+                  </select>
+                </label>
+              )}
+            </div>
+
+            <div className="dataset-box room-create-upload-box">
+              <div>
+                <h2>Загрузка датасета</h2>
+                <p>{modeConfig.usesFiles ? "Выбери файлы, которые станут задачами комнаты." : "Demo-комната создаст задачи автоматически."}</p>
+              </div>
+              <div className="dataset-box__actions dataset-box__actions--stack">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  disabled={!modeConfig.usesFiles}
+                  accept={modeConfig.accept}
+                  multiple={modeConfig.multiple}
+                  onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
+                />
+                <div className="panel-note">{summarizeSelectedFiles(selectedFiles)}</div>
+              </div>
+            </div>
+
+            {modeConfig.usesLabels && (
+              <div className="room-create-labels">
+                <div className="room-create-section__head room-create-section__head--compact">
+                  <div>
+                    <span className="eyebrow">Labels</span>
+                    <h2>Лейблы для bbox</h2>
+                  </div>
+                  <p>Цвет каждому label-у назначается случайно, но его можно сразу изменить.</p>
+                </div>
+                <div className="label-editor-list">
+                  {labels.map((label, index) => (
+                    <div key={`label-${index}`} className="label-editor-row">
+                      <label className="field">
+                        <CharacterLimitLabel label="Лейбл" value={label.name} maxLength={ROOM_LABEL_NAME_MAX_LENGTH} />
+                        <input
+                          className={`label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`}
+                          type="text"
+                          placeholder="Например, car"
+                          value={label.name}
+                          aria-invalid={isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH)}
+                          onChange={(event) => updateLabel(index, "name", event.currentTarget.value)}
+                        />
+                      </label>
+                      <label className="field field--color">
+                        <span>Цвет</span>
+                        <input className="label-editor-row__color" type="color" value={label.color} onChange={(event) => updateLabel(index, "color", event.currentTarget.value)} />
+                      </label>
+                      <button className="btn btn--muted btn--compact" type="button" onClick={() => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                        Убрать
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="form-actions form-actions--tight">
+                  <button className="btn btn--muted" type="button" onClick={() => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }])}>
+                    Добавить лейбл
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "team",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Команда</span>
+                <h2>Доступ и квоты</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field">
+                <span>Пароль комнаты</span>
+                <input
+                  value={password}
+                  name="password"
+                  type="password"
+                  placeholder="Например, demo123"
+                  className={passwordTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={passwordTooLong}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="ID приглашенных участников" value={annotatorIds} maxLength={ROOM_ANNOTATOR_IDS_MAX_LENGTH} />
+                <input
+                  value={annotatorIds}
+                  name="annotator_ids"
+                  type="text"
+                  placeholder="Например, 2,3,7"
+                  className={annotatorIdsTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={annotatorIdsTooLong}
+                  onChange={(event) => setAnnotatorIds(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Стандартная квота задач</span>
+                <input
+                  value={defaultAssignmentQuota}
+                  name="default_assignment_quota"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="По количеству задач"
+                  onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field field--checkbox">
+                <span>Создатель в разметке</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                  <input checked={ownerIsAnnotator} name="owner_is_annotator" type="checkbox" onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)} />
+                </span>
+              </label>
+            </div>
+            </>
+          )}
+
+          {renderRoomCreateStep(
+            "quality",
+            <>
+            <div className="room-create-section__head">
+              <div>
+                <span className="eyebrow">Контроль качества</span>
+                <h2>Перекрестная разметка и ревью</h2>
+              </div>
+            </div>
+            <div className="room-create-fields">
+              <label className="field field--checkbox">
+                <span>Перекрестная разметка</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Включить независимых исполнителей</span>
+                  <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Пул валидации</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                  <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field">
+                <span>Количество независимых исполнителей (n)</span>
+                <input
+                  value={crossValidationCount}
+                  name="cross_validation_annotators_count"
+                  type="number"
+                  min="2"
+                  max="20"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог сходства (%)</span>
+                <input
+                  value={crossValidationThreshold}
+                  name="cross_validation_similarity_threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Голосов для решения</span>
+                <input
+                  value={reviewVotesRequired}
+                  name="review_votes_required"
+                  type="number"
+                  min="1"
+                  max="20"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог принятия (%)</span>
+                <input
+                  value={reviewAcceptanceThreshold}
+                  name="review_acceptance_threshold"
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
+                />
+              </label>
+            </div>
+            </>
+          )}
         </form>
+
+        {confirmationOpen ? (
+          <div className="modal-shell" role="presentation" onClick={() => (submitting ? undefined : setConfirmationOpen(false))}>
+            <div
+              className="modal-card modal-card--room-create"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="room-create-confirm-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-card__head">
+                <span className="eyebrow">Подтверждение</span>
+                <h2 id="room-create-confirm-title">Создать комнату?</h2>
+                <p>Проверь основные параметры перед созданием. После создания комнату можно будет открыть и продолжить настройку доступа.</p>
+              </div>
+              <div className="room-create-confirm-grid">
+                <div>
+                  <span>Название</span>
+                  <strong>{title.trim() || currentScenario.defaultTitle}</strong>
+                </div>
+                <div>
+                  <span>Сценарий</span>
+                  <strong>{currentScenario.title}</strong>
+                </div>
+                <div>
+                  <span>Датасет</span>
+                  <strong>{translateDatasetMode(datasetMode)}</strong>
+                </div>
+                <div>
+                  <span>Workflow</span>
+                  <strong>{translateAnnotationWorkflow(annotationWorkflow)}</strong>
+                </div>
+                <div>
+                  <span>Файлы</span>
+                  <strong>{filesPreview}</strong>
+                </div>
+                <div>
+                  <span>Качество</span>
+                  <strong>{qualityPreview}</strong>
+                </div>
+                <div>
+                  <span>Ревью</span>
+                  <strong>{reviewPreview}</strong>
+                </div>
+              </div>
+              <div className="room-create-confirm-labels">
+                <span>Лейблы</span>
+                {normalizedLabelsPreview.length ? (
+                  <div>
+                    {normalizedLabelsPreview.map((label) => (
+                      <strong key={label}>{label}</strong>
+                    ))}
+                  </div>
+                ) : (
+                  <p>{modeConfig.usesLabels ? "Лейблы не заполнены." : "Для этого сценария label palette не нужен."}</p>
+                )}
+              </div>
+              <div className="modal-card__actions">
+                <button className="btn btn--muted" type="button" disabled={submitting} onClick={() => setConfirmationOpen(false)}>
+                  Вернуться к форме
+                </button>
+                <button className="btn btn--primary" type="button" disabled={submitting} onClick={submitRoomCreate}>
+                  {submitting ? "Создаем..." : "Подтвердить создание"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </>
   );
