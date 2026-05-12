@@ -1,5 +1,4 @@
 import json
-import json
 import shutil
 import subprocess
 import tempfile
@@ -392,9 +391,14 @@ def create_video_selection(*, video: Task, actor: User, start_frame: int, end_fr
 def update_video_selection(*, selection: VideoSelection, actor: User, start_frame: int, end_frame: int) -> VideoSelection:
     _assert_can_use_video_workspace(video=selection.video, actor=actor)
     start_frame, end_frame = validate_frame_bounds(video=selection.video, start_frame=start_frame, end_frame=end_frame)
+    bounds_changed = selection.start_frame != start_frame or selection.end_frame != end_frame
     selection.start_frame = start_frame
     selection.end_frame = end_frame
-    selection.save(update_fields=["start_frame", "end_frame", "updated_at"])
+    update_fields = ["start_frame", "end_frame", "updated_at"]
+    if bounds_changed and selection.status == VideoSelection.Status.GENERATED:
+        selection.status = VideoSelection.Status.ACTIVE
+        update_fields.append("status")
+    selection.save(update_fields=update_fields)
     return selection
 
 
@@ -403,41 +407,71 @@ def delete_video_selection(*, selection: VideoSelection, actor: User) -> None:
     selection.delete()
 
 
-def generate_frame_tasks_from_selections(*, video: Task, actor: User) -> dict:
-    _assert_video_task(video=video)
-    _assert_can_use_video_workspace(video=video, actor=actor)
-    frame_count = get_video_frame_count(video=video)
+def _generate_frame_tasks_for_locked_selections(
+    *,
+    video: Task,
+    selections: list[VideoSelection],
+    frame_count: int,
+) -> dict:
     created_tasks = []
     skipped_count = 0
-    with transaction.atomic():
-        selections = list(VideoSelection.objects.select_for_update().filter(video=video).order_by("start_frame", "end_frame", "id"))
-        for selection in selections:
-            for frame_index in expand_frame_range(
-                start_frame=selection.start_frame,
-                end_frame=selection.end_frame,
-                frame_count=frame_count,
-            ):
-                task, created = FrameAnnotationTask.objects.get_or_create(
-                    video=video,
-                    frame_index=frame_index,
-                    defaults={
-                        "time_ms": frame_index_to_time_ms(video=video, frame_index=frame_index),
-                        "source_segment": selection,
-                    },
-                )
-                if not created:
-                    skipped_count += 1
-                    continue
-                created_tasks.append(task)
-            if selection.status != VideoSelection.Status.GENERATED:
-                selection.status = VideoSelection.Status.GENERATED
-                selection.save(update_fields=["status", "updated_at"])
+    for selection in selections:
+        for frame_index in expand_frame_range(
+            start_frame=selection.start_frame,
+            end_frame=selection.end_frame,
+            frame_count=frame_count,
+        ):
+            task, created = FrameAnnotationTask.objects.get_or_create(
+                video=video,
+                frame_index=frame_index,
+                defaults={
+                    "time_ms": frame_index_to_time_ms(video=video, frame_index=frame_index),
+                    "source_segment": selection,
+                },
+            )
+            if not created:
+                skipped_count += 1
+                continue
+            created_tasks.append(task)
+        if selection.status != VideoSelection.Status.GENERATED:
+            selection.status = VideoSelection.Status.GENERATED
+            selection.save(update_fields=["status", "updated_at"])
 
     return {
         "created_count": len(created_tasks),
         "skipped_duplicates_count": skipped_count,
         "tasks": created_tasks,
     }
+
+
+def generate_frame_tasks_from_selection(*, selection: VideoSelection, actor: User) -> dict:
+    _assert_video_task(video=selection.video)
+    _assert_can_use_video_workspace(video=selection.video, actor=actor)
+    with transaction.atomic():
+        locked_selection = (
+            VideoSelection.objects.select_for_update()
+            .select_related("video__room")
+            .get(id=selection.id)
+        )
+        frame_count = get_video_frame_count(video=locked_selection.video)
+        return _generate_frame_tasks_for_locked_selections(
+            video=locked_selection.video,
+            selections=[locked_selection],
+            frame_count=frame_count,
+        )
+
+
+def generate_frame_tasks_from_selections(*, video: Task, actor: User) -> dict:
+    _assert_video_task(video=video)
+    _assert_can_use_video_workspace(video=video, actor=actor)
+    frame_count = get_video_frame_count(video=video)
+    with transaction.atomic():
+        selections = list(VideoSelection.objects.select_for_update().filter(video=video).order_by("start_frame", "end_frame", "id"))
+        return _generate_frame_tasks_for_locked_selections(
+            video=video,
+            selections=selections,
+            frame_count=frame_count,
+        )
 
 
 def list_frame_tasks(*, actor: User, video_id: int | None = None) -> list[FrameAnnotationTask]:

@@ -5403,7 +5403,26 @@ textarea::placeholder {
     font-size: 0.9rem;
 }
 
+.video-selection-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.video-selection-summary__head,
+.video-selection-row__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.video-selection-summary__head strong {
+    font-size: 1.2rem;
+}
+
 .video-selection-list,
+.frame-interval-list,
 .frame-task-list,
 .frame-object-list {
     display: flex;
@@ -5411,14 +5430,29 @@ textarea::placeholder {
     gap: 8px;
 }
 
+.video-selection-list {
+    max-height: min(58vh, 560px);
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+}
+
 .frame-task-list {
-    max-height: min(64vh, 620px);
+    max-height: min(38vh, 420px);
+    overflow-y: auto;
+    padding-right: 4px;
+    scrollbar-width: thin;
+}
+
+.frame-interval-list {
+    max-height: min(28vh, 260px);
     overflow-y: auto;
     padding-right: 4px;
     scrollbar-width: thin;
 }
 
 .video-selection-row,
+.frame-interval-row,
 .frame-task-row,
 .frame-object-row {
     border: 1px solid var(--line);
@@ -5427,10 +5461,56 @@ textarea::placeholder {
     padding: 10px;
 }
 
+.video-selection-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.video-selection-row.is-generated {
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+}
+
+.video-selection-row__title {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.video-selection-row__title strong,
+.video-selection-row__title span {
+    overflow-wrap: anywhere;
+}
+
+.video-selection-row__title span {
+    color: var(--text-soft);
+    font-size: 0.86rem;
+}
+
+.video-selection-row__status {
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    line-height: 1.2;
+}
+
 .video-selection-row__inputs {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+}
+
+.video-selection-row__inputs label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+    color: var(--text-soft);
+    font-size: 0.8rem;
 }
 
 .video-selection-row input {
@@ -5447,6 +5527,7 @@ textarea::placeholder {
 }
 
 .frame-task-row,
+.frame-interval-row,
 .frame-object-row {
     width: 100%;
     text-align: left;
@@ -5454,16 +5535,43 @@ textarea::placeholder {
     cursor: pointer;
 }
 
+.frame-task-row:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
+.frame-interval-row:disabled {
+    cursor: wait;
+    opacity: 0.72;
+}
+
 .frame-task-row.is-active,
+.frame-interval-row.is-active,
 .frame-object-row.is-active {
     border-color: var(--accent);
 }
 
+.frame-queue-section-title {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
 .frame-task-row strong,
+.frame-interval-row strong,
 .frame-object-row strong,
 .frame-task-row span,
+.frame-interval-row span,
 .frame-object-row span {
     display: block;
+}
+
+.frame-task-row span,
+.frame-interval-row span {
+    color: var(--text-soft);
+    font-size: 0.84rem;
 }
 
 .frame-canvas {

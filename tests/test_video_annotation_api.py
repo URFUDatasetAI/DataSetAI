@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.labeling.models import FrameAnnotation, FrameAnnotationTask, Task
+from apps.labeling.models import FrameAnnotation, FrameAnnotationTask, Task, VideoSelection
 from apps.labeling.video_services import build_frame_annotation_export, expand_frame_range, validate_bbox_object
 from apps.rooms.models import Room
 from common.exceptions import ConflictError
@@ -86,6 +86,45 @@ class VideoAnnotationApiTests(APITestCase):
         self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(second_response.data["created_count"], 0)
         self.assertEqual(second_response.data["skipped_duplicates_count"], 3)
+
+    def test_generate_tasks_from_single_selection_only(self):
+        first_selection = self.client.post(
+            reverse("video-selection-list-create", kwargs={"video_id": self.video.id}),
+            {"start_frame": 1, "end_frame": 2},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        second_selection = self.client.post(
+            reverse("video-selection-list-create", kwargs={"video_id": self.video.id}),
+            {"start_frame": 6, "end_frame": 7},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        first_response = self.client.post(
+            reverse("video-selection-generate-frame-tasks", kwargs={"selection_id": first_selection.data["id"]}),
+            {},
+            format="json",
+            **self.auth(self.annotator),
+        )
+        second_response = self.client.post(
+            reverse("video-selection-generate-frame-tasks", kwargs={"selection_id": first_selection.data["id"]}),
+            {},
+            format="json",
+            **self.auth(self.annotator),
+        )
+
+        self.assertEqual(first_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(first_response.data["created_count"], 2)
+        self.assertEqual(second_response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second_response.data["created_count"], 0)
+        self.assertEqual(second_response.data["skipped_duplicates_count"], 2)
+        self.assertEqual(
+            list(FrameAnnotationTask.objects.filter(video=self.video).order_by("frame_index").values_list("frame_index", flat=True)),
+            [1, 2],
+        )
+        self.assertEqual(VideoSelection.objects.get(id=first_selection.data["id"]).status, VideoSelection.Status.GENERATED)
+        self.assertEqual(VideoSelection.objects.get(id=second_selection.data["id"]).status, VideoSelection.Status.ACTIVE)
 
     def test_get_frame_by_index_returns_cached_frame_url(self):
         frame_task = FrameAnnotationTask.objects.create(video=self.video, frame_index=5, time_ms=200)

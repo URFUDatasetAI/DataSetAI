@@ -25234,6 +25234,10 @@
         });
         setSelections((current) => [...current, selection].sort((a, b) => a.start_frame - b.start_frame || a.id - b.id));
         addToast(startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame} \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame} \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D.`, "success");
+        if (startFrame !== endFrame) {
+          setRangeStart(null);
+          setRangeEnd(null);
+        }
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       } finally {
@@ -25269,18 +25273,21 @@
         setBusy(false);
       }
     }
-    async function generateFrameTasks() {
-      if (!videoId) {
-        return;
-      }
+    async function generateFrameTasksForSelection(selection) {
       clearToasts();
       setBusy(true);
       try {
-        const result = await api(`/api/v1/videos/${videoId}/generate-frame-tasks/`, {
-          method: "POST",
-          body: {}
-        });
-        addToast(`\u0421\u043E\u0437\u0434\u0430\u043D\u043E \u0437\u0430\u0434\u0430\u0447: ${result.created_count}. \u0414\u0443\u0431\u043B\u0438\u043A\u0430\u0442\u043E\u0432 \u043F\u0440\u043E\u043F\u0443\u0449\u0435\u043D\u043E: ${result.skipped_duplicates_count}.`, "success");
+        const result = await api(
+          `/api/v1/video-selections/${selection.id}/generate-frame-tasks/`,
+          {
+            method: "POST",
+            body: {}
+          }
+        );
+        addToast(
+          `${formatSelectionTitle(selection)}: \u0441\u043E\u0437\u0434\u0430\u043D\u043E \u0437\u0430\u0434\u0430\u0447 ${result.created_count}, \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u043E\u0432\u0430\u043B\u043E ${result.skipped_duplicates_count}.`,
+          "success"
+        );
         await refresh();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
@@ -25288,8 +25295,38 @@
         setBusy(false);
       }
     }
+    async function startSelectionAnnotation(selection) {
+      if (!videoId) {
+        return;
+      }
+      clearToasts();
+      setBusy(true);
+      try {
+        const updated = await api(`/api/v1/video-selections/${selection.id}/`, {
+          method: "PATCH",
+          body: { start_frame: selection.start_frame, end_frame: selection.end_frame }
+        });
+        await api(`/api/v1/video-selections/${updated.id}/generate-frame-tasks/`, {
+          method: "POST",
+          body: {}
+        });
+        window.location.href = `/videos/${videoId}/frames/?selection=${updated.id}`;
+      } catch (error) {
+        addToast(getErrorMessage(error), "error");
+        setBusy(false);
+      }
+    }
     const persistedSelectedFramesCount = selections.reduce((sum, item) => sum + Math.abs(item.end_frame - item.start_frame) + 1, 0);
     const draftRangeFramesCount = rangeStart == null || rangeEnd == null ? 0 : Math.abs(Number(rangeEnd) - Number(rangeStart)) + 1;
+    const generatedSelectionsCount = selections.filter((item) => item.status === "generated").length;
+    function getSelectionFrameCount(selection) {
+      return Math.abs(selection.end_frame - selection.start_frame) + 1;
+    }
+    function formatSelectionTitle(selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame}` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame}`;
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "video-workspace", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "video-workspace__header", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -25371,6 +25408,10 @@
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "video-preannotator__side", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card video-selection-summary", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-summary__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u044B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: selections.length })
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0447\u0430\u043B\u043E \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: rangeStart ?? "-" })
@@ -25387,39 +25428,84 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0431\u0430\u0432\u043B\u0435\u043D\u043E \u043A\u0430\u0434\u0440\u043E\u0432" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: persistedSelectedFramesCount })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", disabled: busy || !selections.length, onClick: generateFrameTasks, children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438 \u043F\u043E \u043A\u0430\u0434\u0440\u0430\u043C" })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "video-selection-list", children: selections.length ? selections.map((selection) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__inputs", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  type: "number",
-                  min: "0",
-                  value: selection.start_frame,
-                  onChange: (event) => setSelections(
-                    (current) => current.map((item) => item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item)
-                  )
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  type: "number",
-                  min: "0",
-                  value: selection.end_frame,
-                  onChange: (event) => setSelections(
-                    (current) => current.map((item) => item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item)
-                  )
-                }
-              )
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: selection.status === "generated" ? "\u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E\u0437\u0434\u0430\u043D\u044B" : "\u0430\u043A\u0442\u0438\u0432\u043D\u043E" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__actions", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: busy, onClick: () => updateSelection(selection), children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: busy, onClick: () => deleteSelection(selection.id), children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u0442\u043E\u0432\u044B\u0445 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u043E\u0432" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: generatedSelectionsCount })
             ] })
-          ] }, selection.id)) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u043A\u0430\u0434\u0440 \u0438\u043B\u0438 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B, \u0447\u0442\u043E\u0431\u044B \u0441\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u044D\u0442\u0430\u043F\u0430." }) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "video-selection-list", children: selections.length ? selections.map((selection) => {
+            const isGenerated = selection.status === "generated";
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `video-selection-row ${isGenerated ? "is-generated" : ""}`, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__title", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatSelectionTitle(selection) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    getSelectionFrameCount(selection),
+                    " \u043A\u0430\u0434\u0440\u043E\u0432"
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "video-selection-row__status", children: isGenerated ? "\u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043E\u0437\u0434\u0430\u043D\u044B" : "\u043E\u0436\u0438\u0434\u0430\u0435\u0442" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__inputs", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0447\u0430\u043B\u043E" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      type: "number",
+                      min: "0",
+                      value: selection.start_frame,
+                      onChange: (event) => setSelections(
+                        (current) => current.map(
+                          (item) => item.id === selection.id ? { ...item, start_frame: Number(event.currentTarget.value) } : item
+                        )
+                      )
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043D\u0435\u0446" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "input",
+                    {
+                      type: "number",
+                      min: "0",
+                      value: selection.end_frame,
+                      onChange: (event) => setSelections(
+                        (current) => current.map(
+                          (item) => item.id === selection.id ? { ...item, end_frame: Number(event.currentTarget.value) } : item
+                        )
+                      )
+                    }
+                  )
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "video-selection-row__actions", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: busy, onClick: () => updateSelection(selection), children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: "btn btn--muted btn--compact",
+                    type: "button",
+                    disabled: busy,
+                    onClick: () => generateFrameTasksForSelection(selection),
+                    children: isGenerated ? "\u041E\u0431\u043D\u043E\u0432\u0438\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438" : "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0438"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    className: "btn btn--primary btn--compact",
+                    type: "button",
+                    disabled: busy,
+                    onClick: () => startSelectionAnnotation(selection),
+                    children: "\u041D\u0430\u0447\u0430\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger btn--compact", type: "button", disabled: busy, onClick: () => deleteSelection(selection.id), children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C" })
+              ] })
+            ] }, selection.id);
+          }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u043A\u0430\u0434\u0440 \u0438\u043B\u0438 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B, \u0447\u0442\u043E\u0431\u044B \u0441\u0444\u043E\u0440\u043C\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u044D\u0442\u0430\u043F\u0430." }) })
         ] })
       ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0412\u0438\u0434\u0435\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E." })
     ] });
@@ -25447,13 +25533,37 @@
       }
     }));
   }
+  function buildFrameAnnotationSnapshot(status, objects) {
+    const normalizedStatus = status === "empty" ? "empty" : "annotated";
+    return JSON.stringify({
+      status: normalizedStatus,
+      objects: normalizedStatus === "empty" ? [] : serializeFrameObjects(objects)
+    });
+  }
+  function readPositiveIntegerSearchParam(name) {
+    const value = Number(new URLSearchParams(window.location.search).get(name));
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  function replaceFrameAnnotationSelectionQuery(selectionId) {
+    const url = new URL(window.location.href);
+    if (selectionId) {
+      url.searchParams.set("selection", String(selectionId));
+    } else {
+      url.searchParams.delete("selection");
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
   function FrameAnnotationPage() {
     const { bootstrap: bootstrap2, authUser, api, addToast, clearToasts } = useApp();
     const videoId = bootstrap2.video_id;
     const svgRef = (0, import_react.useRef)(null);
+    const initialSelectionIdRef = (0, import_react.useRef)(readPositiveIntegerSearchParam("selection"));
+    const loadedFrameSnapshotRef = (0, import_react.useRef)(buildFrameAnnotationSnapshot("annotated", []));
     const interactionRef = (0, import_react.useRef)(null);
     const [video, setVideo] = (0, import_react.useState)(null);
+    const [frameSelections, setFrameSelections] = (0, import_react.useState)([]);
     const [frameTasks, setFrameTasks] = (0, import_react.useState)([]);
+    const [selectedSelectionId, setSelectedSelectionId] = (0, import_react.useState)(null);
     const [selectedTaskId, setSelectedTaskId] = (0, import_react.useState)(null);
     const [activeTask, setActiveTask] = (0, import_react.useState)(null);
     const [objects, setObjects] = (0, import_react.useState)([]);
@@ -25462,7 +25572,41 @@
     const [frameStatus, setFrameStatus] = (0, import_react.useState)("annotated");
     const [loading, setLoading] = (0, import_react.useState)(true);
     const [saving, setSaving] = (0, import_react.useState)(false);
-    async function refreshQueue(preferredTaskId) {
+    function formatFrameSelectionTitle(selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return startFrame === endFrame ? `\u041A\u0430\u0434\u0440 ${startFrame}` : `\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B ${startFrame}-${endFrame}`;
+    }
+    function frameTaskBelongsToSelection(task, selection) {
+      const startFrame = Math.min(selection.start_frame, selection.end_frame);
+      const endFrame = Math.max(selection.start_frame, selection.end_frame);
+      return task.source_segment_id === selection.id || task.frame_index >= startFrame && task.frame_index <= endFrame;
+    }
+    function getFrameTasksForSelection(selectionId, tasks = frameTasks, selections = frameSelections) {
+      if (selectionId == null) {
+        return tasks;
+      }
+      const selection = selections.find((item) => item.id === selectionId);
+      if (!selection) {
+        return tasks;
+      }
+      return tasks.filter((task) => frameTaskBelongsToSelection(task, selection));
+    }
+    function findSelectionForFrameTask(taskId, tasks = frameTasks, selections = frameSelections) {
+      if (taskId == null) {
+        return null;
+      }
+      const task = tasks.find((item) => item.id === taskId);
+      if (!task) {
+        return null;
+      }
+      return selections.find((selection) => frameTaskBelongsToSelection(task, selection)) || null;
+    }
+    function pickFrameTaskForSelection(selectionId, tasks = frameTasks, selections = frameSelections) {
+      const scopedTasks = getFrameTasksForSelection(selectionId, tasks, selections);
+      return scopedTasks.find((task) => task.status !== "done") || scopedTasks[0] || null;
+    }
+    async function refreshQueue(preferredTaskId, preferredSelectionId) {
       if (!videoId) {
         addToast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u043F\u0440\u0435\u0434\u0435\u043B\u0438\u0442\u044C \u0432\u0438\u0434\u0435\u043E \u0438\u0437 URL.", "error");
         setLoading(false);
@@ -25470,16 +25614,27 @@
       }
       setLoading(true);
       try {
-        const [nextVideo, nextTasks] = await Promise.all([
+        const [nextVideo, nextTasks, nextSelections] = await Promise.all([
           api(`/api/v1/videos/${videoId}/`),
-          api(`/api/v1/frame-tasks/?video_id=${videoId}`)
+          api(`/api/v1/frame-tasks/?video_id=${videoId}`),
+          api(`/api/v1/videos/${videoId}/selections/`)
         ]);
+        const safeTasks = nextTasks || [];
+        const safeSelections = nextSelections || [];
         setVideo(nextVideo);
-        setFrameTasks(nextTasks || []);
-        const nextSelectedId = preferredTaskId && nextTasks.some((task) => task.id === preferredTaskId) ? preferredTaskId : nextTasks.find((task) => task.status !== "done")?.id || nextTasks[0]?.id || null;
+        setFrameTasks(safeTasks);
+        setFrameSelections(safeSelections);
+        const requestedSelectionId = preferredSelectionId !== void 0 ? preferredSelectionId : initialSelectionIdRef.current;
+        initialSelectionIdRef.current = null;
+        const selectionFromPreferredTask = findSelectionForFrameTask(preferredTaskId || null, safeTasks, safeSelections);
+        const firstSelectionWithTasks = safeSelections.find((selection) => getFrameTasksForSelection(selection.id, safeTasks, safeSelections).length)?.id || null;
+        const nextSelectionId = requestedSelectionId && safeSelections.some((selection) => selection.id === requestedSelectionId) ? requestedSelectionId : selectionFromPreferredTask?.id || firstSelectionWithTasks;
+        const scopedTasks = getFrameTasksForSelection(nextSelectionId, safeTasks, safeSelections);
+        const nextSelectedId = preferredTaskId && scopedTasks.some((task) => task.id === preferredTaskId) ? preferredTaskId : (pickFrameTaskForSelection(nextSelectionId, safeTasks, safeSelections) || safeTasks.find((task) => task.status !== "done") || safeTasks[0])?.id || null;
+        setSelectedSelectionId(nextSelectionId);
         setSelectedTaskId(nextSelectedId);
         if (nextSelectedId) {
-          await loadFrameTask(nextSelectedId, nextTasks);
+          await loadFrameTask(nextSelectedId, safeTasks);
         }
       } catch (error) {
         addToast(getErrorMessage(error), "error");
@@ -25494,12 +25649,15 @@
       }
       try {
         const detail = await api(`/api/v1/videos/${videoId}/frames/${task.frame_index}/`);
+        const nextObjects = normalizeFrameObjects(detail.annotation?.objects);
+        const nextStatus = detail.annotation?.status === "empty" ? "empty" : "annotated";
         setActiveTask(detail);
         setFrameTasks((current) => current.map((item) => item.id === detail.id ? detail : item));
-        setObjects(normalizeFrameObjects(detail.annotation?.objects));
-        setFrameStatus(detail.annotation?.status === "empty" ? "empty" : "annotated");
+        setObjects(nextObjects);
+        setFrameStatus(nextStatus);
         setSelectedBoxId(null);
         setDraftBox(null);
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(nextStatus, nextObjects);
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -25537,7 +25695,7 @@
       }
       window.addEventListener("keydown", handleKeyDown);
       return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedTaskId, frameTasks, activeTask, objects, frameStatus]);
+    }, [selectedTaskId, selectedSelectionId, frameTasks, frameSelections, activeTask, objects, frameStatus]);
     function getSvgPoint(event) {
       const svg = svgRef.current;
       if (!svg) {
@@ -25649,14 +25807,55 @@
       setObjects((current) => current.filter((item) => item.id !== selectedBoxId));
       setSelectedBoxId(null);
     }
-    function goToAdjacentTask(direction) {
-      if (!selectedTaskId || !frameTasks.length) {
+    function hasUnsavedFrameChanges() {
+      if (!activeTask) {
+        return false;
+      }
+      return buildFrameAnnotationSnapshot(frameStatus, objects) !== loadedFrameSnapshotRef.current;
+    }
+    function requestTaskSwitch(taskId) {
+      if (saving || taskId === selectedTaskId) {
         return;
       }
-      const currentIndex = frameTasks.findIndex((task) => task.id === selectedTaskId);
-      const nextTask = frameTasks[clampNumber(currentIndex + direction, 0, frameTasks.length - 1)];
+      if (hasUnsavedFrameChanges() && !window.confirm("\u041D\u0435\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0442\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u043A\u0430\u0434\u0440\u0430 \u0431\u0443\u0434\u0435\u0442 \u043F\u043E\u0442\u0435\u0440\u044F\u043D\u0430. \u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0434\u0440\u0443\u0433\u043E\u0439 \u0437\u0430\u0434\u0430\u0447\u0435?")) {
+        return;
+      }
+      const nextTask = frameTasks.find((task) => task.id === taskId);
+      const currentSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+      const nextSelection = nextTask && currentSelection && frameTaskBelongsToSelection(nextTask, currentSelection) ? currentSelection : findSelectionForFrameTask(taskId);
+      if (nextSelection && nextSelection.id !== selectedSelectionId) {
+        setSelectedSelectionId(nextSelection.id);
+        replaceFrameAnnotationSelectionQuery(nextSelection.id);
+      }
+      setSelectedTaskId(taskId);
+    }
+    function requestSelectionSwitch(selectionId) {
+      if (saving || selectionId === selectedSelectionId) {
+        return;
+      }
+      if (hasUnsavedFrameChanges() && !window.confirm("\u041D\u0435\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0442\u0435\u043A\u0443\u0449\u0435\u0433\u043E \u043A\u0430\u0434\u0440\u0430 \u0431\u0443\u0434\u0435\u0442 \u043F\u043E\u0442\u0435\u0440\u044F\u043D\u0430. \u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043A \u0434\u0440\u0443\u0433\u043E\u043C\u0443 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0443?")) {
+        return;
+      }
+      const nextTask = pickFrameTaskForSelection(selectionId);
+      setSelectedSelectionId(selectionId);
+      replaceFrameAnnotationSelectionQuery(selectionId);
+      setSelectedTaskId(nextTask?.id || null);
+      if (!nextTask) {
+        setActiveTask(null);
+        setObjects([]);
+        setFrameStatus("annotated");
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot("annotated", []);
+      }
+    }
+    function goToAdjacentTask(direction) {
+      const scopedTasks = getFrameTasksForSelection(selectedSelectionId);
+      if (!selectedTaskId || !scopedTasks.length) {
+        return;
+      }
+      const currentIndex = scopedTasks.findIndex((task) => task.id === selectedTaskId);
+      const nextTask = scopedTasks[clampNumber(currentIndex + direction, 0, scopedTasks.length - 1)];
       if (nextTask) {
-        setSelectedTaskId(nextTask.id);
+        requestTaskSwitch(nextTask.id);
       }
     }
     async function saveAnnotation() {
@@ -25674,6 +25873,7 @@
         });
         setActiveTask(response.task);
         setFrameTasks((current) => current.map((task) => task.id === response.task.id ? response.task : task));
+        loadedFrameSnapshotRef.current = buildFrameAnnotationSnapshot(status, status === "empty" ? [] : objects);
         addToast(`\u041A\u0430\u0434\u0440 ${activeTask.frame_index} \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D.`, "success");
       } catch (error) {
         addToast(getErrorMessage(error), "error");
@@ -25692,8 +25892,13 @@
         addToast(getErrorMessage(error), "error");
       }
     }
-    const activeIndex = selectedTaskId ? frameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
-    const completedCount = frameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+    const intervalOptions = frameSelections.filter((selection) => getFrameTasksForSelection(selection.id).length);
+    const visibleFrameTasks = intervalOptions.length ? getFrameTasksForSelection(selectedSelectionId) : frameTasks;
+    const selectedSelection = selectedSelectionId ? frameSelections.find((selection) => selection.id === selectedSelectionId) || null : null;
+    const activeIndex = selectedTaskId ? visibleFrameTasks.findIndex((task) => task.id === selectedTaskId) : -1;
+    const completedCount = visibleFrameTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+    const hasPreviousTask = activeIndex > 0;
+    const hasNextTask = activeIndex >= 0 && activeIndex < visibleFrameTasks.length - 1;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "video-workspace frame-workspace", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { className: "video-workspace__header", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -25709,27 +25914,71 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "frame-annotator__queue", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0441\u0435\u0433\u043E \u0437\u0430\u0434\u0430\u0447" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: frameTasks.length })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u043E\u0432" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: intervalOptions.length || "-" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: selectedSelection ? formatFrameSelectionTitle(selectedSelection) : "\u0412\u0441\u0435 \u043A\u0430\u0434\u0440\u044B" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0434\u0440\u043E\u0432 \u0432 \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: visibleFrameTasks.length })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: completedCount })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0435\u043A\u0443\u0449\u0430\u044F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0435\u043A\u0443\u0449\u0438\u0439 \u043A\u0430\u0434\u0440" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeIndex >= 0 ? activeIndex + 1 : "-" })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-task-list", children: frameTasks.map((task) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          intervalOptions.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-queue-section-title", children: "\u0418\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-interval-list", children: intervalOptions.map((selection, index) => {
+              const selectionTasks = getFrameTasksForSelection(selection.id);
+              const selectionCompletedCount = selectionTasks.filter((task) => ["done", "uncertain"].includes(task.status)).length;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  className: `frame-interval-row ${selection.id === selectedSelectionId ? "is-active" : ""}`,
+                  type: "button",
+                  onClick: () => requestSelectionSwitch(selection.id),
+                  disabled: saving,
+                  "aria-current": selection.id === selectedSelectionId ? "true" : void 0,
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
+                      index + 1,
+                      ". ",
+                      formatFrameSelectionTitle(selection)
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                      selectionCompletedCount,
+                      "/",
+                      selectionTasks.length,
+                      " \u043A\u0430\u0434\u0440\u043E\u0432"
+                    ] })
+                  ]
+                },
+                selection.id
+              );
+            }) })
+          ] }) : null,
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-queue-section-title", children: "\u041A\u0430\u0434\u0440\u044B \u0438\u043D\u0442\u0435\u0440\u0432\u0430\u043B\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "frame-task-list", children: visibleFrameTasks.map((task, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
               className: `frame-task-row ${task.id === selectedTaskId ? "is-active" : ""}`,
               type: "button",
-              onClick: () => setSelectedTaskId(task.id),
+              onClick: () => requestTaskSwitch(task.id),
+              disabled: saving,
+              "aria-current": task.id === selectedTaskId ? "true" : void 0,
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
-                  "\u041A\u0430\u0434\u0440 ",
+                  "\u0417\u0430\u0434\u0430\u0447\u0430 ",
+                  index + 1,
+                  ": \u043A\u0430\u0434\u0440 ",
                   task.frame_index
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: frameTaskStatusLabels[task.status] || task.status })
@@ -25740,8 +25989,8 @@
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "frame-annotator__stage", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "frame-annotator__toolbar", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => goToAdjacentTask(-1), children: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => goToAdjacentTask(1), children: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: !hasPreviousTask || saving, onClick: () => goToAdjacentTask(-1), children: "\u041F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0438\u0439" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", disabled: !hasNextTask || saving, onClick: () => goToAdjacentTask(1), children: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
