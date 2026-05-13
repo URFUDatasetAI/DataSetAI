@@ -105,15 +105,17 @@ class RoomDatasetUploadSerializer(serializers.Serializer):
         write_only=True,
     )
     media_manifest = JsonStringField(required=False)
+    video_extraction_fps = serializers.IntegerField(required=False, min_value=1, max_value=120, allow_null=True)
+    video_frame_step = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=1)
+    video_max_frames = serializers.IntegerField(required=False, min_value=1, max_value=100000, default=1000)
+    video_manual_keyframe_percent = serializers.IntegerField(required=False, min_value=1, max_value=100, default=10)
 
     def validate(self, attrs):
         dataset_files = list(attrs.get("dataset_files") or [])
         media_manifest = attrs.get("media_manifest")
 
-        try:
-            validate_dataset_upload(dataset_mode=Room.DatasetType.IMAGE, dataset_files=dataset_files)
-        except ConflictError as exc:
-            raise serializers.ValidationError({"dataset_files": str(exc)}) from exc
+        if not dataset_files:
+            raise serializers.ValidationError({"dataset_files": "Загрузи хотя бы один файл датасета."})
 
         if media_manifest in (None, ""):
             attrs["media_manifest"] = []
@@ -168,6 +170,10 @@ class RoomCreateSerializer(serializers.Serializer):
     )
     labels = JsonStringField(required=False)
     media_manifest = JsonStringField(required=False)
+    video_extraction_fps = serializers.IntegerField(required=False, min_value=1, max_value=120, allow_null=True)
+    video_frame_step = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=1)
+    video_max_frames = serializers.IntegerField(required=False, min_value=1, max_value=100000, default=1000)
+    video_manual_keyframe_percent = serializers.IntegerField(required=False, min_value=1, max_value=100, default=10)
 
     def validate_deadline(self, value):
         if value is None:

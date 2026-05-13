@@ -19,9 +19,12 @@
 - Горячий путь bbox editor-а уже оправданно содержит императивные куски: это сделано ради pointer performance, а не из-за недосмотра.
 - Workspace должен определяться layout-ом editor-а, а не размером изображения или видео.
 - Auxiliary chrome вроде label rail, zoom и inspector не должен перекрывать media-контент; overflow должен уходить во внутренний scroll собственных rail/frame-ов.
-- Верхний toolbar должен держать стабильные координаты основных action groups при переключении `queue` / `submitted` / `review`: динамические submit/review controls не должны двигать вкладки режимов и переключатели `Области` / `JSON`.
+- Верхний toolbar сейчас допускает движение action groups при переключении `queue` / `submitted` / `review`: попытка зафиксировать submit/review controls через placeholder-ширины была откатана как визуально неудачная. Возвращайся к стабилизации toolbar только как к более широкому redesign-решению, а не точечным CSS spacer-ом.
 - Zoom считается корректным только если сохраняет ожидаемую геометрию: переход от `100%` к увеличению не должен “приклеивать” media к левому верхнему углу и должен позволять media выходить за viewport редактора.
 - Power-user ergonomics уже часть ожидаемого UX: `Shift` для квадратного bbox, `Ctrl` для reposition draft/resize flow, `Esc` для отмены незавершённой операции.
+- Video frame workflow должен жить в этом же fullscreen shell: frame context strip, track controls, `Объекта нет`, generated review filter и соседние кадры не должны возвращать reviewer-а на room detail page.
+- `Пропустить` и `Объекта нет` в media editor - разные действия. Skip сохраняет assignment exposure semantics, а no-object отправляет пустую финальную разметку кадра/изображения.
+- Track controls для video bbox не декоративны: каждая область должна получить `track_id`, иначе backend не примет payload и интерполяция не сможет связать объект между keyframe-ами.
 
 ## What Future Refactors Must Preserve
 

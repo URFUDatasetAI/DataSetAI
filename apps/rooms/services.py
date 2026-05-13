@@ -8,11 +8,13 @@ from itertools import cycle
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from django.conf import settings
 from django.core.files import File
 from django.db import transaction
 from django.utils import timezone
 
-from apps.labeling.models import Task
+from apps.labeling.jobs import extract_video_frames
+from apps.labeling.models import Task, VideoAsset, VideoFrame
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from apps.rooms.models import (
     Room,
@@ -124,6 +126,10 @@ def create_room(
     dataset_files: list | None = None,
     labels: list[dict] | None = None,
     media_manifest: list[dict] | None = None,
+    video_extraction_fps: int | None = None,
+    video_frame_step: int = 1,
+    video_max_frames: int = 1000,
+    video_manual_keyframe_percent: int = 10,
 ) -> Room:
     """
     Creates a new Room, triggers initial parsing, and invites users.
@@ -176,12 +182,15 @@ def create_room(
                 source_type=Task.SourceType.IMAGE,
             )
         elif dataset_mode == Room.DatasetType.VIDEO:
-            _create_media_tasks(
+            _create_video_assets(
                 room=room,
-                dataset_label=normalized_label,
                 dataset_files=dataset_files,
                 media_manifest=media_manifest,
-                source_type=Task.SourceType.VIDEO,
+                extraction_fps=video_extraction_fps,
+                frame_step=video_frame_step,
+                max_frames=video_max_frames,
+                manual_keyframe_percent=video_manual_keyframe_percent,
+                auto_default_assignment_quota=default_assignment_quota is UNSET,
             )
 
         if (
@@ -194,7 +203,7 @@ def create_room(
         if label_definitions:
             _create_room_labels(room=room, label_definitions=label_definitions)
 
-        if default_assignment_quota is UNSET:
+        if default_assignment_quota is UNSET and not (dataset_mode == Room.DatasetType.VIDEO and settings.RQ_ASYNC):
             room.default_assignment_quota = get_room_primary_tasks_queryset(room=room).count()
             room.save(update_fields=["default_assignment_quota", "updated_at"])
 
@@ -631,6 +640,38 @@ def add_room_dataset_images(
         )
 
 
+def add_room_dataset_videos(
+    *,
+    room: Room,
+    actor: User,
+    dataset_files: list,
+    media_manifest: list[dict] | None = None,
+    extraction_fps: int | None = None,
+    frame_step: int = 1,
+    max_frames: int = 1000,
+    manual_keyframe_percent: int = 10,
+) -> list[VideoAsset]:
+    if not can_edit_room(room=room, user=actor):
+        raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
+    if room.dataset_type != Room.DatasetType.VIDEO:
+        raise ConflictError("Добавлять видео можно только в комнаты с типом датасета «Видео».")
+
+    validate_dataset_upload(dataset_mode=Room.DatasetType.VIDEO, dataset_files=dataset_files)
+
+    with transaction.atomic():
+        locked_room = Room.objects.select_for_update().get(id=room.id)
+        return _create_video_assets(
+            room=locked_room,
+            dataset_files=list(dataset_files or []),
+            media_manifest=list(media_manifest or []),
+            extraction_fps=extraction_fps,
+            frame_step=frame_step,
+            max_frames=max_frames,
+            manual_keyframe_percent=manual_keyframe_percent,
+            auto_default_assignment_quota=False,
+        )
+
+
 def delete_room_dataset_tasks(*, room: Room, actor: User, task_ids: list[int]) -> int:
     if not can_edit_room(room=room, user=actor):
         raise AccessDeniedError("Только владелец комнаты может изменять датасет.")
@@ -840,6 +881,159 @@ def _create_media_tasks(
     return created_tasks
 
 
+
+def _enqueue_video_extraction(*, video_asset: VideoAsset) -> None:
+    if not settings.RQ_ASYNC:
+        extract_video_frames(video_asset.id)
+        return
+
+    def enqueue_after_commit() -> None:
+        import django_rq
+
+        queue = django_rq.get_queue("default")
+        job = queue.enqueue(extract_video_frames, video_asset.id)
+        VideoAsset.objects.filter(id=video_asset.id).update(extraction_job_id=job.id)
+
+    transaction.on_commit(enqueue_after_commit)
+
+
+def _create_video_assets(
+    *,
+    room: Room,
+    dataset_files: list,
+    media_manifest: list[dict],
+    extraction_fps: int | None,
+    frame_step: int,
+    max_frames: int,
+    manual_keyframe_percent: int,
+    auto_default_assignment_quota: bool,
+) -> list[VideoAsset]:
+    dataset_files = _expand_dataset_files(
+        dataset_mode=Room.DatasetType.VIDEO,
+        dataset_files=dataset_files,
+    )
+    manifest_by_name = {item["name"]: item for item in media_manifest if item.get("name")}
+    created_assets: list[VideoAsset] = []
+    for dataset_file in dataset_files:
+        file_name = Path(dataset_file.name).name
+        metadata = manifest_by_name.get(file_name, {})
+        asset = VideoAsset.objects.create(
+            room=room,
+            source_file=dataset_file,
+            source_name=file_name,
+            width=metadata.get("width") or None,
+            height=metadata.get("height") or None,
+            duration=metadata.get("duration") or None,
+            source_frame_rate=int(metadata.get("frame_rate") or 25),
+            extraction_fps=extraction_fps,
+            frame_step=max(1, int(frame_step or 1)),
+            max_frames=max(1, int(max_frames or 1)),
+            manual_keyframe_percent=max(1, min(int(manual_keyframe_percent or 10), 100)),
+            auto_default_assignment_quota=auto_default_assignment_quota,
+        )
+        created_assets.append(asset)
+        _enqueue_video_extraction(video_asset=asset)
+    return created_assets
+
+
+def _create_video_frame_tasks(
+    *,
+    room: Room,
+    dataset_label: str,
+    dataset_file,
+    metadata: dict,
+    start_item_number: int,
+) -> tuple[int, list[Task]]:
+    """
+    Splits an uploaded video file into discrete frames (images) using ffmpeg.
+    Each frame is then represented as a separate Image Task.
+    
+    If this fails, make sure `ffmpeg` is installed on the host OS. Also,
+    if media doesn't load on frontend, verify `nginx` handles `MEDIA_ROOT`.
+    """
+    # Video import depends on ffmpeg being available on the host machine.
+    # Production setup must include ffmpeg, writable MEDIA_ROOT and nginx media
+    # serving, otherwise video/image labeling breaks even if Django itself works.
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise ConflictError("Для импорта видео-датасетов нужен FFmpeg.")
+
+    video_name = Path(dataset_file.name).name
+    frame_rate = int(metadata.get("frame_rate") or 25)
+    width = metadata.get("width")
+    height = metadata.get("height")
+    duration = metadata.get("duration") or 0
+
+    with tempfile.TemporaryDirectory(prefix="datasetai_video_") as temp_dir:
+        input_path = Path(temp_dir) / video_name
+        with input_path.open("wb") as input_handle:
+            for chunk in dataset_file.chunks():
+                input_handle.write(chunk)
+
+        frame_dir = Path(temp_dir) / "frames"
+        frame_dir.mkdir(parents=True, exist_ok=True)
+        frame_pattern = frame_dir / "frame_%06d.jpg"
+
+        try:
+            subprocess.run(
+                [
+                    ffmpeg_path,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    str(input_path),
+                    "-vsync",
+                    "0",
+                    str(frame_pattern),
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            error_message = exc.stderr.decode("utf-8", errors="ignore").strip() or "Failed to extract video frames."
+            raise ConflictError(f"Не удалось разбить видео {video_name} на кадры: {error_message}") from exc
+
+        frame_paths = sorted(frame_dir.glob("frame_*.jpg"))
+        if not frame_paths:
+            raise ConflictError(f"Видео {video_name} не содержит кадров для разметки.")
+
+        next_item_number = start_item_number
+        created_tasks: list[Task] = []
+        for frame_index, frame_path in enumerate(frame_paths, start=1):
+            frame_name = f"{Path(video_name).stem}_frame_{frame_index:06d}.jpg"
+            frame_task = Task(
+                room=room,
+                source_type=Task.SourceType.IMAGE,
+                workflow_stage=(
+                    Task.WorkflowStage.TEXT_DETECTION
+                    if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION
+                    else Task.WorkflowStage.STANDARD
+                ),
+                source_name=frame_name,
+                input_payload={
+                    "dataset": dataset_label,
+                    "item_number": next_item_number,
+                    "source_name": frame_name,
+                    "origin_source_type": Task.SourceType.VIDEO,
+                    "video_name": video_name,
+                    "frame_number": frame_index,
+                    "frame_rate": frame_rate,
+                    "frame_timestamp": round((frame_index - 1) / frame_rate, 3),
+                    "duration": duration,
+                    **({"width": width} if width else {}),
+                    **({"height": height} if height else {}),
+                },
+            )
+            frame_task.source_file.save(frame_name, ContentFile(frame_path.read_bytes()), save=False)
+            frame_task.save()
+            created_tasks.append(frame_task)
+            next_item_number += 1
+
+        return next_item_number, created_tasks
+
+
+
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
     if dataset_mode == Room.DatasetType.DEMO:
         return
@@ -966,6 +1160,7 @@ def _build_native_export(*, room: Room, tasks, labels, base_url: str | None) -> 
                 "source_url": source_url,
                 "input_payload": task.input_payload,
                 "annotation": _get_export_annotation_payload(task),
+                "video_frame": _get_video_export_metadata(task),
                 "validation_score": task.validation_score,
             }
         )
@@ -1013,6 +1208,7 @@ def _build_jsonl_export(*, room: Room, tasks, labels, base_url: str | None) -> E
                     "source_url": source_url,
                     "input_payload": task.input_payload,
                     "annotations": annotations,
+                    "video_frame": _get_video_export_metadata(task),
                     "validation_score": task.validation_score,
                 },
                 ensure_ascii=False,
@@ -1035,6 +1231,8 @@ def _build_coco_export(*, room: Room, tasks, labels) -> ExportArtifact:
     annotation_id = 1
 
     for task in tasks:
+        if not _is_detector_exportable_task(task):
+            continue
         width = int(task.input_payload.get("width") or 0)
         height = int(task.input_payload.get("height") or 0)
         images.append(
@@ -1111,6 +1309,8 @@ def _build_yolo_export(*, room: Room, tasks, labels) -> ExportArtifact:
         )
 
         for task in tasks:
+            if not _is_detector_exportable_task(task):
+                continue
             width = float(task.input_payload.get("width") or 0)
             height = float(task.input_payload.get("height") or 0)
             stem = Path(task.source_name or f"task_{task.id}").stem
@@ -1154,6 +1354,8 @@ def _build_pascal_voc_export(*, room: Room, tasks, labels) -> ExportArtifact:
 
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         for task in tasks:
+            if not _is_detector_exportable_task(task):
+                continue
             width = int(task.input_payload.get("width") or 0)
             height = int(task.input_payload.get("height") or 0)
             depth = int(task.input_payload.get("channels") or 3)
@@ -1212,7 +1414,13 @@ def export_room_annotations(*, room: Room, export_format: str, base_url: str | N
     # excluded so downstream datasets contain finalized results.
     if room.annotation_workflow == Room.AnnotationWorkflow.TEXT_DETECTION_TRANSCRIPTION and export_format != "native_json":
         raise ConflictError("Комнаты Object detect + text поддерживают только экспорт Native JSON.")
-    tasks = list(get_room_final_tasks_queryset(room=room).filter(status=Task.Status.SUBMITTED).prefetch_related("annotations").all())
+    tasks = list(
+        get_room_final_tasks_queryset(room=room)
+        .filter(status=Task.Status.SUBMITTED)
+        .select_related("video_frame", "video_frame__video_asset")
+        .prefetch_related("annotations")
+        .all()
+    )
     labels = list(room.labels.all())
 
     if export_format == "native_json":
@@ -1237,3 +1445,47 @@ def _get_export_annotation_payload(task: Task):
 
     latest_annotation = task.annotations.order_by("-submitted_at", "-id").first()
     return latest_annotation.result_payload if latest_annotation else None
+
+
+def _get_video_export_metadata(task: Task) -> dict | None:
+    try:
+        video_frame = task.video_frame
+    except VideoFrame.DoesNotExist:
+        return None
+    annotation_payload = _get_export_annotation_payload(task) or {}
+    source = "generated" if video_frame.state == VideoFrame.State.GENERATED_ACCEPTED else "manual"
+    if annotation_payload.get("frame_state") == VideoFrame.State.NO_OBJECT:
+        source = "no_object"
+    return {
+        "video_asset_id": video_frame.video_asset_id,
+        "video_name": video_frame.video_asset.source_name,
+        "frame_number": video_frame.frame_number,
+        "timestamp": video_frame.timestamp,
+        "role": video_frame.role,
+        "state": video_frame.state,
+        "annotation_source": source,
+        "track_ids": sorted(
+            {
+                str(item.get("track_id"))
+                for item in annotation_payload.get("annotations", [])
+                if item.get("track_id")
+            }
+        ),
+        "generated_from_frames": video_frame.generated_from_frames,
+        "trajectory_warnings": video_frame.trajectory_warnings,
+    }
+
+
+def _is_detector_exportable_task(task: Task) -> bool:
+    annotation_payload = _get_export_annotation_payload(task)
+    if not annotation_payload:
+        return False
+    try:
+        video_frame = task.video_frame
+    except VideoFrame.DoesNotExist:
+        video_frame = None
+    if video_frame is not None and video_frame.state == VideoFrame.State.NO_OBJECT:
+        return False
+    if annotation_payload.get("frame_state") == VideoFrame.State.NO_OBJECT:
+        return False
+    return bool(annotation_payload.get("annotations"))

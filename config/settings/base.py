@@ -107,6 +107,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "django_rq",
     "apps.ui",
     "apps.users",
     "apps.rooms",
@@ -177,6 +178,16 @@ MEDIA_URL = "/media/"
 # Image/video task sources are persisted here. Django serves them only in DEBUG,
 # so production must expose this directory through nginx.
 MEDIA_ROOT = BASE_DIR / "media"
+
+REDIS_URL = env("REDIS_URL", "redis://127.0.0.1:6379/0")
+RQ_ASYNC = env_bool("RQ_ASYNC", False)
+RQ_QUEUES = {
+    "default": {
+        "URL": REDIS_URL,
+        "DEFAULT_TIMEOUT": 3600,
+        "ASYNC": RQ_ASYNC,
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"

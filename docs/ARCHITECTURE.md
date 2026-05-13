@@ -229,6 +229,21 @@ API v1 подключается по префиксу:
 
 ## Frontend-архитектура
 
+### Video annotation workflow
+
+Video annotation is modeled as frame tasks grouped by `VideoAsset`, not as one native single-video task. `VideoAsset` stores the source file, extraction settings and processing status. `VideoFrame` is a one-to-one companion for a frame `Task`, with ordered frame metadata, role (`manual_keyframe` or `interpolation_target`) and workflow state.
+
+The first workflow version is rules-only:
+
+- FFmpeg extracts frame images in a Django RQ job.
+- Only manual keyframes are assignable before interpolation.
+- Bbox annotations on video frames require `track_id` so object identity can be matched across frames.
+- Empty frames are explicit `frame_state=no_object`, not skipped tasks.
+- Accepted keyframes enqueue interpolation proposals between matching tracks.
+- Generated proposals go to review and must be approved, rejected to manual correction, or marked no-object before export.
+
+Detector exports (COCO/YOLO/Pascal VOC) include only final manual frames and approved generated frames with annotations. No-object frames are excluded there, while Native JSON/JSONL keep video/frame provenance, track ids, generated/manual source and no-object state for audit.
+
 ### Bootstrap страницы
 
 Каждая UI-страница проходит через один и тот же цикл:

@@ -8,3 +8,4 @@
 
 - [fullscreen-room-work-editor.md](fullscreen-room-work-editor.md)
 - [grouped-cross-validation-stabilization.md](grouped-cross-validation-stabilization.md)
+- [video-annotation-workflow.md](video-annotation-workflow.md)

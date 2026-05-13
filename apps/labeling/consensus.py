@@ -70,6 +70,11 @@ def _compute_similarity_score(payloads: list) -> float:
 
 
 def _build_media_consensus_payload(payloads: list[dict]) -> dict:
+    if payloads and all(payload.get("frame_state") == "no_object" for payload in payloads):
+        return {
+            "annotations": [],
+            "frame_state": "no_object",
+        }
     return {
         "annotations": _merge_media_annotations(payloads),
     }
@@ -142,6 +147,8 @@ def _normalize_annotation(annotation: dict) -> dict:
     }
     if "text" in annotation:
         normalized["text"] = annotation.get("text") or ""
+    if "track_id" in annotation:
+        normalized["track_id"] = str(annotation.get("track_id") or "").strip()
     return normalized
 
 
@@ -166,6 +173,10 @@ def _build_cluster_annotation(cluster_items: list[dict]) -> dict:
         chosen_normalized_text = normalized_counter.most_common(1)[0][0]
         chosen_source_text = next((text for text in text_candidates if _normalize_text(text) == chosen_normalized_text), "")
         annotation["text"] = chosen_source_text
+
+    track_candidates = [item.get("track_id") for item in cluster_items if item.get("track_id")]
+    if track_candidates:
+        annotation["track_id"] = Counter(track_candidates).most_common(1)[0][0]
 
     return annotation
 

@@ -23,7 +23,7 @@
 4. Пушит ветку на GitHub
 5. Создаёт Pull Request в `main`
 6. GitHub Actions запускает CI
-7. После merge в `main` GitHub Actions запускает production deploy
+7. После merge Pull Request в `main` GitHub Actions запускает production deploy
 8. Сервер выполняет `/srv/datasetai/deploy.sh`
 9. `datasetai` перезапускается автоматически
 
@@ -42,7 +42,7 @@ Workflow [ci.yml](.github/workflows/ci.yml) запускается на кажд
 
 ## Что делает production deploy
 
-Workflow [deploy.yml](.github/workflows/deploy.yml) запускается только после `push` в `main`.
+Workflow [deploy.yml](.github/workflows/deploy.yml) запускается после закрытия Pull Request в `main`, если PR был смержен.
 Также его можно запустить вручную из GitHub Actions через `Deploy To Production` -> `Run workflow`.
 
 Он:
@@ -220,6 +220,53 @@ sudo -u datasetai /srv/datasetai/venv/bin/python manage.py migrate
 ```bash
 cd /srv/datasetai/app
 sudo -u datasetai /srv/datasetai/venv/bin/python scripts/check_db.py
+```
+
+## Video workflow worker
+
+Video rooms use frame tasks grouped by `VideoAsset`. Source videos are saved first, then frame extraction and interpolation run through Django RQ.
+
+Production requirements:
+
+- Redis available to Django through `REDIS_URL`, for example `redis://127.0.0.1:6379/0`
+- `RQ_ASYNC=true` in production `.env`
+- system package `ffmpeg`
+- a running worker for the default queue
+
+Recommended systemd unit:
+
+```ini
+[Unit]
+Description=DataSetAI RQ worker
+After=network.target redis-server.service
+
+[Service]
+User=datasetai
+Group=datasetai
+WorkingDirectory=/srv/datasetai/app
+EnvironmentFile=/srv/datasetai/app/.env
+ExecStart=/srv/datasetai/venv/bin/python manage.py rqworker default
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Deploy should restart both services after migrations and static collection:
+
+```bash
+sudo systemctl restart datasetai
+sudo systemctl restart datasetai-rqworker
+```
+
+Useful checks:
+
+```bash
+sudo systemctl status datasetai-rqworker --no-pager -l
+sudo journalctl -u datasetai-rqworker -n 100 --no-pager
+redis-cli ping
+ffmpeg -version
 ```
 
 ## Что делать, если deploy упал

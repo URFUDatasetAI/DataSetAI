@@ -32,6 +32,10 @@
 - Optional validation voting pool - это gate после accepted consensus на final-stage task, а не замена assignment consensus. При `Room.review_voting_enabled=True` такая задача становится `in_review`; export-ready статус появляется только после approve quorum. Reject quorum открывает следующий раунд и сохраняет обычную round semantics.
 - Reviewer-ы голосуют через `ValidationVote` в текущем раунде. Пользователь, который сам submitted-нул annotation в этом раунде, не должен голосовать за итог этой же задачи.
 - Validation review list actor-aware: `validation` означает “требует мой голос”, а `validation_voted` означает “мой голос уже учтён, ждём остальных”. Уже проголосовавший reviewer не должен снова видеть задачу в активной очереди голосования.
+- Video workflow v1 не вводит native single-video task: source video хранится как `VideoAsset`, а работа идёт по image-frame `Task` + `VideoFrame`. Assignment обязан исключать `waiting_interpolation`, `generated_review`, `generated_accepted`, `manual_submitted` и `no_object` кадры; выдавать можно только `pending_manual` и `generated_rejected`.
+- Для video bbox `track_id` обязателен, потому что интерполяция сопоставляет объекты между keyframe-ами только по track identity. Consensus должен сохранять `track_id`, иначе downstream interpolation потеряет траектории.
+- `frame_state=no_object` - финальное решение annotator/reviewer-а, а не skip. Skip влияет на exposure/quota semantics; no-object закрывает кадр и исключает его из detector exports.
+- Generated interpolation proposal считается review item с `review_state=generated`: он не участвует в validation voting и не попадает в export до явного approve. Reject переводит кадр в ручную правку, approve делает его final generated, no-object закрывает как пустой кадр.
 
 ## What Refactors Must Preserve
 
