@@ -23033,6 +23033,9 @@
     const [rooms, setRooms] = (0, import_react.useState)([]);
     const [loading, setLoading] = (0, import_react.useState)(true);
     const [pinBusyRoomId, setPinBusyRoomId] = (0, import_react.useState)(null);
+    const [roomSearch, setRoomSearch] = (0, import_react.useState)("");
+    const [roomFilter, setRoomFilter] = (0, import_react.useState)("all");
+    const [datasetFilter, setDatasetFilter] = (0, import_react.useState)("all");
     function sortRooms(list) {
       return [...list].sort((left, right) => {
         if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
@@ -23117,125 +23120,283 @@
       }
     }
     const pinnedRooms = rooms.filter((room) => room.is_pinned);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--rooms", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445. \u0414\u043B\u044F \u043D\u043E\u0432\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 invite-\u0441\u0441\u044B\u043B\u043A\u0443 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-toolbar-stack", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-card__copy", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "header-note", children: "\u041D\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043D\u043E\u0432\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u043F\u043E\u043B\u043D\u0430\u044F \u0444\u043E\u0440\u043C\u0430 \u0441 \u0432\u044B\u0431\u043E\u0440\u043E\u043C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u044F \u0438 \u043F\u0440\u043E\u0447\u0438\u0445 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u043E\u0432 \u0438 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u043E\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-create-card__action", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
-        ] }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-grid-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-grid-section__header", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid-section__divider", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0430\u0448\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B \u0441\u043E\u0437\u0434\u0430\u043B\u0438 \u0438\u043B\u0438 \u043A \u043A\u043E\u0442\u043E\u0440\u044B\u043C \u0443 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F." })
-        ] }),
-        loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
-        !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0423 \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid", children: rooms.map((room) => {
-          const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
-          const canMoveUp = room.is_pinned && pinnedIndex > 0;
-          const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "article",
-            {
-              className: `room-card ${room.is_pinned ? "is-pinned" : ""}`,
-              onClick: () => {
-                window.location.href = `/rooms/${room.id}/`;
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
-                      "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
-                      room.id
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__actions", children: [
-                      room.is_pinned ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__pin-order", children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                          "button",
-                          {
-                            className: "room-card__reorder",
-                            type: "button",
-                            disabled: !canMoveUp || pinBusyRoomId === room.id,
-                            "aria-label": "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0432\u044B\u0448\u0435",
-                            title: "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0432\u044B\u0448\u0435",
-                            onClick: (event) => handleReorderPin(event, room, "up"),
-                            children: "\u2191"
-                          }
-                        ),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                          "button",
-                          {
-                            className: "room-card__reorder",
-                            type: "button",
-                            disabled: !canMoveDown || pinBusyRoomId === room.id,
-                            "aria-label": "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043D\u0438\u0436\u0435",
-                            title: "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043D\u0438\u0436\u0435",
-                            onClick: (event) => handleReorderPin(event, room, "down"),
-                            children: "\u2193"
-                          }
-                        )
-                      ] }) : null,
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                        "button",
-                        {
-                          className: "room-card__pin",
-                          type: "button",
-                          disabled: pinBusyRoomId === room.id,
-                          "aria-pressed": room.is_pinned,
-                          "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                          title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
-                          onClick: (event) => handleTogglePin(event, room),
-                          children: room.is_pinned ? "\u2605" : "\u2606"
-                        }
-                      )
-                    ] })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E." })
+    const activeRoomsCount = rooms.filter((room) => room.total_tasks > 0 && room.progress_percent < 100).length;
+    const ownedRoomsCount = rooms.filter((room) => room.created_by_id === authUser?.id || (room.membership_role || "owner") === "owner").length;
+    const reviewRoomsCount = rooms.filter((room) => ["admin", "owner", "reviewer"].includes(room.membership_role || "owner")).length;
+    const normalizedRoomSearch = roomSearch.trim().toLowerCase();
+    const hasActiveRoomFilters = Boolean(normalizedRoomSearch || roomFilter !== "all" || datasetFilter !== "all");
+    const roomFilters = [
+      { value: "all", label: "\u0412\u0441\u0435", count: rooms.length },
+      { value: "pinned", label: "\u0417\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0435", count: pinnedRooms.length },
+      { value: "owned", label: "\u041C\u043E\u0438", count: ownedRoomsCount },
+      { value: "active", label: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435", count: activeRoomsCount },
+      { value: "review", label: "\u0420\u0435\u0432\u044C\u044E", count: reviewRoomsCount }
+    ];
+    const datasetFilters = [
+      { value: "all", label: "\u0412\u0441\u0435 \u0442\u0438\u043F\u044B" },
+      { value: "text", label: "\u0422\u0435\u043A\u0441\u0442" },
+      { value: "image", label: "\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F" },
+      { value: "video", label: "\u0412\u0438\u0434\u0435\u043E" }
+    ];
+    function roomMatchesFilters(room) {
+      if (datasetFilter !== "all" && room.dataset_type !== datasetFilter) {
+        return false;
+      }
+      if (roomFilter === "pinned" && !room.is_pinned) {
+        return false;
+      }
+      if (roomFilter === "owned" && room.created_by_id !== authUser?.id && (room.membership_role || "owner") !== "owner") {
+        return false;
+      }
+      if (roomFilter === "active" && !(room.total_tasks > 0 && room.progress_percent < 100)) {
+        return false;
+      }
+      if (roomFilter === "review" && !["admin", "owner", "reviewer"].includes(room.membership_role || "owner")) {
+        return false;
+      }
+      if (!normalizedRoomSearch) {
+        return true;
+      }
+      return [
+        `#${room.id}`,
+        `\u043A\u043E\u043C\u043D\u0430\u0442\u0430 ${room.id}`,
+        room.title,
+        room.description,
+        room.dataset_label,
+        translateDatasetMode(room.dataset_type),
+        translateAnnotationWorkflow(room.annotation_workflow || "standard"),
+        translateRole(room.membership_role || "owner"),
+        translateMembership(room.membership_status || "owner")
+      ].join(" ").toLowerCase().includes(normalizedRoomSearch);
+    }
+    const filteredRooms = rooms.filter(roomMatchesFilters);
+    const visiblePinnedRooms = hasActiveRoomFilters ? [] : pinnedRooms;
+    const visibleMainRooms = hasActiveRoomFilters ? filteredRooms : filteredRooms.filter((room) => !room.is_pinned);
+    const mainSectionTitle = hasActiveRoomFilters ? "\u041D\u0430\u0439\u0434\u0435\u043D\u043D\u044B\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" : "\u0412\u0441\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B";
+    const mainSectionNote = hasActiveRoomFilters ? `${filteredRooms.length} \u0438\u0437 ${rooms.length} \u043A\u043E\u043C\u043D\u0430\u0442 \u043F\u043E\u0434\u0445\u043E\u0434\u044F\u0442 \u043F\u043E\u0434 \u0442\u0435\u043A\u0443\u0449\u0438\u0435 \u0444\u0438\u043B\u044C\u0442\u0440\u044B.` : "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B \u0441\u043E\u0437\u0434\u0430\u043B\u0438 \u0438\u043B\u0438 \u043A \u043A\u043E\u0442\u043E\u0440\u044B\u043C \u0443 \u0432\u0430\u0441 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C \u0434\u043E\u0441\u0442\u0443\u043F.";
+    function renderRoomCard(room) {
+      const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+      const canMoveUp = room.is_pinned && pinnedIndex > 0;
+      const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+      const role = room.membership_role || "owner";
+      const canOpenWork = ["admin", "annotator", "owner"].includes(role);
+      const canOpenReview = ["admin", "owner", "reviewer"].includes(role);
+      const remainingTasks = Math.max(0, Number(room.total_tasks || 0) - Number(room.completed_tasks || 0));
+      return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "article",
+        {
+          className: `room-card room-card--navigator ${room.is_pinned ? "is-pinned" : ""}`,
+          onClick: () => {
+            window.location.href = `/rooms/${room.id}/`;
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__body", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__id", children: [
+                  "\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #",
+                  room.id
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "ID: ",
-                    room.id
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "\u0421\u0442\u0430\u0442\u0443\u0441: ",
-                    translateMembership(room.membership_status || "owner")
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435: ",
-                    translateRole(room.membership_role || "owner")
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441: ",
-                    formatPercent(room.progress_percent)
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "\u0417\u0430\u0434\u0430\u0447\u0438: ",
-                    room.completed_tasks,
-                    "/",
-                    room.total_tasks
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    "\u0417\u0430\u0449\u0438\u0442\u0430: ",
-                    room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F"
-                  ] })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__actions", children: [
+                  room.is_pinned ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__pin-order", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        className: "room-card__reorder",
+                        type: "button",
+                        disabled: !canMoveUp || pinBusyRoomId === room.id,
+                        "aria-label": "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0432\u044B\u0448\u0435",
+                        title: "\u041F\u043E\u0434\u043D\u044F\u0442\u044C \u0432\u044B\u0448\u0435",
+                        onClick: (event) => handleReorderPin(event, room, "up"),
+                        children: "\u2191"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        className: "room-card__reorder",
+                        type: "button",
+                        disabled: !canMoveDown || pinBusyRoomId === room.id,
+                        "aria-label": "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043D\u0438\u0436\u0435",
+                        title: "\u041E\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u043D\u0438\u0436\u0435",
+                        onClick: (event) => handleReorderPin(event, room, "down"),
+                        children: "\u2193"
+                      }
+                    )
+                  ] }) : null,
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      className: "room-card__pin",
+                      type: "button",
+                      disabled: pinBusyRoomId === room.id,
+                      "aria-pressed": room.is_pinned,
+                      "aria-label": room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                      title: room.is_pinned ? "\u0423\u0431\u0440\u0430\u0442\u044C \u0438\u0437 \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u0451\u043D\u043D\u044B\u0445" : "\u0417\u0430\u043A\u0440\u0435\u043F\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443",
+                      onClick: (event) => handleTogglePin(event, room),
+                      children: room.is_pinned ? "\u2605" : "\u2606"
+                    }
+                  )
                 ] })
-              ]
-            },
-            room.id
-          );
-        }) })
-      ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__title", children: room.title }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__meta", children: room.description || "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E." }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__chips", "aria-label": "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateDatasetMode(room.dataset_type) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateAnnotationWorkflow(room.annotation_workflow || "standard") }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateRole(role) })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__progress", "aria-label": `\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 ${formatPercent(room.progress_percent)}`, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__progress-meta", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(room.progress_percent) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-card__progress-track", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { width: `${Math.max(0, Math.min(100, Number(room.progress_percent || 0)))}%` } }) })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__footer", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                "\u0417\u0430\u0434\u0430\u0447\u0438: ",
+                room.completed_tasks,
+                "/",
+                room.total_tasks
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C: ",
+                remainingTasks
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                "\u0414\u0435\u0434\u043B\u0430\u0439\u043D: ",
+                formatDate(room.deadline)
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-card__quick-actions", "aria-label": "\u0411\u044B\u0441\u0442\u0440\u044B\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "a",
+                {
+                  className: "btn btn--secondary btn--compact",
+                  href: `/rooms/${room.id}/`,
+                  onClick: (event) => event.stopPropagation(),
+                  children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C"
+                }
+              ),
+              canOpenWork ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "a",
+                {
+                  className: "btn btn--muted btn--compact",
+                  href: `/rooms/${room.id}/work/`,
+                  onClick: (event) => event.stopPropagation(),
+                  children: "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430"
+                }
+              ) : null,
+              canOpenReview ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "a",
+                {
+                  className: "btn btn--muted btn--compact",
+                  href: `/rooms/${room.id}/work/?mode=review`,
+                  onClick: (event) => event.stopPropagation(),
+                  children: "\u0420\u0435\u0432\u044C\u044E"
+                }
+              ) : null
+            ] })
+          ]
+        },
+        room.id
+      );
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--rooms rooms-navigator-hero", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041D\u0430\u0432\u0438\u0433\u0430\u0442\u043E\u0440 \u043A\u043E\u043C\u043D\u0430\u0442" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0411\u044B\u0441\u0442\u0440\u044B\u0439 \u0432\u0445\u043E\u0434 \u0432 \u0440\u0430\u0431\u043E\u0447\u0438\u0435 \u043F\u0440\u043E\u0441\u0442\u0440\u0430\u043D\u0441\u0442\u0432\u0430: \u0437\u0430\u043A\u0440\u0435\u043F\u043B\u044F\u0439\u0442\u0435 \u0432\u0430\u0436\u043D\u044B\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B, \u0444\u0438\u043B\u044C\u0442\u0440\u0443\u0439\u0442\u0435 \u043F\u043E \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u044E \u0438 \u043F\u0435\u0440\u0435\u0445\u043E\u0434\u0438\u0442\u0435 \u043F\u0440\u044F\u043C\u043E \u043A \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435 \u0438\u043B\u0438 \u0440\u0435\u0432\u044C\u044E." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rooms-navigator-hero__side", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rooms-navigator-metrics", "aria-label": "\u0421\u0432\u043E\u0434\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F\u043D\u043E" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: rooms.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043E" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: pinnedRooms.length })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: activeRoomsCount })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary rooms-navigator-create", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "rooms-control-panel", "aria-label": "\u0424\u0438\u043B\u044C\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "rooms-search", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0438\u0441\u043A" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              value: roomSearch,
+              type: "text",
+              placeholder: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, ID, \u0434\u0430\u0442\u0430\u0441\u0435\u0442 \u0438\u043B\u0438 \u0440\u043E\u043B\u044C",
+              onChange: (event) => setRoomSearch(event.currentTarget.value)
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "rooms-filter-bar", "aria-label": "\u0424\u0438\u043B\u044C\u0442\u0440 \u0441\u043F\u0438\u0441\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442", children: roomFilters.map((filter) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            className: `rooms-filter-chip ${roomFilter === filter.value ? "is-active" : ""}`,
+            type: "button",
+            onClick: () => setRoomFilter(filter.value),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: filter.label }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: filter.count })
+            ]
+          },
+          filter.value
+        )) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "rooms-dataset-filter", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: datasetFilter, onChange: (event) => setDatasetFilter(event.currentTarget.value), children: datasetFilters.map((filter) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: filter.value, children: filter.label }, filter.value)) })
+        ] })
+      ] }),
+      loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
+      !loading && !rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "empty-card rooms-empty-state", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0423 \u0432\u0430\u0441 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0445 \u043A\u043E\u043C\u043D\u0430\u0442." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0439\u0442\u0435 \u043F\u0435\u0440\u0432\u0443\u044E \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0438\u043B\u0438 \u043F\u043E\u043F\u0440\u043E\u0441\u0438\u0442\u0435 \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430 \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C invite-\u0441\u0441\u044B\u043B\u043A\u0443." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: "/rooms/create/", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
+      ] }) : null,
+      !loading && rooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        visiblePinnedRooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-grid-section room-grid-section--pinned", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-grid-section__header", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid-section__divider", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u043A\u0440\u0435\u043F\u043B\u0435\u043D\u043D\u044B\u0435" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0434\u043E\u043B\u0436\u043D\u044B \u0431\u044B\u0442\u044C \u043F\u043E\u0434 \u0440\u0443\u043A\u043E\u0439." })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid room-grid--navigator", children: visiblePinnedRooms.map(renderRoomCard) })
+        ] }) : null,
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-grid-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-grid-section__header", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid-section__divider", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: mainSectionTitle }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: mainSectionNote })
+          ] }),
+          visibleMainRooms.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-grid room-grid--navigator", children: visibleMainRooms.map(renderRoomCard) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "empty-card rooms-empty-state", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u044B." }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u043E\u0438\u0441\u043A, \u0444\u0438\u043B\u044C\u0442\u0440 \u0438\u043B\u0438 \u0442\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430." }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                className: "btn btn--muted",
+                type: "button",
+                onClick: () => {
+                  setRoomSearch("");
+                  setRoomFilter("all");
+                  setDatasetFilter("all");
+                },
+                children: "\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u0444\u0438\u043B\u044C\u0442\u0440\u044B"
+              }
+            )
+          ] })
+        ] })
+      ] }) : null
     ] });
   }
   function ProfilePage() {

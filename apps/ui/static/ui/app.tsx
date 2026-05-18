@@ -107,6 +107,9 @@ type RoomItem = {
   updated_at: string;
 };
 
+type RoomDatasetFilter = "all" | "text" | "image" | "video";
+type RoomListFilter = "all" | "pinned" | "owned" | "active" | "review";
+
 type ActivitySeriesItem = {
   date: string;
   count: number;
@@ -2197,6 +2200,9 @@ function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomFilter, setRoomFilter] = useState<RoomListFilter>("all");
+  const [datasetFilter, setDatasetFilter] = useState<RoomDatasetFilter>("all");
 
   function sortRooms(list: RoomItem[]) {
     return [...list].sort((left, right) => {
@@ -2294,114 +2300,302 @@ function RoomsPage() {
   }
 
   const pinnedRooms = rooms.filter((room) => room.is_pinned);
+  const activeRoomsCount = rooms.filter((room) => room.total_tasks > 0 && room.progress_percent < 100).length;
+  const ownedRoomsCount = rooms.filter((room) => room.created_by_id === authUser?.id || (room.membership_role || "owner") === "owner").length;
+  const reviewRoomsCount = rooms.filter((room) => ["admin", "owner", "reviewer"].includes(room.membership_role || "owner")).length;
+  const normalizedRoomSearch = roomSearch.trim().toLowerCase();
+  const hasActiveRoomFilters = Boolean(normalizedRoomSearch || roomFilter !== "all" || datasetFilter !== "all");
+  const roomFilters: Array<{ value: RoomListFilter; label: string; count: number }> = [
+    { value: "all", label: "Все", count: rooms.length },
+    { value: "pinned", label: "Закрепленные", count: pinnedRooms.length },
+    { value: "owned", label: "Мои", count: ownedRoomsCount },
+    { value: "active", label: "В работе", count: activeRoomsCount },
+    { value: "review", label: "Ревью", count: reviewRoomsCount },
+  ];
+  const datasetFilters: Array<{ value: RoomDatasetFilter; label: string }> = [
+    { value: "all", label: "Все типы" },
+    { value: "text", label: "Текст" },
+    { value: "image", label: "Изображения" },
+    { value: "video", label: "Видео" },
+  ];
+
+  function roomMatchesFilters(room: RoomItem) {
+    if (datasetFilter !== "all" && room.dataset_type !== datasetFilter) {
+      return false;
+    }
+
+    if (roomFilter === "pinned" && !room.is_pinned) {
+      return false;
+    }
+    if (roomFilter === "owned" && room.created_by_id !== authUser?.id && (room.membership_role || "owner") !== "owner") {
+      return false;
+    }
+    if (roomFilter === "active" && !(room.total_tasks > 0 && room.progress_percent < 100)) {
+      return false;
+    }
+    if (roomFilter === "review" && !["admin", "owner", "reviewer"].includes(room.membership_role || "owner")) {
+      return false;
+    }
+
+    if (!normalizedRoomSearch) {
+      return true;
+    }
+
+    return [
+      `#${room.id}`,
+      `комната ${room.id}`,
+      room.title,
+      room.description,
+      room.dataset_label,
+      translateDatasetMode(room.dataset_type),
+      translateAnnotationWorkflow(room.annotation_workflow || "standard"),
+      translateRole(room.membership_role || "owner"),
+      translateMembership(room.membership_status || "owner"),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedRoomSearch);
+  }
+
+  const filteredRooms = rooms.filter(roomMatchesFilters);
+  const visiblePinnedRooms = hasActiveRoomFilters ? [] : pinnedRooms;
+  const visibleMainRooms = hasActiveRoomFilters ? filteredRooms : filteredRooms.filter((room) => !room.is_pinned);
+  const mainSectionTitle = hasActiveRoomFilters ? "Найденные комнаты" : "Все комнаты";
+  const mainSectionNote = hasActiveRoomFilters
+    ? `${filteredRooms.length} из ${rooms.length} комнат подходят под текущие фильтры.`
+    : "Комнаты, которые вы создали или к которым у вас уже есть доступ.";
+
+  function renderRoomCard(room: RoomItem) {
+    const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+    const canMoveUp = room.is_pinned && pinnedIndex > 0;
+    const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+    const role = room.membership_role || "owner";
+    const canOpenWork = ["admin", "annotator", "owner"].includes(role);
+    const canOpenReview = ["admin", "owner", "reviewer"].includes(role);
+    const remainingTasks = Math.max(0, Number(room.total_tasks || 0) - Number(room.completed_tasks || 0));
+
+    return (
+      <article
+        key={room.id}
+        className={`room-card room-card--navigator ${room.is_pinned ? "is-pinned" : ""}`}
+        onClick={() => {
+          window.location.href = `/rooms/${room.id}/`;
+        }}
+      >
+        <div className="room-card__body">
+          <div className="room-card__head">
+            <div className="room-card__id">Комната #{room.id}</div>
+            <div className="room-card__actions">
+              {room.is_pinned ? (
+                <div className="room-card__pin-order">
+                  <button
+                    className="room-card__reorder"
+                    type="button"
+                    disabled={!canMoveUp || pinBusyRoomId === room.id}
+                    aria-label="Поднять закреплённую комнату выше"
+                    title="Поднять выше"
+                    onClick={(event) => handleReorderPin(event, room, "up")}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="room-card__reorder"
+                    type="button"
+                    disabled={!canMoveDown || pinBusyRoomId === room.id}
+                    aria-label="Опустить закреплённую комнату ниже"
+                    title="Опустить ниже"
+                    onClick={(event) => handleReorderPin(event, room, "down")}
+                  >
+                    ↓
+                  </button>
+                </div>
+              ) : null}
+              <button
+                className="room-card__pin"
+                type="button"
+                disabled={pinBusyRoomId === room.id}
+                aria-pressed={room.is_pinned}
+                aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
+                title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
+                onClick={(event) => handleTogglePin(event, room)}
+              >
+                {room.is_pinned ? "★" : "☆"}
+              </button>
+            </div>
+          </div>
+          <div className="room-card__title">{room.title}</div>
+          <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
+          <div className="room-card__chips" aria-label="Параметры комнаты">
+            <span>{translateDatasetMode(room.dataset_type)}</span>
+            <span>{translateAnnotationWorkflow(room.annotation_workflow || "standard")}</span>
+            <span>{translateRole(role)}</span>
+          </div>
+        </div>
+        <div className="room-card__progress" aria-label={`Прогресс ${formatPercent(room.progress_percent)}`}>
+          <div className="room-card__progress-meta">
+            <span>Прогресс</span>
+            <strong>{formatPercent(room.progress_percent)}</strong>
+          </div>
+          <div className="room-card__progress-track">
+            <span style={{ width: `${Math.max(0, Math.min(100, Number(room.progress_percent || 0)))}%` }}></span>
+          </div>
+        </div>
+        <div className="room-card__footer">
+          <div>
+            Задачи: {room.completed_tasks}/{room.total_tasks}
+          </div>
+          <div>Осталось: {remainingTasks}</div>
+          <div>Дедлайн: {formatDate(room.deadline)}</div>
+        </div>
+        <div className="room-card__quick-actions" aria-label="Быстрые действия">
+          <a
+            className="btn btn--secondary btn--compact"
+            href={`/rooms/${room.id}/`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            Открыть
+          </a>
+          {canOpenWork ? (
+            <a
+              className="btn btn--muted btn--compact"
+              href={`/rooms/${room.id}/work/`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              Разметка
+            </a>
+          ) : null}
+          {canOpenReview ? (
+            <a
+              className="btn btn--muted btn--compact"
+              href={`/rooms/${room.id}/work/?mode=review`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              Ревью
+            </a>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <>
-      <section className="page-topbar page-topbar--rooms">
+      <section className="page-topbar page-topbar--rooms rooms-navigator-hero">
         <div className="page-topbar__copy">
-          <span className="eyebrow">Комнаты</span>
-          <h1>Доступные комнаты</h1>
-          <p>Создайте комнату или откройте комнату из списка доступных. Для новых участников используйте invite-ссылку комнаты.</p>
+          <span className="eyebrow">Навигатор комнат</span>
+          <h1>Комнаты</h1>
+          <p>Быстрый вход в рабочие пространства: закрепляйте важные комнаты, фильтруйте по сценарию и переходите прямо к разметке или ревью.</p>
         </div>
-        <div className="room-toolbar-stack">
-          <div className="room-create-card">
-            <div className="room-create-card__copy">
-              <span className="header-note">Новая комната</span>
-              <strong>Создайте новую комнату</strong>
-              <p>Откроется полная форма с выбором названия, описания и прочих параметров и загрузкой датасета.</p>
-            </div>
-            <a className="btn btn--primary room-create-card__action" href="/rooms/create/">
-              Создать комнату
-            </a>
+        <div className="rooms-navigator-hero__side">
+          <div className="rooms-navigator-metrics" aria-label="Сводка комнат">
+            <article>
+              <span>Доступно</span>
+              <strong>{rooms.length}</strong>
+            </article>
+            <article>
+              <span>Закреплено</span>
+              <strong>{pinnedRooms.length}</strong>
+            </article>
+            <article>
+              <span>В работе</span>
+              <strong>{activeRoomsCount}</strong>
+            </article>
           </div>
+          <a className="btn btn--primary rooms-navigator-create" href="/rooms/create/">
+            Создать комнату
+          </a>
         </div>
       </section>
 
-      <section className="room-grid-section">
-        <div className="room-grid-section__header">
-          <div className="room-grid-section__divider">
-            <span>Ваши комнаты</span>
-          </div>
-          <p>Комнаты, которые вы создали или к которым у вас уже есть доступ.</p>
+      <section className="rooms-control-panel" aria-label="Фильтры комнат">
+        <label className="rooms-search">
+          <span>Поиск</span>
+          <input
+            value={roomSearch}
+            type="text"
+            placeholder="Название, ID, датасет или роль"
+            onChange={(event) => setRoomSearch(event.currentTarget.value)}
+          />
+        </label>
+        <div className="rooms-filter-bar" aria-label="Фильтр списка комнат">
+          {roomFilters.map((filter) => (
+            <button
+              key={filter.value}
+              className={`rooms-filter-chip ${roomFilter === filter.value ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setRoomFilter(filter.value)}
+            >
+              <span>{filter.label}</span>
+              <strong>{filter.count}</strong>
+            </button>
+          ))}
         </div>
-        {loading ? <div className="empty-card">Загружаем комнаты.</div> : null}
-        {!loading && !rooms.length ? (
-          <div className="empty-card">У выбранного пользователя пока нет доступных комнат.</div>
-        ) : (
-          <div className="room-grid">
-            {rooms.map((room) => {
-              const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
-              const canMoveUp = room.is_pinned && pinnedIndex > 0;
-              const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+        <label className="rooms-dataset-filter">
+          <span>Тип датасета</span>
+          <select value={datasetFilter} onChange={(event) => setDatasetFilter(event.currentTarget.value as RoomDatasetFilter)}>
+            {datasetFilters.map((filter) => (
+              <option key={filter.value} value={filter.value}>
+                {filter.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
 
-              return (
-                <article
-                  key={room.id}
-                  className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
+      {loading ? <div className="empty-card">Загружаем комнаты.</div> : null}
+      {!loading && !rooms.length ? (
+        <div className="empty-card rooms-empty-state">
+          <strong>У вас пока нет доступных комнат.</strong>
+          <span>Создайте первую комнату или попросите владельца отправить invite-ссылку.</span>
+          <a className="btn btn--primary" href="/rooms/create/">
+            Создать комнату
+          </a>
+        </div>
+      ) : null}
+
+      {!loading && rooms.length ? (
+        <>
+          {visiblePinnedRooms.length ? (
+            <section className="room-grid-section room-grid-section--pinned">
+              <div className="room-grid-section__header">
+                <div className="room-grid-section__divider">
+                  <span>Закрепленные</span>
+                </div>
+                <p>Комнаты, которые должны быть под рукой.</p>
+              </div>
+              <div className="room-grid room-grid--navigator">{visiblePinnedRooms.map(renderRoomCard)}</div>
+            </section>
+          ) : null}
+
+          <section className="room-grid-section">
+            <div className="room-grid-section__header">
+              <div className="room-grid-section__divider">
+                <span>{mainSectionTitle}</span>
+              </div>
+              <p>{mainSectionNote}</p>
+            </div>
+            {visibleMainRooms.length ? (
+              <div className="room-grid room-grid--navigator">{visibleMainRooms.map(renderRoomCard)}</div>
+            ) : (
+              <div className="empty-card rooms-empty-state">
+                <strong>Комнаты не найдены.</strong>
+                <span>Попробуйте изменить поиск, фильтр или тип датасета.</span>
+                <button
+                  className="btn btn--muted"
+                  type="button"
                   onClick={() => {
-                    window.location.href = `/rooms/${room.id}/`;
+                    setRoomSearch("");
+                    setRoomFilter("all");
+                    setDatasetFilter("all");
                   }}
                 >
-                  <div>
-                    <div className="room-card__head">
-                      <div className="room-card__id">Комната #{room.id}</div>
-                      <div className="room-card__actions">
-                        {room.is_pinned ? (
-                          <div className="room-card__pin-order">
-                            <button
-                              className="room-card__reorder"
-                              type="button"
-                              disabled={!canMoveUp || pinBusyRoomId === room.id}
-                              aria-label="Поднять закреплённую комнату выше"
-                              title="Поднять выше"
-                              onClick={(event) => handleReorderPin(event, room, "up")}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              className="room-card__reorder"
-                              type="button"
-                              disabled={!canMoveDown || pinBusyRoomId === room.id}
-                              aria-label="Опустить закреплённую комнату ниже"
-                              title="Опустить ниже"
-                              onClick={(event) => handleReorderPin(event, room, "down")}
-                            >
-                              ↓
-                            </button>
-                          </div>
-                        ) : null}
-                        <button
-                          className="room-card__pin"
-                          type="button"
-                          disabled={pinBusyRoomId === room.id}
-                          aria-pressed={room.is_pinned}
-                          aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
-                          title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
-                          onClick={(event) => handleTogglePin(event, room)}
-                        >
-                          {room.is_pinned ? "★" : "☆"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="room-card__title">{room.title}</div>
-                    <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
-                  </div>
-                  <div className="room-card__footer">
-                    <div>ID: {room.id}</div>
-                    <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
-                    <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
-                    <div>Прогресс: {formatPercent(room.progress_percent)}</div>
-                    <div>
-                      Задачи: {room.completed_tasks}/{room.total_tasks}
-                    </div>
-                    <div>Защита: {room.has_password ? "С паролем" : "Без пароля"}</div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                  Сбросить фильтры
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
     </>
   );
 }

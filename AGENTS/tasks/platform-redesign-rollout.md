@@ -10,7 +10,8 @@
 - Сценарии разметки на главной должны вести в создание комнаты с предвыбранным типом датасета/workflow.
 - Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и прямое создание после финальной валидации. Backend payload и validation constraints остались прежними.
 - Room detail получил первый command-center слой: компактный topbar со сводкой комнаты, KPI strip, role-aware CTA, свернутую личную/owner-сводку и управление комнатой, которое больше не завязано на роль annotator.
-- Остальные рабочие поверхности пока живут в прежней visual system: rooms list, edit forms, profile, invite, room-work editor, video screens.
+- Rooms list получил первый room navigator слой: compact dashboard topbar, KPI, поиск, фильтры по статусу/типу датасета, отдельные pinned rooms и плотные карточки с progress/quick actions.
+- Остальные рабочие поверхности пока живут в прежней visual system: edit forms, profile, invite, room-work editor, video screens.
 
 ## Rollout Order
 
@@ -18,7 +19,8 @@
    - унифицировать header/nav/buttons/theme toggle;
    - вынести общие цветовые токены нового стиля без ломки editor-specific CSS.
 2. Rooms list and profile:
-   - привести room cards, filters, pinned state, empty states и profile stats к новой плотной dashboard-сетке.
+   - rooms list уже переведён в navigator с фильтрами и compact cards;
+   - дальше проверить реальные большие списки комнат и привести profile stats к той же плотной dashboard-сетке.
 3. Create/edit room:
    - форма создания комнаты уже сценарная; дальше нужно привести edit room к той же визуальной системе;
    - сохранить все текущие validation constraints.
