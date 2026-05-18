@@ -25087,40 +25087,42 @@
     const firstVideoTask = dashboard?.video_tasks?.[0] || null;
     const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
     const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
+    const canShowRoomWorkspace = Boolean(dashboard && (dashboard.actor.can_annotate || hasRoomManagementActions));
+    const roomWorkflowLabel = dashboard ? translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") : "";
+    const roomPrimaryAction = dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" } : dashboard?.actor.can_annotate ? { href: `/rooms/${dashboard.room.id}/work/`, label: "\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" } : null;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--room", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "page-topbar page-topbar--room room-command-center", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: dashboard ? `\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${dashboard.room.id}` : "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: dashboard?.room.title || "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B..." }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: dashboard?.room.description || "\u041F\u043E\u0434\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0443 \u0438 \u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043A\u043E\u043D\u0442\u0443\u0440." }),
-          dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-header-inline-meta", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
-                "#",
-                dashboard.room.id
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+          dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-command-meta", "aria-label": "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-meta__item", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.dataset_label || "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-meta__item", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-meta__item", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: roomWorkflowLabel })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-meta__item", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatDate(dashboard.room.deadline) })
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-meta__item", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
             ] })
           ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-header-inline-meta__empty", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }),
-          dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-cta", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
-            dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/videos/${firstVideoTask.id}/pre-annotate/`, children: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" }) : dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/`, children: "\u041F\u0440\u0438\u0441\u0442\u0443\u043F\u0438\u0442\u044C \u043A \u0440\u0430\u0431\u043E\u0442\u0435" }) : null,
-            dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null
+          dashboard && (roomPrimaryAction || dashboard.actor.can_review || dashboard.actor.can_edit_room || dashboard.actor.can_export) ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-header-cta", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+            roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary room-header-cta__button", href: roomPrimaryAction.href, children: roomPrimaryAction.label }) : null,
+            dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary room-header-cta__button", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null,
+            dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted room-header-cta__button", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438" }) : null,
+            dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted room-header-cta__button", type: "button", onClick: handleExport, children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442" }) : null
           ] }) : null
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("aside", { className: "room-header-side", children: dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-panel", children: [
@@ -25133,18 +25135,56 @@
               remainingTasks: dashboard.overview.remaining_tasks,
               progressPercent: dashboard.overview.progress_percent
             }
-          )
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-progress-brief", "aria-label": "\u0421\u0432\u043E\u0434\u043A\u0430 \u0437\u0430\u0434\u0430\u0447", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u0441\u0435\u0433\u043E" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.total_tasks })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u0442\u043E\u0432\u043E" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.completed_tasks })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.remaining_tasks })
+            ] })
+          ] })
         ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430." }) })
       ] }),
       loading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }) : null,
-      dashboard?.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-command-strip", "aria-label": "\u0421\u0432\u043E\u0434\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-stat", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotators?.length || 0 })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-stat", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0435\u0439\u0431\u043B\u043E\u0432" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.labels.length })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-stat", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Cross-validation" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "\u0412\u044B\u043A\u043B." })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-command-stat", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} \u0433\u043E\u043B\u043E\u0441.` : "\u0412\u044B\u043A\u043B." })
+        ] })
+      ] }) : null,
+      canShowRoomWorkspace && dashboard ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "section",
         {
           className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${hasRoomManagementActions ? "" : "workspace-grid--single"}`,
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack", children: [
+            dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-personal-panel", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041C\u043E\u044F \u043E\u0447\u0435\u0440\u0435\u0434\u044C" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" })
+                ] }),
+                roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: roomPrimaryAction.href, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C" }) : null
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
@@ -25171,23 +25211,46 @@
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: dashboard.annotator_stats?.activity || [] }) })
-            ] }) }),
+            ] }) }) : hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-personal-panel room-personal-panel--owner", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0430\u043D\u0435\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u043E\u0439" })
+              ] }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0434\u0430\u0447 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.total_tasks })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotators?.length || 0 })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+                ] })
+              ] })
+            ] }) }) : null,
             hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-controls", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "details",
               {
-                className: "panel-card section-disclosure",
+                className: "panel-card section-disclosure section-disclosure--command",
                 open: manageSectionOpen,
                 onToggle: (event) => setManageSectionOpen(event.currentTarget.open),
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("summary", { className: "section-disclosure__summary", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__copy", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow section-disclosure__eyebrow", children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u0438 \u0434\u043E\u0441\u0442\u0443\u043F" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u043E\u0439" }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "section-disclosure__note", children: getManageSectionSummary(dashboard) })
                     ] }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "workspace-grid__side--stack manage-stack manage-stack--command", children: [
                     dashboard.actor.can_edit_room || dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings", children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),

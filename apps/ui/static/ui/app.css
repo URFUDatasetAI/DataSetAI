@@ -929,6 +929,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
     gap: clamp(18px, 2vw, 28px);
 }
 
+.room-command-center {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+    align-items: stretch;
+    min-height: 0;
+}
+
 .page-topbar--room .page-topbar__copy {
     flex: 1 1 640px;
     max-width: none;
@@ -954,6 +961,48 @@ input[type="file"]::-webkit-file-upload-button:hover {
     max-width: min(100%, 460px);
 }
 
+.room-command-meta {
+    width: min(100%, 980px);
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.room-command-meta__item {
+    min-width: 0;
+    min-height: 86px;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--soft-panel-background);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.room-command-meta__item span,
+.room-command-stat span,
+.room-progress-brief span {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.room-command-meta__item strong {
+    min-width: 0;
+    color: var(--text);
+    font-size: 0.95rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
 .room-header-cta {
     display: flex;
     align-items: center;
@@ -964,6 +1013,33 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .room-header-cta__button {
     min-width: min(100%, 220px);
+}
+
+.room-command-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.room-command-stat {
+    min-width: 0;
+    min-height: 118px;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    backdrop-filter: blur(12px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.room-command-stat strong {
+    color: var(--text);
+    font-size: clamp(1.8rem, 3vw, 2.8rem);
+    line-height: 1;
+    letter-spacing: -0.06em;
 }
 
 .room-progress-panel {
@@ -998,6 +1074,28 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background: transparent;
     backdrop-filter: none;
     box-shadow: none;
+}
+
+.room-progress-brief {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.room-progress-brief div {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--soft-panel-background);
+    display: grid;
+    gap: 8px;
+}
+
+.room-progress-brief strong {
+    color: var(--text);
+    font-size: 1.25rem;
+    line-height: 1;
 }
 
 .room-progress-chart {
@@ -2039,7 +2137,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .workspace-grid--room-top {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
     gap: 14px;
     align-items: stretch;
 }
@@ -2061,7 +2159,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .workspace-grid__side--room-controls {
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: minmax(0, 1fr);
     gap: 14px;
     align-items: stretch;
 }
@@ -2092,6 +2190,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
     cursor: pointer;
     user-select: none;
     transition: background 160ms ease;
+}
+
+.section-disclosure--command {
+    height: 100%;
+}
+
+.section-disclosure--command[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.section-disclosure--command .section-disclosure__content {
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .section-disclosure__summary::-webkit-details-marker {
@@ -2176,6 +2288,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     padding-top: 6px;
 }
 
+.manage-stack--command {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .manage-card-legacy {
     min-width: 0;
     padding: 22px;
@@ -2190,6 +2306,50 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .manage-card-legacy--settings {
     grid-column: 1 / -1;
+}
+
+.room-personal-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.room-personal-panel .panel-card__head {
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.room-personal-panel .panel-card__head > div {
+    min-width: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.room-personal-panel .panel-card__head h2 {
+    margin: 0;
+}
+
+.room-personal-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.room-personal-summary .summary-row {
+    min-width: 0;
+    min-height: 86px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 16px;
+    background: var(--soft-panel-background);
+}
+
+.room-personal-summary .summary-row strong {
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .manage-card-legacy .panel-card__head {
@@ -4156,6 +4316,15 @@ input[type="file"]::-webkit-file-upload-button:hover {
         grid-template-columns: 1fr;
     }
 
+    .room-command-center,
+    .room-command-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .room-command-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .create-section__body--grid,
     .toggle-grid {
         grid-template-columns: 1fr;
@@ -4198,6 +4367,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
     }
 
     .room-progress-chart {
+        grid-template-columns: 1fr;
+    }
+
+    .room-progress-brief,
+    .room-personal-summary {
         grid-template-columns: 1fr;
     }
 
@@ -4510,6 +4684,17 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 @media (max-width: 640px) {
+    .room-command-meta,
+    .room-progress-brief {
+        grid-template-columns: 1fr;
+    }
+
+    .room-command-meta__item,
+    .room-command-stat,
+    .room-personal-summary .summary-row {
+        min-height: 0;
+    }
+
     .toast-region {
         left: 10px;
         right: 10px;

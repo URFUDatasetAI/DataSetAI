@@ -4557,55 +4557,69 @@ function RoomDetailPage() {
   const firstVideoTask = dashboard?.video_tasks?.[0] || null;
   const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
   const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
+  const canShowRoomWorkspace = Boolean(dashboard && (dashboard.actor.can_annotate || hasRoomManagementActions));
+  const roomWorkflowLabel = dashboard ? translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") : "";
+  const roomPrimaryAction =
+    dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask
+      ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "Выбрать кадры" }
+      : dashboard?.actor.can_annotate
+        ? { href: `/rooms/${dashboard.room.id}/work/`, label: "Продолжить разметку" }
+        : null;
 
   return (
     <>
-      <section className="page-topbar page-topbar--room">
+      <section className="page-topbar page-topbar--room room-command-center">
         <div className="page-topbar__copy">
-          <span className="eyebrow">Комната</span>
+          <span className="eyebrow">{dashboard ? `Комната #${dashboard.room.id}` : "Комната"}</span>
           <h1>{dashboard?.room.title || "Загрузка комнаты..."}</h1>
           <p>{dashboard?.room.description || "Подгружаем статистику и рабочий контур."}</p>
           {dashboard ? (
-            <div className="summary-stack room-header-inline-meta">
-              <div className="summary-row">
-                <span>ID комнаты</span>
-                <strong>#{dashboard.room.id}</strong>
-              </div>
-              <div className="summary-row">
+            <div className="room-command-meta" aria-label="Параметры комнаты">
+              <article className="room-command-meta__item">
                 <span>Датасет</span>
                 <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
                 <span>Тип</span>
                 <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
+                <span>Сценарий</span>
+                <strong>{roomWorkflowLabel}</strong>
+              </article>
+              <article className="room-command-meta__item">
                 <span>Дедлайн</span>
                 <strong>{formatDate(dashboard.room.deadline)}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
                 <span>Доступ</span>
                 <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
-              </div>
+              </article>
             </div>
           ) : (
             <div className="empty-card room-header-inline-meta__empty">Загрузка.</div>
           )}
-          {dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? (
+          {dashboard && (roomPrimaryAction || dashboard.actor.can_review || dashboard.actor.can_edit_room || dashboard.actor.can_export) ? (
             <div className="room-header-cta" aria-label="Действия комнаты">
-              {dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? (
-                <a className="btn btn--primary room-header-cta__button" href={`/videos/${firstVideoTask.id}/pre-annotate/`}>
-                  Выбрать кадры
-                </a>
-              ) : dashboard.actor.can_annotate ? (
-                <a className="btn btn--primary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/`}>
-                  Приступить к работе
+              {roomPrimaryAction ? (
+                <a className="btn btn--primary room-header-cta__button" href={roomPrimaryAction.href}>
+                  {roomPrimaryAction.label}
                 </a>
               ) : null}
               {dashboard.actor.can_review ? (
                 <a className="btn btn--secondary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
                   Открыть проверку
                 </a>
+              ) : null}
+              {dashboard.actor.can_edit_room ? (
+                <a className="btn btn--muted room-header-cta__button" href={`/rooms/${dashboard.room.id}/edit/`}>
+                  Настройки
+                </a>
+              ) : null}
+              {dashboard.actor.can_export ? (
+                <button className="btn btn--muted room-header-cta__button" type="button" onClick={handleExport}>
+                  Экспорт
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -4620,6 +4634,20 @@ function RoomDetailPage() {
                 remainingTasks={dashboard.overview.remaining_tasks}
                 progressPercent={dashboard.overview.progress_percent}
               />
+              <div className="room-progress-brief" aria-label="Сводка задач">
+                <div>
+                  <span>Всего</span>
+                  <strong>{dashboard.overview.total_tasks}</strong>
+                </div>
+                <div>
+                  <span>Готово</span>
+                  <strong>{dashboard.overview.completed_tasks}</strong>
+                </div>
+                <div>
+                  <span>Осталось</span>
+                  <strong>{dashboard.overview.remaining_tasks}</strong>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="empty-card">Загрузка.</div>
@@ -4629,70 +4657,130 @@ function RoomDetailPage() {
 
       {loading ? <div className="empty-card">Загрузка комнаты.</div> : null}
 
-      {dashboard?.actor.can_annotate ? (
+      {dashboard ? (
+        <section className="room-command-strip" aria-label="Сводка комнаты">
+          <article className="room-command-stat">
+            <span>Участников</span>
+            <strong>{dashboard.annotators?.length || 0}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Лейблов</span>
+            <strong>{dashboard.labels.length}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Cross-validation</span>
+            <strong>{dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "Выкл."}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Голосование</span>
+            <strong>{dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} голос.` : "Выкл."}</strong>
+          </article>
+        </section>
+      ) : null}
+
+      {canShowRoomWorkspace && dashboard ? (
         <section
           className={`workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${
             hasRoomManagementActions ? "" : "workspace-grid--single"
           }`}
         >
-          <div className="workspace-grid__main workspace-grid__main--room-annotator">
-            <div className="panel-card">
-              <div className="panel-card__head">
-                <h2>Личная статистика</h2>
-              </div>
-              <div className="summary-stack">
-                <div className="summary-row">
-                  <span>Роль в комнате</span>
-                  <strong>{translateRole(dashboard.actor.role)}</strong>
+          {dashboard.actor.can_annotate ? (
+            <div className="workspace-grid__main workspace-grid__main--room-annotator">
+              <div className="panel-card room-personal-panel">
+                <div className="panel-card__head">
+                  <div>
+                    <span className="eyebrow">Моя очередь</span>
+                    <h2>Личная статистика</h2>
+                  </div>
+                  {roomPrimaryAction ? (
+                    <a className="btn btn--primary btn--compact" href={roomPrimaryAction.href}>
+                      Открыть
+                    </a>
+                  ) : null}
                 </div>
-                <div className="summary-row">
-                  <span>Выполнено мной</span>
-                  <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
+                <div className="summary-stack room-personal-summary">
+                  <div className="summary-row">
+                    <span>Роль в комнате</span>
+                    <strong>{translateRole(dashboard.actor.role)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Выполнено мной</span>
+                    <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>В работе</span>
+                    <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Осталось</span>
+                    <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Квота</span>
+                    <strong>
+                      {dashboard.annotator_stats?.task_quota == null
+                        ? "Не задана"
+                        : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
+                    </strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Мой прогресс</span>
+                    <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
+                  </div>
                 </div>
-                <div className="summary-row">
-                  <span>В работе</span>
-                  <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
+                <div className="activity-board">
+                  <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
                 </div>
-                <div className="summary-row">
-                  <span>Осталось</span>
-                  <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Квота</span>
-                  <strong>
-                    {dashboard.annotator_stats?.task_quota == null
-                      ? "Не задана"
-                      : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
-                  </strong>
-                </div>
-                <div className="summary-row">
-                  <span>Мой прогресс</span>
-                  <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
-                </div>
-              </div>
-              <div className="activity-board">
-                <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
               </div>
             </div>
-          </div>
+          ) : hasRoomManagementActions ? (
+            <div className="workspace-grid__main workspace-grid__main--room-annotator">
+              <div className="panel-card room-personal-panel room-personal-panel--owner">
+                <div className="panel-card__head">
+                  <div>
+                    <span className="eyebrow">Панель владельца</span>
+                    <h2>Управление комнатой</h2>
+                  </div>
+                </div>
+                <div className="summary-stack room-personal-summary">
+                  <div className="summary-row">
+                    <span>Роль</span>
+                    <strong>{translateRole(dashboard.actor.role)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Задач в комнате</span>
+                    <strong>{dashboard.overview.total_tasks}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Участников</span>
+                    <strong>{dashboard.annotators?.length || 0}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Датасет</span>
+                    <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {hasRoomManagementActions ? (
             <div className="workspace-grid__side workspace-grid__side--room-controls">
               <details
-                className="panel-card section-disclosure"
+                className="panel-card section-disclosure section-disclosure--command"
                 open={manageSectionOpen}
                 onToggle={(event) => setManageSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
               >
                 <summary className="section-disclosure__summary">
                   <div className="section-disclosure__copy">
                     <span className="eyebrow section-disclosure__eyebrow">Управление</span>
-                    <strong>Настройки и доступ</strong>
+                    <strong>Управление комнатой</strong>
                     <p className="section-disclosure__note">{getManageSectionSummary(dashboard)}</p>
                   </div>
                   <span className="section-disclosure__icon" aria-hidden="true"></span>
                 </summary>
                 <div className="section-disclosure__content">
-                  <div className="workspace-grid__side--stack manage-stack">
+                  <div className="workspace-grid__side--stack manage-stack manage-stack--command">
                     {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room) ? (
                       <div className="panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings">
                         <div className="panel-card__head">
