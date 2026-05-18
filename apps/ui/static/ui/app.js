@@ -22877,6 +22877,8 @@
     ];
     const primaryHref = authUser ? "/rooms/" : "/auth/register/";
     const primaryLabel = authUser ? "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" : "\u041D\u0430\u0447\u0430\u0442\u044C \u0440\u0430\u0431\u043E\u0442\u0443";
+    const secondaryHref = authUser ? "/rooms/create/" : "/auth/login/";
+    const secondaryLabel = authUser ? "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" : "\u0412\u043E\u0439\u0442\u0438";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("main", { className: "landing-shell", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "landing-hero", "aria-labelledby": "landing-title", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "landing-chip", children: "DataSetAI Workspace" }),
@@ -22884,7 +22886,7 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u044B, \u0440\u043E\u043B\u0438, \u043E\u0447\u0435\u0440\u0435\u0434\u0438 \u0437\u0430\u0434\u0430\u0447, \u0440\u0443\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0439 \u0438 \u0432\u0438\u0434\u0435\u043E, cross-validation \u0438 \u044D\u043A\u0441\u043F\u043E\u0440\u0442 \u0441\u043E\u0431\u0440\u0430\u043D\u044B \u0432 \u0441\u043F\u043E\u043A\u043E\u0439\u043D\u044B\u0439 \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441 \u0434\u043B\u044F \u0435\u0436\u0435\u0434\u043D\u0435\u0432\u043D\u043E\u0439 \u043A\u043E\u043C\u0430\u043D\u0434\u043D\u043E\u0439 \u0440\u0430\u0431\u043E\u0442\u044B." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "landing-actions", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: primaryHref, children: primaryLabel }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: "/rooms/", children: "\u041F\u043E\u0441\u043C\u043E\u0442\u0440\u0435\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: secondaryHref, children: secondaryLabel })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "landing-stats", "aria-label": "\u0421\u0432\u043E\u0434\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430", children: stats.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "landing-stat-pill", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: item.label }),
@@ -22894,8 +22896,8 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "landing-dashboard", "aria-label": "\u0420\u0430\u0431\u043E\u0447\u0430\u044F \u0441\u0432\u043E\u0434\u043A\u0430 DataSetAI", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "landing-dashboard__top", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Room overview" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "Dataset Quality Run" })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0432\u043E\u0434\u043A\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "landing-dashboard__link", href: "/rooms/", children: "\u0412\u0441\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" })
         ] }),

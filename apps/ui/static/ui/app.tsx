@@ -1996,6 +1996,8 @@ function LandingPage() {
   ];
   const primaryHref = authUser ? "/rooms/" : "/auth/register/";
   const primaryLabel = authUser ? "Открыть комнаты" : "Начать работу";
+  const secondaryHref = authUser ? "/rooms/create/" : "/auth/login/";
+  const secondaryLabel = authUser ? "Создать комнату" : "Войти";
 
   return (
     <main className="landing-shell">
@@ -2010,8 +2012,8 @@ function LandingPage() {
           <a className="btn btn--primary" href={primaryHref}>
             {primaryLabel}
           </a>
-          <a className="btn btn--muted" href="/rooms/">
-            Посмотреть комнаты
+          <a className="btn btn--muted" href={secondaryHref}>
+            {secondaryLabel}
           </a>
         </div>
         <div className="landing-stats" aria-label="Сводная статистика">
@@ -2027,8 +2029,8 @@ function LandingPage() {
       <section className="landing-dashboard" aria-label="Рабочая сводка DataSetAI">
         <div className="landing-dashboard__top">
           <div>
-            <span>Room overview</span>
-            <strong>Dataset Quality Run</strong>
+            <span>Сводка комнаты</span>
+            <strong>Контроль качества датасета</strong>
           </div>
           <a className="landing-dashboard__link" href="/rooms/">
             Все комнаты
