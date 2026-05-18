@@ -2072,7 +2072,7 @@ function LandingPage() {
       <section className="landing-section">
         <div className="landing-section__head">
           <span className="landing-chip">Workflows</span>
-          <h2>Сценарии разметки без лишнего переключения контекста</h2>
+          <h2>Сценарии разметки</h2>
         </div>
         <div className="landing-scenario-grid">
           {scenarios.map((item) => (
@@ -2780,7 +2780,6 @@ function RoomCreatePage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState(getRoomCreateScenarioId(preset));
   const [currentStep, setCurrentStep] = useState<RoomCreateStepId>("scenario");
   const [maxUnlockedStepIndex, setMaxUnlockedStepIndex] = useState(0);
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -2805,7 +2804,6 @@ function RoomCreatePage() {
 
   const modeConfig = datasetModeConfig[datasetMode];
   const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
-  const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
   const filesPreview = modeConfig.usesFiles
     ? selectedFiles.length
       ? `${selectedFiles.length} файл(ов) выбрано`
@@ -3082,8 +3080,7 @@ function RoomCreatePage() {
 
     try {
       validateRoomCreateWizard();
-      getNormalizedRoomCreateValues();
-      setConfirmationOpen(true);
+      void submitRoomCreate();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     }
@@ -3152,7 +3149,6 @@ function RoomCreatePage() {
         method: "POST",
         formData: payload,
       });
-      setConfirmationOpen(false);
       addToast(`Комната #${room.id} создана. Переходим к ней.`, "success");
       window.setTimeout(() => {
         window.location.href = `/rooms/${room.id}/`;
@@ -3216,7 +3212,7 @@ function RoomCreatePage() {
                 </button>
               ) : (
                 <button className="btn btn--primary" type="submit" disabled={submitting}>
-                  Проверить и создать
+                  Создать комнату
                 </button>
               )}
             </div>
@@ -3610,73 +3606,6 @@ function RoomCreatePage() {
 
         </form>
 
-        {confirmationOpen ? (
-          <div className="modal-shell" role="presentation" onClick={() => (submitting ? undefined : setConfirmationOpen(false))}>
-            <div
-              className="modal-card modal-card--room-create"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="room-create-confirm-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="modal-card__head">
-                <span className="eyebrow">Подтверждение</span>
-                <h2 id="room-create-confirm-title">Создать комнату?</h2>
-                <p>Проверь основные параметры перед созданием. После создания комнату можно будет открыть и продолжить настройку доступа.</p>
-              </div>
-              <div className="room-create-confirm-grid">
-                <div>
-                  <span>Название</span>
-                  <strong>{title.trim() || currentScenario.defaultTitle}</strong>
-                </div>
-                <div>
-                  <span>Сценарий</span>
-                  <strong>{currentScenario.title}</strong>
-                </div>
-                <div>
-                  <span>Датасет</span>
-                  <strong>{translateDatasetMode(datasetMode)}</strong>
-                </div>
-                <div>
-                  <span>Workflow</span>
-                  <strong>{translateAnnotationWorkflow(annotationWorkflow)}</strong>
-                </div>
-                <div>
-                  <span>Файлы</span>
-                  <strong>{filesPreview}</strong>
-                </div>
-                <div>
-                  <span>Качество</span>
-                  <strong>{qualityPreview}</strong>
-                </div>
-                <div>
-                  <span>Ревью</span>
-                  <strong>{reviewPreview}</strong>
-                </div>
-              </div>
-              <div className="room-create-confirm-labels">
-                <span>Лейблы</span>
-                {normalizedLabelsPreview.length ? (
-                  <div>
-                    {normalizedLabelsPreview.map((label) => (
-                      <strong key={label}>{label}</strong>
-                    ))}
-                  </div>
-                ) : (
-                  <p>{modeConfig.usesLabels ? "Лейблы не заполнены." : "Для этого сценария label palette не нужен."}</p>
-                )}
-              </div>
-              <div className="modal-card__actions">
-                <button className="btn btn--muted" type="button" disabled={submitting} onClick={() => setConfirmationOpen(false)}>
-                  Вернуться к форме
-                </button>
-                <button className="btn btn--primary" type="button" disabled={submitting} onClick={submitRoomCreate}>
-                  {submitting ? "Создаем..." : "Подтвердить создание"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
       </section>
     </>
   );

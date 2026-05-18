@@ -8,7 +8,7 @@
 
 - Главная уже переведена на новый landing/dashboard style и поддерживает light/dark theme.
 - Сценарии разметки на главной должны вести в создание комнаты с предвыбранным типом датасета/workflow.
-- Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и модальное подтверждение перед созданием. Backend payload и validation constraints остались прежними.
+- Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и прямое создание после финальной валидации. Backend payload и validation constraints остались прежними.
 - Остальные рабочие поверхности пока живут в прежней visual system: rooms list, room detail, create/edit forms, profile, invite, room-work editor, video screens.
 
 ## Rollout Order

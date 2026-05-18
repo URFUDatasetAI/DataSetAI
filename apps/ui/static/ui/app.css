@@ -349,6 +349,7 @@ textarea {
     height: 100%;
     display: block;
     object-fit: cover;
+    object-position: 42% 50%;
 }
 
 .brand-mark__text {
@@ -2187,6 +2188,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
     gap: 16px;
 }
 
+.manage-card-legacy--settings {
+    grid-column: 1 / -1;
+}
+
 .manage-card-legacy .panel-card__head {
     margin-bottom: 0;
     align-items: flex-start;
@@ -2216,7 +2221,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .manage-card-legacy--settings .room-settings-panel__locks {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
     gap: 12px;
 }
 
@@ -5907,6 +5912,18 @@ textarea::placeholder {
     color: var(--text);
 }
 
+.manage-card-legacy--export .field--export-compact select {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--field-background);
+    color: var(--text);
+}
+
+.manage-card-legacy--export .field--export-compact select option {
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
 .room-create-upload-box {
     margin-top: 18px;
 }
@@ -5923,73 +5940,6 @@ textarea::placeholder {
     gap: 10px;
     flex-wrap: wrap;
     padding: 4px 0 0;
-}
-
-.modal-card--room-create {
-    width: min(100%, 620px);
-}
-
-.room-create-confirm-grid {
-    display: grid;
-    gap: 0;
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    overflow: hidden;
-}
-
-.room-create-confirm-grid div {
-    display: flex;
-    justify-content: space-between;
-    gap: 14px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.035);
-}
-
-.room-create-confirm-grid div:last-child {
-    border-bottom: 0;
-}
-
-.room-create-confirm-grid span,
-.room-create-confirm-labels > span {
-    color: var(--color-ash-lilac);
-    font-size: 13px;
-    line-height: 16px;
-}
-
-.room-create-confirm-grid strong {
-    color: var(--color-soft-quartz);
-    font-size: 13px;
-    line-height: 16px;
-    text-align: right;
-}
-
-.room-create-confirm-labels {
-    display: grid;
-    gap: 10px;
-}
-
-.room-create-confirm-labels div {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.room-create-confirm-labels strong {
-    padding: 7px 10px;
-    border: 1px solid rgba(183, 164, 251, 0.34);
-    border-radius: 999px;
-    background: rgba(113, 61, 255, 0.12);
-    color: var(--color-soft-quartz);
-    font-size: 13px;
-    line-height: 16px;
-}
-
-.room-create-confirm-labels p {
-    margin: 0;
-    color: var(--color-ash-lilac);
-    font-size: 14px;
-    line-height: 20px;
 }
 
 .room-grid-section__divider::after {

@@ -9,7 +9,6 @@ from django.http import Http404
 from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.shortcuts import redirect
-from django.templatetags.static import static
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import TemplateView
 from django.views.generic.edit import FormView
@@ -23,6 +22,12 @@ from apps.rooms.models import Room
 from apps.ui.forms import LoginForm, RegistrationForm
 from apps.users.models import User
 from common.exceptions import AccessDeniedError, NotFoundError
+
+
+BRAND_MARK_URL = (
+    "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/06/d3/3d/"
+    "06d33da3-675a-3e7d-79a4-ef2eb923e4c5/cover.jpg/600x600bb.jpg"
+)
 
 
 class UiContextMixin:
@@ -113,7 +118,7 @@ class UiContextMixin:
             "csrf_token": get_token(self.request),
             "messages": messages,
             "assets": {
-                "brand_mark": static("ui/datasetai-mark.png"),
+                "brand_mark": BRAND_MARK_URL,
             },
             "page_payload": self.get_page_payload(context),
         }

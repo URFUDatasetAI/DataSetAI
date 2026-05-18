@@ -22937,7 +22937,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "landing-section", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "landing-section__head", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "landing-chip", children: "Workflows" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u043B\u0438\u0448\u043D\u0435\u0433\u043E \u043F\u0435\u0440\u0435\u043A\u043B\u044E\u0447\u0435\u043D\u0438\u044F \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442\u0430" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "landing-scenario-grid", children: scenarios.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("a", { className: "landing-scenario-card", href: item.href, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: item.label }),
@@ -23524,7 +23524,6 @@
     const [selectedScenarioId, setSelectedScenarioId] = (0, import_react.useState)(getRoomCreateScenarioId(preset));
     const [currentStep, setCurrentStep] = (0, import_react.useState)("scenario");
     const [maxUnlockedStepIndex, setMaxUnlockedStepIndex] = (0, import_react.useState)(0);
-    const [confirmationOpen, setConfirmationOpen] = (0, import_react.useState)(false);
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       const config = datasetModeConfig[datasetMode];
@@ -23546,7 +23545,6 @@
     }, [datasetMode, annotationWorkflow]);
     const modeConfig = datasetModeConfig[datasetMode];
     const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
-    const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
     const filesPreview = modeConfig.usesFiles ? selectedFiles.length ? `${selectedFiles.length} \u0444\u0430\u0439\u043B(\u043E\u0432) \u0432\u044B\u0431\u0440\u0430\u043D\u043E` : "\u0424\u0430\u0439\u043B\u044B \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u044B" : "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 \u043D\u0435 \u043D\u0443\u0436\u043D\u0430";
     const qualityPreview = crossValidationEnabled ? `\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430: ${crossValidationCount || 2} \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044F` : "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430";
     const reviewPreview = reviewVotingEnabled ? `\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438: ${reviewVotesRequired || 1} \u0433\u043E\u043B\u043E\u0441(\u043E\u0432)` : "\u0411\u0435\u0437 \u043F\u0443\u043B\u0430 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438";
@@ -23737,8 +23735,7 @@
       }
       try {
         validateRoomCreateWizard();
-        getNormalizedRoomCreateValues();
-        setConfirmationOpen(true);
+        void submitRoomCreate();
       } catch (error) {
         addToast(getErrorMessage(error), "error");
       }
@@ -23800,7 +23797,6 @@
           method: "POST",
           formData: payload
         });
-        setConfirmationOpen(false);
         addToast(`\u041A\u043E\u043C\u043D\u0430\u0442\u0430 #${room.id} \u0441\u043E\u0437\u0434\u0430\u043D\u0430. \u041F\u0435\u0440\u0435\u0445\u043E\u0434\u0438\u043C \u043A \u043D\u0435\u0439.`, "success");
         window.setTimeout(() => {
           window.location.href = `/rooms/${room.id}/`;
@@ -23844,7 +23840,7 @@
           children,
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-step-actions", children: [
             currentStepIndex > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: goToPreviousRoomCreateStep, children: "\u041D\u0430\u0437\u0430\u0434" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: "/rooms/", children: "\u041D\u0430\u0437\u0430\u0434 \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0430\u043C" }),
-            currentStepIndex < roomCreateWizardSteps.length - 1 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: goToNextRoomCreateStep, children: "\u0414\u0430\u043B\u0435\u0435" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", disabled: submitting, children: "\u041F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u0438 \u0441\u043E\u0437\u0434\u0430\u0442\u044C" })
+            currentStepIndex < roomCreateWizardSteps.length - 1 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", onClick: goToNextRoomCreateStep, children: "\u0414\u0430\u043B\u0435\u0435" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", disabled: submitting, children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" })
           ] })
         ] }) : null
       ] }, step.id);
@@ -23855,449 +23851,392 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u041D\u043E\u0432\u0430\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0430" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442, \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432 \u0438 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u0432 \u043E\u0434\u043D\u043E\u043C \u0440\u0430\u0431\u043E\u0447\u0435\u043C \u043F\u043E\u0442\u043E\u043A\u0435." })
       ] }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "create-layout create-layout--room-create", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { id: "room-create-form", className: "room-create-form", onSubmit: handleSubmit, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-stepper", "aria-label": "\u0428\u0430\u0433\u0438 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: roomCreateWizardSteps.map((step, index) => {
-            const isActive = currentStep === step.id;
-            const isUnlocked = index <= maxUnlockedStepIndex;
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "create-layout create-layout--room-create", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { id: "room-create-form", className: "room-create-form", onSubmit: handleSubmit, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-stepper", "aria-label": "\u0428\u0430\u0433\u0438 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: roomCreateWizardSteps.map((step, index) => {
+          const isActive = currentStep === step.id;
+          const isUnlocked = index <= maxUnlockedStepIndex;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              className: `room-create-stepper__item ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`,
+              type: "button",
+              disabled: !isUnlocked,
+              "aria-current": isActive ? "step" : void 0,
+              onClick: () => openRoomCreateStep(step.id),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: index + 1 }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: step.title })
+              ]
+            },
+            step.id
+          );
+        }) }),
+        renderRoomCreateStep(
+          "scenario",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0441\u0442\u0430\u0440\u0442\u043E\u0432\u044B\u0439 \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439" })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u0435\u0442 \u0442\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, workflow, \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u0431\u0430\u0437\u043E\u0432\u044B\u0439 label. \u0412\u0441\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0432\u0440\u0443\u0447\u043D\u0443\u044E." })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-scenario-grid", children: roomCreateScenarioPresets.map((scenario) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "button",
               {
-                className: `room-create-stepper__item ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`,
+                className: `room-create-scenario-card ${scenario.id === selectedScenarioId ? "is-active" : ""}`,
                 type: "button",
-                disabled: !isUnlocked,
-                "aria-current": isActive ? "step" : void 0,
-                onClick: () => openRoomCreateStep(step.id),
+                "aria-pressed": scenario.id === selectedScenarioId,
+                onClick: () => applyScenarioPreset(scenario),
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: index + 1 }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: step.title })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: scenario.meta }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: scenario.title }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: scenario.summary })
                 ]
               },
-              step.id
-            );
-          }) }),
-          renderRoomCreateStep(
-            "scenario",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0441\u0442\u0430\u0440\u0442\u043E\u0432\u044B\u0439 \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0437\u0430\u043F\u043E\u043B\u043D\u044F\u0435\u0442 \u0442\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, workflow, \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u0431\u0430\u0437\u043E\u0432\u044B\u0439 label. \u0412\u0441\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043D\u0438\u0436\u0435 \u043C\u043E\u0436\u043D\u043E \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0432\u0440\u0443\u0447\u043D\u0443\u044E." })
+              scenario.id
+            )) })
+          ] })
+        ),
+        renderRoomCreateStep(
+          "main",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: title,
+                    name: "title",
+                    type: "text",
+                    placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
+                    required: true,
+                    className: titleTooLong ? "field__control--invalid" : "",
+                    "aria-invalid": titleTooLong,
+                    onChange: (event) => setTitle(event.currentTarget.value)
+                  }
+                )
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-scenario-grid", children: roomCreateScenarioPresets.map((scenario) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                "button",
-                {
-                  className: `room-create-scenario-card ${scenario.id === selectedScenarioId ? "is-active" : ""}`,
-                  type: "button",
-                  "aria-pressed": scenario.id === selectedScenarioId,
-                  onClick: () => applyScenarioPreset(scenario),
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: scenario.meta }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: scenario.title }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: scenario.summary })
-                  ]
-                },
-                scenario.id
-              )) })
-            ] })
-          ),
-          renderRoomCreateStep(
-            "main",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0438 \u043A\u043E\u043D\u0442\u0435\u043A\u0441\u0442" })
-              ] }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: title,
-                      name: "title",
-                      type: "text",
-                      placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
-                      required: true,
-                      className: titleTooLong ? "field__control--invalid" : "",
-                      "aria-invalid": titleTooLong,
-                      onChange: (event) => setTitle(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: datasetLabel,
-                      name: "dataset_label",
-                      type: "text",
-                      className: datasetLabelTooLong ? "field__control--invalid" : "",
-                      "aria-invalid": datasetLabelTooLong,
-                      onChange: (event) => setDatasetLabel(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "textarea",
-                    {
-                      value: description,
-                      name: "description",
-                      rows: 4,
-                      placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                      className: descriptionTooLong ? "field__control--invalid" : "",
-                      "aria-invalid": descriptionTooLong,
-                      onChange: (event) => setDescription(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: deadline,
-                      name: "deadline",
-                      type: "datetime-local",
-                      className: deadlineError ? "field__control--invalid" : "",
-                      "aria-invalid": Boolean(deadlineError),
-                      onChange: (event) => setDeadline(event.currentTarget.value)
-                    }
-                  ),
-                  deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
-                ] })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: datasetLabel,
+                    name: "dataset_label",
+                    type: "text",
+                    className: datasetLabelTooLong ? "field__control--invalid" : "",
+                    "aria-invalid": datasetLabelTooLong,
+                    onChange: (event) => setDatasetLabel(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "textarea",
+                  {
+                    value: description,
+                    name: "description",
+                    rows: 4,
+                    placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
+                    className: descriptionTooLong ? "field__control--invalid" : "",
+                    "aria-invalid": descriptionTooLong,
+                    onChange: (event) => setDescription(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: deadline,
+                    name: "deadline",
+                    type: "datetime-local",
+                    className: deadlineError ? "field__control--invalid" : "",
+                    "aria-invalid": Boolean(deadlineError),
+                    onChange: (event) => setDeadline(event.currentTarget.value)
+                  }
+                ),
+                deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
               ] })
             ] })
-          ),
-          renderRoomCreateStep(
-            "data",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0414\u0430\u043D\u043D\u044B\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.hint })
+          ] })
+        ),
+        renderRoomCreateStep(
+          "data",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0414\u0430\u043D\u043D\u044B\u0435" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0438 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: datasetMode, name: "dataset_mode", onChange: (event) => setDatasetMode(event.currentTarget.value), children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "json", children: "JSON \u0444\u0430\u0439\u043B" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "image", children: "\u0424\u043E\u0442\u043E" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "video", children: "\u0412\u0438\u0434\u0435\u043E" })
-                  ] })
-                ] }),
-                (datasetMode === "image" || datasetMode === "video") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: annotationWorkflow, name: "annotation_workflow", onChange: (event) => setAnnotationWorkflow(event.currentTarget.value), children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "standard", children: "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "text_detect_text", children: "Object detect + text" })
-                  ] })
-                ] }),
-                datasetMode === "video" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "FPS \u0438\u0437\u0432\u043B\u0435\u0447\u0435\u043D\u0438\u044F" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                      "input",
-                      {
-                        value: videoExtractionFps,
-                        name: "video_extraction_fps",
-                        type: "number",
-                        min: "1",
-                        max: "120",
-                        placeholder: "\u0412\u0441\u0435 \u043A\u0430\u0434\u0440\u044B",
-                        onChange: (event) => setVideoExtractionFps(event.currentTarget.value)
-                      }
-                    )
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0428\u0430\u0433 \u043A\u0430\u0434\u0440\u043E\u0432" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: videoFrameStep, name: "video_frame_step", type: "number", min: "1", max: "1000", onChange: (event) => setVideoFrameStep(event.currentTarget.value) })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0438\u043C\u0438\u0442 \u043A\u0430\u0434\u0440\u043E\u0432 \u043D\u0430 \u0432\u0438\u0434\u0435\u043E" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: videoMaxFrames, name: "video_max_frames", type: "number", min: "1", max: "100000", onChange: (event) => setVideoMaxFrames(event.currentTarget.value) })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0443\u0447\u043D\u044B\u0435 keyframe, %" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                      "input",
-                      {
-                        value: videoManualKeyframePercent,
-                        name: "video_manual_keyframe_percent",
-                        type: "number",
-                        min: "1",
-                        max: "100",
-                        onChange: (event) => setVideoManualKeyframePercent(event.currentTarget.value)
-                      }
-                    )
-                  ] })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.hint })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: datasetMode, name: "dataset_mode", onChange: (event) => setDatasetMode(event.currentTarget.value), children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "json", children: "JSON \u0444\u0430\u0439\u043B" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "image", children: "\u0424\u043E\u0442\u043E" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "video", children: "\u0412\u0438\u0434\u0435\u043E" })
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box room-create-upload-box", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.usesFiles ? "\u0412\u044B\u0431\u0435\u0440\u0438 \u0444\u0430\u0439\u043B\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u0442\u0430\u043D\u0443\u0442 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." : "Demo-\u043A\u043E\u043C\u043D\u0430\u0442\u0430 \u0441\u043E\u0437\u0434\u0430\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438." })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box__actions dataset-box__actions--stack", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      ref: fileInputRef,
-                      type: "file",
-                      disabled: !modeConfig.usesFiles,
-                      accept: modeConfig.accept,
-                      multiple: modeConfig.multiple,
-                      onChange: (event) => setSelectedFiles(Array.from(event.currentTarget.files || []))
-                    }
-                  ),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: summarizeSelectedFiles(selectedFiles) })
+              (datasetMode === "image" || datasetMode === "video") && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: annotationWorkflow, name: "annotation_workflow", onChange: (event) => setAnnotationWorkflow(event.currentTarget.value), children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "standard", children: "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "text_detect_text", children: "Object detect + text" })
                 ] })
               ] }),
-              modeConfig.usesLabels && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-labels", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head room-create-section__head--compact", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "Labels" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F bbox" })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0426\u0432\u0435\u0442 \u043A\u0430\u0436\u0434\u043E\u043C\u0443 label-\u0443 \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0435\u0442\u0441\u044F \u0441\u043B\u0443\u0447\u0430\u0439\u043D\u043E, \u043D\u043E \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0441\u0440\u0430\u0437\u0443 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C." })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-editor-list", children: labels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "label-editor-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041B\u0435\u0439\u0431\u043B", value: label.name, maxLength: ROOM_LABEL_NAME_MAX_LENGTH }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                      "input",
-                      {
-                        className: `label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`,
-                        type: "text",
-                        placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, car",
-                        value: label.name,
-                        "aria-invalid": isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH),
-                        onChange: (event) => updateLabel(index, "name", event.currentTarget.value)
-                      }
-                    )
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--color", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0426\u0432\u0435\u0442" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "label-editor-row__color", type: "color", value: label.color, onChange: (event) => updateLabel(index, "color", event.currentTarget.value) })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index)), children: "\u0423\u0431\u0440\u0430\u0442\u044C" })
-                ] }, `label-${index}`)) }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "form-actions form-actions--tight", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: () => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }]), children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043B\u0435\u0439\u0431\u043B" }) })
-              ] })
-            ] })
-          ),
-          renderRoomCreateStep(
-            "team",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u0430\u043D\u0434\u0430" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u043E\u0441\u0442\u0443\u043F \u0438 \u043A\u0432\u043E\u0442\u044B" })
-              ] }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
+              datasetMode === "video" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "FPS \u0438\u0437\u0432\u043B\u0435\u0447\u0435\u043D\u0438\u044F" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "input",
                     {
-                      value: password,
-                      name: "password",
-                      type: "password",
-                      placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, demo123",
-                      className: passwordTooLong ? "field__control--invalid" : "",
-                      "aria-invalid": passwordTooLong,
-                      onChange: (event) => setPassword(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432", value: annotatorIds, maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: annotatorIds,
-                      name: "annotator_ids",
-                      type: "text",
-                      placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 2,3,7",
-                      className: annotatorIdsTooLong ? "field__control--invalid" : "",
-                      "aria-invalid": annotatorIdsTooLong,
-                      onChange: (event) => setAnnotatorIds(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: defaultAssignmentQuota,
-                      name: "default_assignment_quota",
+                      value: videoExtractionFps,
+                      name: "video_extraction_fps",
                       type: "number",
-                      min: "0",
-                      step: "1",
-                      placeholder: "\u041F\u043E \u043A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u0443 \u0437\u0430\u0434\u0430\u0447",
-                      onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: ownerIsAnnotator, name: "owner_is_annotator", type: "checkbox", onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked) })
-                  ] })
-                ] })
-              ] })
-            ] })
-          ),
-          renderRoomCreateStep(
-            "quality",
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0438 \u0440\u0435\u0432\u044C\u044E" })
-              ] }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0412\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: crossValidationEnabled, name: "cross_validation_enabled", type: "checkbox", onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked) })
-                  ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: reviewVotingEnabled, name: "review_voting_enabled", type: "checkbox", onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked) })
-                  ] })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439 (n)" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: crossValidationCount,
-                      name: "cross_validation_annotators_count",
-                      type: "number",
-                      min: "2",
-                      max: "20",
-                      disabled: !crossValidationEnabled,
-                      onChange: (event) => setCrossValidationCount(event.currentTarget.value)
+                      min: "1",
+                      max: "120",
+                      placeholder: "\u0412\u0441\u0435 \u043A\u0430\u0434\u0440\u044B",
+                      onChange: (event) => setVideoExtractionFps(event.currentTarget.value)
                     }
                   )
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u0441\u0445\u043E\u0434\u0441\u0442\u0432\u0430 (%)" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0428\u0430\u0433 \u043A\u0430\u0434\u0440\u043E\u0432" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: videoFrameStep, name: "video_frame_step", type: "number", min: "1", max: "1000", onChange: (event) => setVideoFrameStep(event.currentTarget.value) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0438\u043C\u0438\u0442 \u043A\u0430\u0434\u0440\u043E\u0432 \u043D\u0430 \u0432\u0438\u0434\u0435\u043E" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { value: videoMaxFrames, name: "video_max_frames", type: "number", min: "1", max: "100000", onChange: (event) => setVideoMaxFrames(event.currentTarget.value) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0443\u0447\u043D\u044B\u0435 keyframe, %" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "input",
                     {
-                      value: crossValidationThreshold,
-                      name: "cross_validation_similarity_threshold",
+                      value: videoManualKeyframePercent,
+                      name: "video_manual_keyframe_percent",
                       type: "number",
                       min: "1",
                       max: "100",
-                      disabled: !crossValidationEnabled,
-                      onChange: (event) => setCrossValidationThreshold(event.currentTarget.value)
+                      onChange: (event) => setVideoManualKeyframePercent(event.currentTarget.value)
                     }
                   )
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box room-create-upload-box", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.usesFiles ? "\u0412\u044B\u0431\u0435\u0440\u0438 \u0444\u0430\u0439\u043B\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u0442\u0430\u043D\u0443\u0442 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." : "Demo-\u043A\u043E\u043C\u043D\u0430\u0442\u0430 \u0441\u043E\u0437\u0434\u0430\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438." })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box__actions dataset-box__actions--stack", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    ref: fileInputRef,
+                    type: "file",
+                    disabled: !modeConfig.usesFiles,
+                    accept: modeConfig.accept,
+                    multiple: modeConfig.multiple,
+                    onChange: (event) => setSelectedFiles(Array.from(event.currentTarget.files || []))
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: summarizeSelectedFiles(selectedFiles) })
+              ] })
+            ] }),
+            modeConfig.usesLabels && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-labels", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-section__head room-create-section__head--compact", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "Labels" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0435\u0439\u0431\u043B\u044B \u0434\u043B\u044F bbox" })
                 ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0426\u0432\u0435\u0442 \u043A\u0430\u0436\u0434\u043E\u043C\u0443 label-\u0443 \u043D\u0430\u0437\u043D\u0430\u0447\u0430\u0435\u0442\u0441\u044F \u0441\u043B\u0443\u0447\u0430\u0439\u043D\u043E, \u043D\u043E \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u0441\u0440\u0430\u0437\u0443 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C." })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "label-editor-list", children: labels.map((label, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "label-editor-row", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041B\u0435\u0439\u0431\u043B", value: label.name, maxLength: ROOM_LABEL_NAME_MAX_LENGTH }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "input",
                     {
-                      value: reviewVotesRequired,
-                      name: "review_votes_required",
-                      type: "number",
-                      min: "1",
-                      max: "20",
-                      disabled: !reviewVotingEnabled,
-                      onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
+                      className: `label-editor-row__name ${isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH) ? "field__control--invalid" : ""}`,
+                      type: "text",
+                      placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, car",
+                      value: label.name,
+                      "aria-invalid": isTextLimitExceeded(label.name, ROOM_LABEL_NAME_MAX_LENGTH),
+                      onChange: (event) => updateLabel(index, "name", event.currentTarget.value)
                     }
                   )
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      value: reviewAcceptanceThreshold,
-                      name: "review_acceptance_threshold",
-                      type: "number",
-                      min: "1",
-                      max: "100",
-                      disabled: !reviewVotingEnabled,
-                      onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
-                    }
-                  )
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--color", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0426\u0432\u0435\u0442" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { className: "label-editor-row__color", type: "color", value: label.color, onChange: (event) => updateLabel(index, "color", event.currentTarget.value) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted btn--compact", type: "button", onClick: () => setLabels((current) => current.filter((_, itemIndex) => itemIndex !== index)), children: "\u0423\u0431\u0440\u0430\u0442\u044C" })
+              ] }, `label-${index}`)) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "form-actions form-actions--tight", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: () => setLabels((current) => [...current, { name: "", color: pickRandomLabelColor() }]), children: "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043B\u0435\u0439\u0431\u043B" }) })
+            ] })
+          ] })
+        ),
+        renderRoomCreateStep(
+          "team",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043C\u0430\u043D\u0434\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u043E\u0441\u0442\u0443\u043F \u0438 \u043A\u0432\u043E\u0442\u044B" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: password,
+                    name: "password",
+                    type: "password",
+                    placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, demo123",
+                    className: passwordTooLong ? "field__control--invalid" : "",
+                    "aria-invalid": passwordTooLong,
+                    onChange: (event) => setPassword(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "ID \u043F\u0440\u0438\u0433\u043B\u0430\u0448\u0435\u043D\u043D\u044B\u0445 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432", value: annotatorIds, maxLength: ROOM_ANNOTATOR_IDS_MAX_LENGTH }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: annotatorIds,
+                    name: "annotator_ids",
+                    type: "text",
+                    placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, 2,3,7",
+                    className: annotatorIdsTooLong ? "field__control--invalid" : "",
+                    "aria-invalid": annotatorIdsTooLong,
+                    onChange: (event) => setAnnotatorIds(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: defaultAssignmentQuota,
+                    name: "default_assignment_quota",
+                    type: "number",
+                    min: "0",
+                    step: "1",
+                    placeholder: "\u041F\u043E \u043A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u0443 \u0437\u0430\u0434\u0430\u0447",
+                    onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: ownerIsAnnotator, name: "owner_is_annotator", type: "checkbox", onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked) })
                 ] })
               ] })
             ] })
-          )
-        ] }),
-        confirmationOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "modal-shell", role: "presentation", onClick: () => submitting ? void 0 : setConfirmationOpen(false), children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            className: "modal-card modal-card--room-create",
-            role: "dialog",
-            "aria-modal": "true",
-            "aria-labelledby": "room-create-confirm-title",
-            onClick: (event) => event.stopPropagation(),
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__head", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u0435" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { id: "room-create-confirm-title", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443?" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041F\u0440\u043E\u0432\u0435\u0440\u044C \u043E\u0441\u043D\u043E\u0432\u043D\u044B\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u0434 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435\u043C. \u041F\u043E\u0441\u043B\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u0431\u0443\u0434\u0435\u0442 \u043E\u0442\u043A\u0440\u044B\u0442\u044C \u0438 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0443 \u0434\u043E\u0441\u0442\u0443\u043F\u0430." })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-confirm-grid", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: title.trim() || currentScenario.defaultTitle })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: currentScenario.title })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(datasetMode) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Workflow" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(annotationWorkflow) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0424\u0430\u0439\u043B\u044B" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: filesPreview })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: qualityPreview })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u0435\u0432\u044C\u044E" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: reviewPreview })
+          ] })
+        ),
+        renderRoomCreateStep(
+          "quality",
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-create-section__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0438 \u0440\u0435\u0432\u044C\u044E" })
+            ] }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-fields", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0412\u043A\u043B\u044E\u0447\u0438\u0442\u044C \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: crossValidationEnabled, name: "cross_validation_enabled", type: "checkbox", onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked) })
                 ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-create-confirm-labels", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041B\u0435\u0439\u0431\u043B\u044B" }),
-                normalizedLabelsPreview.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { children: normalizedLabelsPreview.map((label) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: label }, label)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.usesLabels ? "\u041B\u0435\u0439\u0431\u043B\u044B \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u044B." : "\u0414\u043B\u044F \u044D\u0442\u043E\u0433\u043E \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u044F label palette \u043D\u0435 \u043D\u0443\u0436\u0435\u043D." })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: reviewVotingEnabled, name: "review_voting_enabled", type: "checkbox", onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked) })
+                ] })
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "modal-card__actions", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", disabled: submitting, onClick: () => setConfirmationOpen(false), children: "\u0412\u0435\u0440\u043D\u0443\u0442\u044C\u0441\u044F \u043A \u0444\u043E\u0440\u043C\u0435" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "button", disabled: submitting, onClick: submitRoomCreate, children: submitting ? "\u0421\u043E\u0437\u0434\u0430\u0435\u043C..." : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u0435" })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u043E\u043B\u0438\u0447\u0435\u0441\u0442\u0432\u043E \u043D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439 (n)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: crossValidationCount,
+                    name: "cross_validation_annotators_count",
+                    type: "number",
+                    min: "2",
+                    max: "20",
+                    disabled: !crossValidationEnabled,
+                    onChange: (event) => setCrossValidationCount(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u0441\u0445\u043E\u0434\u0441\u0442\u0432\u0430 (%)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: crossValidationThreshold,
+                    name: "cross_validation_similarity_threshold",
+                    type: "number",
+                    min: "1",
+                    max: "100",
+                    disabled: !crossValidationEnabled,
+                    onChange: (event) => setCrossValidationThreshold(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: reviewVotesRequired,
+                    name: "review_votes_required",
+                    type: "number",
+                    min: "1",
+                    max: "20",
+                    disabled: !reviewVotingEnabled,
+                    onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    value: reviewAcceptanceThreshold,
+                    name: "review_acceptance_threshold",
+                    type: "number",
+                    min: "1",
+                    max: "100",
+                    disabled: !reviewVotingEnabled,
+                    onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
+                  }
+                )
               ] })
-            ]
-          }
-        ) }) : null
-      ] })
+            ] })
+          ] })
+        )
+      ] }) })
     ] });
   }
   function RoomEditPage() {
