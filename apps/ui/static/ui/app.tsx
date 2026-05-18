@@ -3997,14 +3997,20 @@ function RoomDetailPage() {
   const [datasetUploadBusy, setDatasetUploadBusy] = useState(false);
   const [datasetDeleteBusy, setDatasetDeleteBusy] = useState(false);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
+  const personalSectionStorageKey = roomId ? `datasetai-room:${roomId}:personal` : null;
   const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
   const [manageSectionOpen, setManageSectionOpen] = useState(() => readStoredDisclosureState(manageSectionStorageKey, false));
+  const [personalSectionOpen, setPersonalSectionOpen] = useState(() => readStoredDisclosureState(personalSectionStorageKey, false));
   const [reviewSectionOpen, setReviewSectionOpen] = useState(() => readStoredDisclosureState(reviewSectionStorageKey, false));
   const [reviewTasksLoading, setReviewTasksLoading] = useState(false);
 
   useEffect(() => {
     writeStoredDisclosureState(manageSectionStorageKey, manageSectionOpen);
   }, [manageSectionOpen, manageSectionStorageKey]);
+
+  useEffect(() => {
+    writeStoredDisclosureState(personalSectionStorageKey, personalSectionOpen);
+  }, [personalSectionOpen, personalSectionStorageKey]);
 
   useEffect(() => {
     writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
@@ -4686,81 +4692,99 @@ function RoomDetailPage() {
         >
           {dashboard.actor.can_annotate ? (
             <div className="workspace-grid__main workspace-grid__main--room-annotator">
-              <div className="panel-card room-personal-panel">
-                <div className="panel-card__head">
-                  <div>
-                    <span className="eyebrow">Моя очередь</span>
-                    <h2>Личная статистика</h2>
+              <details
+                className="panel-card section-disclosure room-personal-panel room-personal-panel--disclosure"
+                open={personalSectionOpen}
+                onToggle={(event) => setPersonalSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="section-disclosure__summary">
+                  <div className="section-disclosure__copy">
+                    <span className="eyebrow section-disclosure__eyebrow">Моя очередь</span>
+                    <strong>Личная статистика</strong>
+                    <p className="section-disclosure__note">
+                      {translateRole(dashboard.actor.role)} • {formatPercent(dashboard.annotator_stats?.progress_percent || 0)} •{" "}
+                      {dashboard.annotator_stats?.remaining_tasks == null
+                        ? "остаток не задан"
+                        : `осталось ${dashboard.annotator_stats.remaining_tasks}`}
+                    </p>
                   </div>
-                  {roomPrimaryAction ? (
-                    <a className="btn btn--primary btn--compact" href={roomPrimaryAction.href}>
-                      Открыть
-                    </a>
-                  ) : null}
+                  <span className="section-disclosure__icon" aria-hidden="true"></span>
+                </summary>
+                <div className="section-disclosure__content room-personal-content">
+                  <div className="summary-stack room-personal-summary">
+                    <div className="summary-row">
+                      <span>Роль в комнате</span>
+                      <strong>{translateRole(dashboard.actor.role)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Выполнено мной</span>
+                      <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>В работе</span>
+                      <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Осталось</span>
+                      <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Квота</span>
+                      <strong>
+                        {dashboard.annotator_stats?.task_quota == null
+                          ? "Не задана"
+                          : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
+                      </strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Мой прогресс</span>
+                      <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
+                    </div>
+                  </div>
+                  <div className="activity-board">
+                    <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
+                  </div>
                 </div>
-                <div className="summary-stack room-personal-summary">
-                  <div className="summary-row">
-                    <span>Роль в комнате</span>
-                    <strong>{translateRole(dashboard.actor.role)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Выполнено мной</span>
-                    <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>В работе</span>
-                    <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Осталось</span>
-                    <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Квота</span>
-                    <strong>
-                      {dashboard.annotator_stats?.task_quota == null
-                        ? "Не задана"
-                        : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
-                    </strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Мой прогресс</span>
-                    <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
-                  </div>
-                </div>
-                <div className="activity-board">
-                  <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
-                </div>
-              </div>
+              </details>
             </div>
           ) : hasRoomManagementActions ? (
             <div className="workspace-grid__main workspace-grid__main--room-annotator">
-              <div className="panel-card room-personal-panel room-personal-panel--owner">
-                <div className="panel-card__head">
-                  <div>
-                    <span className="eyebrow">Панель владельца</span>
-                    <h2>Управление комнатой</h2>
+              <details
+                className="panel-card section-disclosure room-personal-panel room-personal-panel--disclosure room-personal-panel--owner"
+                open={personalSectionOpen}
+                onToggle={(event) => setPersonalSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="section-disclosure__summary">
+                  <div className="section-disclosure__copy">
+                    <span className="eyebrow section-disclosure__eyebrow">Панель владельца</span>
+                    <strong>Сводка управления</strong>
+                    <p className="section-disclosure__note">
+                      {translateRole(dashboard.actor.role)} • {dashboard.overview.total_tasks} задач • {dashboard.annotators?.length || 0} участников
+                    </p>
+                  </div>
+                  <span className="section-disclosure__icon" aria-hidden="true"></span>
+                </summary>
+                <div className="section-disclosure__content room-personal-content">
+                  <div className="summary-stack room-personal-summary">
+                    <div className="summary-row">
+                      <span>Роль</span>
+                      <strong>{translateRole(dashboard.actor.role)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Задач в комнате</span>
+                      <strong>{dashboard.overview.total_tasks}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Участников</span>
+                      <strong>{dashboard.annotators?.length || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Датасет</span>
+                      <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                    </div>
                   </div>
                 </div>
-                <div className="summary-stack room-personal-summary">
-                  <div className="summary-row">
-                    <span>Роль</span>
-                    <strong>{translateRole(dashboard.actor.role)}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Задач в комнате</span>
-                    <strong>{dashboard.overview.total_tasks}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Участников</span>
-                    <strong>{dashboard.annotators?.length || 0}</strong>
-                  </div>
-                  <div className="summary-row">
-                    <span>Датасет</span>
-                    <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-                  </div>
-                </div>
-              </div>
+              </details>
             </div>
           ) : null}
 

@@ -2139,7 +2139,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     display: grid;
     grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.08fr);
     gap: 14px;
-    align-items: stretch;
+    align-items: start;
 }
 
 .workspace-grid--room-top.workspace-grid--single {
@@ -2309,24 +2309,11 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 .room-personal-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-}
-
-.room-personal-panel .panel-card__head {
-    align-items: flex-start;
-    gap: 14px;
-}
-
-.room-personal-panel .panel-card__head > div {
     min-width: 0;
-    display: grid;
-    gap: 8px;
 }
 
-.room-personal-panel .panel-card__head h2 {
-    margin: 0;
+.workspace-grid--room-top .room-personal-panel--disclosure {
+    height: auto;
 }
 
 .room-personal-summary {
@@ -2350,6 +2337,20 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .room-personal-summary .summary-row strong {
     max-width: 100%;
     overflow-wrap: anywhere;
+}
+
+.room-personal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.room-personal-panel--disclosure .section-disclosure__summary {
+    min-height: 96px;
+}
+
+.room-personal-panel--disclosure .section-disclosure__copy strong {
+    font-size: clamp(1.25rem, 1.7vw, 1.55rem);
 }
 
 .manage-card-legacy .panel-card__head {

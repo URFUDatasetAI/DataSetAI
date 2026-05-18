@@ -24616,13 +24616,18 @@
     const [datasetUploadBusy, setDatasetUploadBusy] = (0, import_react.useState)(false);
     const [datasetDeleteBusy, setDatasetDeleteBusy] = (0, import_react.useState)(false);
     const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
+    const personalSectionStorageKey = roomId ? `datasetai-room:${roomId}:personal` : null;
     const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
     const [manageSectionOpen, setManageSectionOpen] = (0, import_react.useState)(() => readStoredDisclosureState(manageSectionStorageKey, false));
+    const [personalSectionOpen, setPersonalSectionOpen] = (0, import_react.useState)(() => readStoredDisclosureState(personalSectionStorageKey, false));
     const [reviewSectionOpen, setReviewSectionOpen] = (0, import_react.useState)(() => readStoredDisclosureState(reviewSectionStorageKey, false));
     const [reviewTasksLoading, setReviewTasksLoading] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       writeStoredDisclosureState(manageSectionStorageKey, manageSectionOpen);
     }, [manageSectionOpen, manageSectionStorageKey]);
+    (0, import_react.useEffect)(() => {
+      writeStoredDisclosureState(personalSectionStorageKey, personalSectionOpen);
+    }, [personalSectionOpen, personalSectionStorageKey]);
     (0, import_react.useEffect)(() => {
       writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
     }, [reviewSectionOpen, reviewSectionStorageKey]);
@@ -25176,65 +25181,102 @@
         {
           className: `workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${hasRoomManagementActions ? "" : "workspace-grid--single"}`,
           children: [
-            dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-personal-panel", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card__head", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041C\u043E\u044F \u043E\u0447\u0435\u0440\u0435\u0434\u044C" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" })
-                ] }),
-                roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: roomPrimaryAction.href, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C" }) : null
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043C\u043D\u043E\u0439" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.completed_tasks || 0 })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.in_progress_tasks || 0 })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u043E" : dashboard.annotator_stats.remaining_tasks })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.task_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `${dashboard.annotator_stats.quota_used} \u0438\u0437 ${dashboard.annotator_stats.task_quota}` })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(dashboard.annotator_stats?.progress_percent || 0) })
-                ] })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: dashboard.annotator_stats?.activity || [] }) })
-            ] }) }) : hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card room-personal-panel room-personal-panel--owner", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0430\u043D\u0435\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u043E\u0439" })
-              ] }) }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0434\u0430\u0447 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.total_tasks })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotators?.length || 0 })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
-                ] })
-              ] })
-            ] }) }) : null,
+            dashboard.actor.can_annotate ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "details",
+              {
+                className: "panel-card section-disclosure room-personal-panel room-personal-panel--disclosure",
+                open: personalSectionOpen,
+                onToggle: (event) => setPersonalSectionOpen(event.currentTarget.open),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("summary", { className: "section-disclosure__summary", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__copy", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow section-disclosure__eyebrow", children: "\u041C\u043E\u044F \u043E\u0447\u0435\u0440\u0435\u0434\u044C" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "section-disclosure__note", children: [
+                        translateRole(dashboard.actor.role),
+                        " \u2022 ",
+                        formatPercent(dashboard.annotator_stats?.progress_percent || 0),
+                        " \u2022",
+                        " ",
+                        dashboard.annotator_stats?.remaining_tasks == null ? "\u043E\u0441\u0442\u0430\u0442\u043E\u043A \u043D\u0435 \u0437\u0430\u0434\u0430\u043D" : `\u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C ${dashboard.annotator_stats.remaining_tasks}`
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__content room-personal-content", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E \u043C\u043D\u043E\u0439" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.completed_tasks || 0 })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0412 \u0440\u0430\u0431\u043E\u0442\u0435" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.in_progress_tasks || 0 })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041E\u0441\u0442\u0430\u043B\u043E\u0441\u044C" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.remaining_tasks == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u043E" : dashboard.annotator_stats.remaining_tasks })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041A\u0432\u043E\u0442\u0430" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotator_stats?.task_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : `${dashboard.annotator_stats.quota_used} \u0438\u0437 ${dashboard.annotator_stats.task_quota}` })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041C\u043E\u0439 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatPercent(dashboard.annotator_stats?.progress_percent || 0) })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-board", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityBoard, { series: dashboard.annotator_stats?.activity || [] }) })
+                  ] })
+                ]
+              }
+            ) }) : hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__main workspace-grid__main--room-annotator", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "details",
+              {
+                className: "panel-card section-disclosure room-personal-panel room-personal-panel--disclosure room-personal-panel--owner",
+                open: personalSectionOpen,
+                onToggle: (event) => setPersonalSectionOpen(event.currentTarget.open),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("summary", { className: "section-disclosure__summary", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "section-disclosure__copy", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow section-disclosure__eyebrow", children: "\u041F\u0430\u043D\u0435\u043B\u044C \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0430" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0421\u0432\u043E\u0434\u043A\u0430 \u0443\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u044F" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "section-disclosure__note", children: [
+                        translateRole(dashboard.actor.role),
+                        " \u2022 ",
+                        dashboard.overview.total_tasks,
+                        " \u0437\u0430\u0434\u0430\u0447 \u2022 ",
+                        dashboard.annotators?.length || 0,
+                        " \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432"
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "section-disclosure__icon", "aria-hidden": "true" })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "section-disclosure__content room-personal-content", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0420\u043E\u043B\u044C" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateRole(dashboard.actor.role) })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0434\u0430\u0447 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.overview.total_tasks })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0423\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u0432" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.annotators?.length || 0 })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+                    ] })
+                  ] }) })
+                ]
+              }
+            ) }) : null,
             hasRoomManagementActions ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "workspace-grid__side workspace-grid__side--room-controls", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "details",
               {

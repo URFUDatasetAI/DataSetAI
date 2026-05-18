@@ -9,7 +9,7 @@
 - Главная уже переведена на новый landing/dashboard style и поддерживает light/dark theme.
 - Сценарии разметки на главной должны вести в создание комнаты с предвыбранным типом датасета/workflow.
 - Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и прямое создание после финальной валидации. Backend payload и validation constraints остались прежними.
-- Room detail получил первый command-center слой: компактный topbar со сводкой комнаты, KPI strip, role-aware CTA и управление комнатой, которое больше не завязано на роль annotator.
+- Room detail получил первый command-center слой: компактный topbar со сводкой комнаты, KPI strip, role-aware CTA, свернутую личную/owner-сводку и управление комнатой, которое больше не завязано на роль annotator.
 - Остальные рабочие поверхности пока живут в прежней visual system: rooms list, edit forms, profile, invite, room-work editor, video screens.
 
 ## Rollout Order
