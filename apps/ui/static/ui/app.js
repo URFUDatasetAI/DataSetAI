@@ -21767,13 +21767,11 @@
     submitted: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0430"
   };
   var datasetModeLabels = {
-    demo: "Demo JSON",
-    json: "JSON",
     image: "\u0424\u043E\u0442\u043E",
     video: "\u0412\u0438\u0434\u0435\u043E"
   };
   var sourceTypeLabels = {
-    text: "JSON / \u0442\u0435\u043A\u0441\u0442",
+    text: "\u0422\u0435\u043A\u0441\u0442",
     image: "\u0424\u043E\u0442\u043E",
     video: "\u0412\u0438\u0434\u0435\u043E"
   };
@@ -21799,20 +21797,6 @@
     "#9B5DE5"
   ];
   var datasetModeConfig = {
-    demo: {
-      hint: "\u0414\u043B\u044F demo-\u0440\u0435\u0436\u0438\u043C\u0430 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0439 \u043D\u0430\u0431\u043E\u0440 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0431\u0435\u0437 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438 \u0444\u0430\u0439\u043B\u043E\u0432.",
-      accept: "",
-      multiple: false,
-      usesFiles: false,
-      usesLabels: false
-    },
-    json: {
-      hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043E\u0434\u0438\u043D JSON-\u0444\u0430\u0439\u043B \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0441 JSON-\u0434\u0430\u0442\u0430\u0441\u0435\u0442\u043E\u043C. \u041A\u0430\u0436\u0434\u044B\u0439 \u044D\u043B\u0435\u043C\u0435\u043D\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D \u043A\u0430\u043A \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430.",
-      accept: ".json,.zip,application/json,application/zip",
-      multiple: false,
-      usesFiles: true,
-      usesLabels: false
-    },
     image: {
       hint: "\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0439 \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432 \u0441 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F\u043C\u0438. \u0414\u043B\u044F \u043A\u0430\u0436\u0434\u043E\u0439 \u0444\u043E\u0442\u043E\u0433\u0440\u0430\u0444\u0438\u0438 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0437\u0434\u0430\u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F bbox-\u0437\u0430\u0434\u0430\u0447\u0430.",
       accept: "image/*,.zip,application/zip",
@@ -21873,7 +21857,7 @@
   }
   function getRoomCreatePresetSearch() {
     const rawDatasetMode = getSearchParam("dataset_mode") || getSearchParam("dataset");
-    const datasetMode = rawDatasetMode !== "demo" && datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "json";
+    const datasetMode = datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "image";
     const rawWorkflow = getSearchParam("annotation_workflow") || getSearchParam("workflow");
     const annotationWorkflow = rawWorkflow === "text_detect_text" && (datasetMode === "image" || datasetMode === "video") ? rawWorkflow : "standard";
     const rawLabel = getSearchParam("label").trim();
@@ -21888,16 +21872,6 @@
     };
   }
   var roomCreateScenarioPresets = [
-    {
-      id: "json",
-      title: "JSON / \u0442\u0435\u043A\u0441\u0442",
-      summary: "\u0418\u043C\u043F\u043E\u0440\u0442 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438\u0437 JSON \u0438\u043B\u0438 ZIP-\u0430\u0440\u0445\u0438\u0432\u0430.",
-      meta: "\u0424\u0430\u0439\u043B",
-      datasetMode: "json",
-      annotationWorkflow: "standard",
-      defaultTitle: "\u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u043E\u0433\u043E \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430",
-      datasetLabel: "\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442"
-    },
     {
       id: "image",
       title: "\u0424\u043E\u0442\u043E bbox",
@@ -21960,10 +21934,7 @@
     if (input.datasetMode === "image") {
       return "image";
     }
-    if (input.datasetMode === "json") {
-      return "json";
-    }
-    return "json";
+    return "image";
   }
   function normalizeToastType(type) {
     switch (type) {
@@ -22277,7 +22248,13 @@
       generated_rejected: "\u041D\u0443\u0436\u043D\u0430 \u0440\u0443\u0447\u043D\u0430\u044F \u043F\u0440\u0430\u0432\u043A\u0430",
       abrupt_center_jump: "\u0440\u0435\u0437\u043A\u0438\u0439 \u0441\u0434\u0432\u0438\u0433 \u0446\u0435\u043D\u0442\u0440\u0430",
       abrupt_width_change: "\u0440\u0435\u0437\u043A\u043E\u0435 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0448\u0438\u0440\u0438\u043D\u044B",
-      abrupt_height_change: "\u0440\u0435\u0437\u043A\u043E\u0435 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0432\u044B\u0441\u043E\u0442\u044B"
+      abrupt_height_change: "\u0440\u0435\u0437\u043A\u043E\u0435 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u0432\u044B\u0441\u043E\u0442\u044B",
+      abrupt_area_change: "\u0440\u0435\u0437\u043A\u043E\u0435 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u0435 \u043F\u043B\u043E\u0449\u0430\u0434\u0438",
+      long_keyframe_gap: "\u0431\u043E\u043B\u044C\u0448\u043E\u0439 \u0440\u0430\u0437\u0440\u044B\u0432 \u043C\u0435\u0436\u0434\u0443 keyframe",
+      low_tracking_confidence: "\u043D\u0438\u0437\u043A\u0430\u044F \u0443\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0441\u0442\u044C \u0430\u0432\u0442\u043E\u0442\u0440\u0435\u043A\u0438\u043D\u0433\u0430",
+      overlapping_tracks: "\u043F\u0435\u0440\u0435\u0441\u0435\u0447\u0435\u043D\u0438\u0435 \u0442\u0440\u0435\u043A\u043E\u0432",
+      nearby_tracks: "\u0431\u043B\u0438\u0437\u043A\u0438\u0435 \u0442\u0440\u0435\u043A\u0438",
+      duplicate_track_on_frame: "\u043F\u043E\u0432\u0442\u043E\u0440 track id \u043D\u0430 \u043A\u0430\u0434\u0440\u0435"
     };
     return state ? labels[state] || state : "\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445";
   }
@@ -22850,12 +22827,6 @@
       { label: "\u0417\u0430\u0434\u0430\u0447\u0438", value: bootstrap2.stats.tasks }
     ];
     const scenarios = [
-      {
-        label: "Text",
-        title: "\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430",
-        text: "\u041E\u0447\u0435\u0440\u0435\u0434\u0438 \u0437\u0430\u0434\u0430\u0447, \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u0430 \u043E\u0442\u0432\u0435\u0442\u043E\u0432, \u0440\u0435\u0432\u044C\u044E \u0438 \u044D\u043A\u0441\u043F\u043E\u0440\u0442 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u043E\u0432.",
-        href: "/rooms/create/?dataset_mode=json&title=\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u0430\u044F%20\u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430&dataset_label=\u0422\u0435\u043A\u0441\u0442\u043E\u0432\u044B\u0439%20\u0434\u0430\u0442\u0430\u0441\u0435\u0442"
-      },
       {
         label: "Image",
         title: "Image bbox",
@@ -23514,7 +23485,6 @@
     const [datasetMode, setDatasetMode] = (0, import_react.useState)(preset.datasetMode);
     const [annotationWorkflow, setAnnotationWorkflow] = (0, import_react.useState)(preset.annotationWorkflow);
     const [datasetLabel, setDatasetLabel] = (0, import_react.useState)(preset.datasetLabel || "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442");
-    const [testTaskCount, setTestTaskCount] = (0, import_react.useState)("12");
     const [videoExtractionFps, setVideoExtractionFps] = (0, import_react.useState)("");
     const [videoFrameStep, setVideoFrameStep] = (0, import_react.useState)("1");
     const [videoMaxFrames, setVideoMaxFrames] = (0, import_react.useState)("1000");
@@ -23528,12 +23498,6 @@
     const [submitting, setSubmitting] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       const config = datasetModeConfig[datasetMode];
-      if (!config?.usesFiles) {
-        setSelectedFiles([]);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
-      }
       if (config?.usesLabels && !labels.length) {
         setLabels([{ name: "", color: pickRandomLabelColor() }]);
       }
@@ -23547,7 +23511,7 @@
     const modeConfig = datasetModeConfig[datasetMode];
     const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
     const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
-    const filesPreview = modeConfig.usesFiles ? selectedFiles.length ? `${selectedFiles.length} \u0444\u0430\u0439\u043B(\u043E\u0432) \u0432\u044B\u0431\u0440\u0430\u043D\u043E` : "\u0424\u0430\u0439\u043B\u044B \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u044B" : "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0444\u0430\u0439\u043B\u043E\u0432 \u043D\u0435 \u043D\u0443\u0436\u043D\u0430";
+    const filesPreview = selectedFiles.length ? `${selectedFiles.length} \u0444\u0430\u0439\u043B(\u043E\u0432) \u0432\u044B\u0431\u0440\u0430\u043D\u043E` : "\u0424\u0430\u0439\u043B\u044B \u0435\u0449\u0451 \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D\u044B";
     const qualityPreview = crossValidationEnabled ? `\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430: ${crossValidationCount || 2} \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044F` : "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430";
     const reviewPreview = reviewVotingEnabled ? `\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438: ${reviewVotesRequired || 1} \u0433\u043E\u043B\u043E\u0441(\u043E\u0432)` : "\u0411\u0435\u0437 \u043F\u0443\u043B\u0430 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438";
     const currentStepIndex = Math.max(
@@ -23604,7 +23568,7 @@
         }
       }
       if (stepId === "data") {
-        if (datasetMode !== "demo" && !selectedFiles.length) {
+        if (!selectedFiles.length) {
           throw new Error("\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u0430\u0439\u043B\u043E\u0432 \u0434\u043B\u044F \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u0442\u0438\u043F\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430.");
         }
         if (labelsRequired && !normalizedLabels.length) {
@@ -23692,7 +23656,7 @@
       const normalizedVideoFrameStep = Number(videoFrameStep || 1);
       const normalizedVideoMaxFrames = Number(videoMaxFrames || 1e3);
       const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
-      if (datasetMode !== "demo" && !selectedFiles.length) {
+      if (!selectedFiles.length) {
         throw new Error("\u0417\u0430\u0433\u0440\u0443\u0437\u0438 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u043D\u0430\u0431\u043E\u0440 \u0444\u0430\u0439\u043B\u043E\u0432 \u0434\u043B\u044F \u0432\u044B\u0431\u0440\u0430\u043D\u043D\u043E\u0433\u043E \u0442\u0438\u043F\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430.");
       }
       if (labelsRequired && !normalizedLabels.length) {
@@ -23766,7 +23730,6 @@
         payload.append("dataset_mode", datasetMode);
         payload.append("annotation_workflow", annotationWorkflow);
         payload.append("dataset_label", datasetLabel.trim() || "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442");
-        payload.append("test_task_count", String(Number(testTaskCount || 12)));
         payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
         payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
         payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
@@ -23988,7 +23951,6 @@
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("select", { value: datasetMode, name: "dataset_mode", onChange: (event) => setDatasetMode(event.currentTarget.value), children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "json", children: "JSON \u0444\u0430\u0439\u043B" }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "image", children: "\u0424\u043E\u0442\u043E" }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "video", children: "\u0412\u0438\u0434\u0435\u043E" })
                   ] })
@@ -24043,7 +24005,7 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box room-create-upload-box", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: modeConfig.usesFiles ? "\u0412\u044B\u0431\u0435\u0440\u0438 \u0444\u0430\u0439\u043B\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u0442\u0430\u043D\u0443\u0442 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." : "Demo-\u043A\u043E\u043C\u043D\u0430\u0442\u0430 \u0441\u043E\u0437\u0434\u0430\u0441\u0442 \u0437\u0430\u0434\u0430\u0447\u0438 \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438." })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0412\u044B\u0431\u0435\u0440\u0438 \u0444\u0430\u0439\u043B\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0441\u0442\u0430\u043D\u0443\u0442 \u0437\u0430\u0434\u0430\u0447\u0430\u043C\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "dataset-box__actions dataset-box__actions--stack", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -24051,7 +24013,6 @@
                     {
                       ref: fileInputRef,
                       type: "file",
-                      disabled: !modeConfig.usesFiles,
                       accept: modeConfig.accept,
                       multiple: modeConfig.multiple,
                       onChange: (event) => setSelectedFiles(Array.from(event.currentTarget.files || []))
@@ -26773,6 +26734,16 @@
     function isVideoFrameTask() {
       return getTask()?.input_payload?.origin_source_type === "video" || getTask()?.source_type === "video";
     }
+    function getNextTrackId() {
+      const usedTrackIds = new Set(
+        editor.annotations.map((annotation) => String(annotation.track_id || "").trim()).filter(Boolean)
+      );
+      let index = 1;
+      while (usedTrackIds.has(`track-${index}`)) {
+        index += 1;
+      }
+      return `track-${index}`;
+    }
     function isReadOnly() {
       return editor.readOnly;
     }
@@ -27759,7 +27730,7 @@
           frame: getCurrentFrame(),
           attributes: [],
           occluded: false,
-          track_id: "track-1"
+          track_id: isVideoFrameTask() ? getNextTrackId() : "track-1"
         });
       }
       clearDraft();
@@ -28759,7 +28730,7 @@
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: task.source_name || `\u0417\u0430\u0434\u0430\u0447\u0430 #${task.id}` }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: translateReviewOutcome(task.review_outcome) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: task.review_outcome === "validation" ? `${task.validation_votes_count}/${task.validation_votes_required} \u0433\u043E\u043B\u043E\u0441\u043E\u0432` : `${task.submitted_annotations_count}/${task.required_annotations_count || 0} \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A` })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: task.review_outcome === "validation" ? `${task.validation_votes_count}/${task.validation_votes_required} \u0433\u043E\u043B\u043E\u0441\u043E\u0432` : task.review_outcome === "generated" && task.tracking_confidence != null ? `\u0410\u0432\u0442\u043E\u0442\u0440\u0435\u043A\u0438\u043D\u0433 ${Math.round(task.tracking_confidence * 100)}%` : `${task.submitted_annotations_count}/${task.required_annotations_count || 0} \u0440\u0430\u0437\u043C\u0435\u0442\u043E\u043A` })
                 ]
               },
               task.id
@@ -28807,6 +28778,11 @@
                 reviewDetail.trajectory_warnings?.length ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__note", children: [
                   "\u041F\u0440\u043E\u0432\u0435\u0440\u044C \u0442\u0440\u0430\u0435\u043A\u0442\u043E\u0440\u0438\u044E: ",
                   reviewDetail.trajectory_warnings.map((item) => translateVideoFrameState(item)).join(", ")
+                ] }) : null,
+                reviewDetail.tracking_confidence != null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__note", children: [
+                  "\u0423\u0432\u0435\u0440\u0435\u043D\u043D\u043E\u0441\u0442\u044C \u0430\u0432\u0442\u043E\u0442\u0440\u0435\u043A\u0438\u043D\u0433\u0430: ",
+                  Math.round(reviewDetail.tracking_confidence * 100),
+                  "%"
                 ] }) : null
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "editor-sidepanel__section", children: [

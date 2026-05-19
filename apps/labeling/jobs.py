@@ -8,6 +8,7 @@ from django.core.files.base import ContentFile
 from django.db import transaction
 
 from apps.labeling.models import Task, VideoAsset, VideoFrame
+from apps.labeling.tracking import GENERATED_TRACKING_SOURCE, TRACKING_METHOD_KEYFRAME_LINEAR, build_tracking_proposals
 from apps.labeling.workflows import get_room_primary_tasks_queryset
 from apps.rooms.models import Room
 
@@ -186,59 +187,6 @@ def extract_video_frames(video_asset_id: int) -> None:
             locked_asset.save(update_fields=["status", "error_message", "updated_at"])
 
 
-def _payload_annotations_by_track(payload: dict | None) -> dict[str, list[dict]]:
-    annotations_by_track: dict[str, list[dict]] = {}
-    if not payload:
-        return annotations_by_track
-    for item in payload.get("annotations", []):
-        track_id = str(item.get("track_id") or "").strip()
-        if not track_id:
-            continue
-        annotations_by_track.setdefault(track_id, []).append(item)
-    return annotations_by_track
-
-
-def _interpolate_bbox(left: dict, right: dict, ratio: float) -> dict:
-    left_points = [float(value) for value in left.get("points", [])]
-    right_points = [float(value) for value in right.get("points", [])]
-    points = [
-        round(left_points[index] + (right_points[index] - left_points[index]) * ratio, 2)
-        for index in range(4)
-    ]
-    return {
-        "type": "bbox",
-        "label_id": left["label_id"],
-        "points": points,
-        "frame": 0,
-        "attributes": left.get("attributes", []),
-        "occluded": bool(left.get("occluded") or right.get("occluded")),
-        "track_id": left["track_id"],
-        "source": "generated_interpolation",
-    }
-
-
-def _build_trajectory_warnings(*, left: dict, right: dict, frame_span: int) -> list[str]:
-    if frame_span <= 0:
-        return []
-    left_points = [float(value) for value in left.get("points", [])]
-    right_points = [float(value) for value in right.get("points", [])]
-    left_width = max(left_points[2] - left_points[0], 1)
-    left_height = max(left_points[3] - left_points[1], 1)
-    right_width = max(right_points[2] - right_points[0], 1)
-    right_height = max(right_points[3] - right_points[1], 1)
-    left_center = ((left_points[0] + left_points[2]) / 2, (left_points[1] + left_points[3]) / 2)
-    right_center = ((right_points[0] + right_points[2]) / 2, (right_points[1] + right_points[3]) / 2)
-    center_shift = math.dist(left_center, right_center) / frame_span
-    warnings = []
-    if center_shift > max(left_width, left_height) * 1.5:
-        warnings.append("abrupt_center_jump")
-    if max(left_width, right_width) / max(min(left_width, right_width), 1) > 2.5:
-        warnings.append("abrupt_width_change")
-    if max(left_height, right_height) / max(min(left_height, right_height), 1) > 2.5:
-        warnings.append("abrupt_height_change")
-    return warnings
-
-
 def interpolate_video_asset(video_asset_id: int) -> None:
     asset = VideoAsset.objects.get(id=video_asset_id)
     frames = list(
@@ -261,45 +209,20 @@ def interpolate_video_asset(video_asset_id: int) -> None:
         and frame.task.status == Task.Status.PENDING
     }
     if len(accepted_frames) < 2 or not targets_by_number:
+        VideoAsset.objects.filter(id=video_asset_id).update(interpolation_job_id="")
         return
 
-    keyframes_by_track: dict[str, list[tuple[VideoFrame, dict]]] = {}
-    for frame in accepted_frames:
-        for track_id, annotations in _payload_annotations_by_track(frame.task.consensus_payload).items():
-            for annotation in annotations:
-                keyframes_by_track.setdefault(track_id, []).append((frame, annotation))
-
-    generated_by_target: dict[int, list[dict]] = {}
-    generated_from_by_target: dict[int, set[int]] = {}
-    warnings_by_target: dict[int, set[str]] = {}
-    for track_id, keyed_items in keyframes_by_track.items():
-        keyed_items.sort(key=lambda item: item[0].frame_number)
-        for (left_frame, left_annotation), (right_frame, right_annotation) in zip(keyed_items, keyed_items[1:]):
-            if left_annotation.get("label_id") != right_annotation.get("label_id"):
-                continue
-            frame_span = right_frame.frame_number - left_frame.frame_number
-            if frame_span <= 1:
-                continue
-            warnings = _build_trajectory_warnings(
-                left=left_annotation,
-                right=right_annotation,
-                frame_span=frame_span,
-            )
-            for frame_number in sorted(targets_by_number):
-                if frame_number <= left_frame.frame_number or frame_number >= right_frame.frame_number:
-                    continue
-                ratio = (frame_number - left_frame.frame_number) / frame_span
-                generated = _interpolate_bbox(left_annotation, right_annotation, ratio)
-                generated["track_id"] = track_id
-                generated_by_target.setdefault(frame_number, []).append(generated)
-                generated_from_by_target.setdefault(frame_number, set()).update(
-                    {left_frame.frame_number, right_frame.frame_number}
-                )
-                warnings_by_target.setdefault(frame_number, set()).update(warnings)
+    proposals_by_target = build_tracking_proposals(
+        accepted_frames=accepted_frames,
+        target_frames_by_number=targets_by_number,
+    )
+    if not proposals_by_target:
+        VideoAsset.objects.filter(id=video_asset_id).update(interpolation_job_id="")
+        return
 
     with transaction.atomic():
         locked_asset = VideoAsset.objects.select_for_update().get(id=video_asset_id)
-        for frame_number, annotations in generated_by_target.items():
+        for frame_number, proposal in proposals_by_target.items():
             frame = VideoFrame.objects.select_for_update().select_related("task").get(
                 video_asset=locked_asset,
                 frame_number=frame_number,
@@ -310,12 +233,19 @@ def interpolate_video_asset(video_asset_id: int) -> None:
             ):
                 continue
             payload = {
-                "annotations": annotations,
-                "source": "generated_interpolation",
+                "annotations": proposal["annotations"],
+                "source": GENERATED_TRACKING_SOURCE,
+                "tracking": {
+                    "method": TRACKING_METHOD_KEYFRAME_LINEAR,
+                    "source": GENERATED_TRACKING_SOURCE,
+                    "confidence": proposal["tracking_confidence"],
+                    "warnings": proposal["trajectory_warnings"],
+                    "from_frames": proposal["generated_from_frames"],
+                },
             }
             frame.generated_payload = payload
-            frame.generated_from_frames = sorted(generated_from_by_target.get(frame_number, set()))
-            frame.trajectory_warnings = sorted(warnings_by_target.get(frame_number, set()))
+            frame.generated_from_frames = proposal["generated_from_frames"]
+            frame.trajectory_warnings = proposal["trajectory_warnings"]
             frame.state = VideoFrame.State.GENERATED_REVIEW
             frame.task.consensus_payload = payload
             frame.task.validation_score = 100.0
