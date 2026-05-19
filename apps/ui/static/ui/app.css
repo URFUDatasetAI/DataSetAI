@@ -6507,6 +6507,60 @@ textarea::placeholder {
     background: rgba(10, 1, 24, 0.62);
 }
 
+.modal-card--danger {
+    border-color: rgba(255, 79, 55, 0.42);
+    background:
+        radial-gradient(circle at top right, rgba(255, 79, 55, 0.24), transparent 42%),
+        linear-gradient(180deg, rgba(58, 14, 13, 0.96), rgba(18, 6, 12, 0.96)),
+        #12060c;
+    box-shadow:
+        0 0 0 1px rgba(255, 122, 104, 0.08),
+        0 28px 80px rgba(140, 20, 18, 0.34);
+}
+
+.modal-card--danger .eyebrow {
+    border-color: rgba(255, 122, 104, 0.36);
+    background: rgba(255, 79, 55, 0.14);
+    color: #ffd8d2;
+}
+
+.modal-card--danger .modal-card__head h2,
+.modal-card--danger .field span {
+    color: #fff5f2;
+}
+
+.modal-card--danger .modal-card__head p {
+    color: #ffc8bf;
+}
+
+.modal-card--danger input {
+    border: 1px solid rgba(255, 122, 104, 0.24);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.045);
+    color: #fff5f2;
+}
+
+.btn--danger,
+.video-selection-row__actions .btn--danger,
+.modal-card--danger .btn--danger {
+    border-color: rgba(255, 79, 55, 0.78);
+    background: linear-gradient(180deg, #ff5a3d 0%, #e4311f 52%, #b91f16 100%);
+    color: #fffaf8;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+        0 14px 32px rgba(228, 49, 31, 0.34);
+}
+
+.btn--danger:hover,
+.video-selection-row__actions .btn--danger:hover,
+.modal-card--danger .btn--danger:hover {
+    border-color: rgba(255, 166, 150, 0.9);
+    background: linear-gradient(180deg, #ff6d52 0%, #f23c29 52%, #c9251b 100%);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+        0 18px 38px rgba(228, 49, 31, 0.42);
+}
+
 .toast-notification {
     background: rgba(10, 1, 24, 0.78);
     box-shadow: var(--toast-shadow);
