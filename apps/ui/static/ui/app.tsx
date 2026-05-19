@@ -302,6 +302,7 @@ type ReviewTaskListItem = {
   can_vote: boolean;
   video_frame_state: string | null;
   trajectory_warnings: string[];
+  tracking_confidence?: number | null;
   updated_at: string;
 };
 
@@ -452,6 +453,7 @@ type ReviewTaskDetail = {
   generated_payload?: Record<string, any> | null;
   generated_from_frames?: number[];
   trajectory_warnings?: string[];
+  tracking_confidence?: number | null;
 };
 
 type EditableSubmissionListItem = {
@@ -543,14 +545,12 @@ const taskStatusLabels: Record<string, string> = {
 };
 
 const datasetModeLabels: Record<string, string> = {
-  demo: "Demo JSON",
-  json: "JSON",
   image: "Фото",
   video: "Видео",
 };
 
 const sourceTypeLabels: Record<string, string> = {
-  text: "JSON / текст",
+  text: "Текст",
   image: "Фото",
   video: "Видео",
 };
@@ -589,20 +589,6 @@ const datasetModeConfig: Record<
     usesLabels: boolean;
   }
 > = {
-  demo: {
-    hint: "Для demo-режима будет создан встроенный набор текстовых задач без загрузки файлов.",
-    accept: "",
-    multiple: false,
-    usesFiles: false,
-    usesLabels: false,
-  },
-  json: {
-    hint: "Загрузи один JSON-файл или ZIP-архив с JSON-датасетом. Каждый элемент массива будет создан как отдельная задача.",
-    accept: ".json,.zip,application/json,application/zip",
-    multiple: false,
-    usesFiles: true,
-    usesLabels: false,
-  },
   image: {
     hint: "Загрузи набор фотографий или ZIP-архив с изображениями. Для каждой фотографии будет создана отдельная bbox-задача.",
     accept: "image/*,.zip,application/zip",
@@ -671,7 +657,7 @@ function getBooleanSearchParam(name: string, fallback = false) {
 
 function getRoomCreatePresetSearch() {
   const rawDatasetMode = getSearchParam("dataset_mode") || getSearchParam("dataset");
-  const datasetMode = rawDatasetMode !== "demo" && datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "json";
+  const datasetMode = datasetModeConfig[rawDatasetMode] ? rawDatasetMode : "image";
   const rawWorkflow = getSearchParam("annotation_workflow") || getSearchParam("workflow");
   const annotationWorkflow =
     rawWorkflow === "text_detect_text" && (datasetMode === "image" || datasetMode === "video") ? rawWorkflow : "standard";
@@ -705,16 +691,6 @@ type RoomCreateScenarioPreset = {
 type RoomCreateStepId = "scenario" | "main" | "data" | "team" | "quality";
 
 const roomCreateScenarioPresets: RoomCreateScenarioPreset[] = [
-  {
-    id: "json",
-    title: "JSON / текст",
-    summary: "Импорт текстовых задач из JSON или ZIP-архива.",
-    meta: "Файл",
-    datasetMode: "json",
-    annotationWorkflow: "standard",
-    defaultTitle: "Разметка текстового датасета",
-    datasetLabel: "Текстовый датасет",
-  },
   {
     id: "image",
     title: "Фото bbox",
@@ -784,10 +760,7 @@ function getRoomCreateScenarioId(input: { datasetMode: string; annotationWorkflo
   if (input.datasetMode === "image") {
     return "image";
   }
-  if (input.datasetMode === "json") {
-    return "json";
-  }
-  return "json";
+  return "image";
 }
 
 function normalizeToastType(type?: string): ToastType {
@@ -1155,6 +1128,12 @@ function translateVideoFrameState(state: string | null | undefined) {
     abrupt_center_jump: "резкий сдвиг центра",
     abrupt_width_change: "резкое изменение ширины",
     abrupt_height_change: "резкое изменение высоты",
+    abrupt_area_change: "резкое изменение площади",
+    long_keyframe_gap: "большой разрыв между keyframe",
+    low_tracking_confidence: "низкая уверенность автотрекинга",
+    overlapping_tracks: "пересечение треков",
+    nearby_tracks: "близкие треки",
+    duplicate_track_on_frame: "повтор track id на кадре",
   };
   return state ? labels[state] || state : "Нет данных";
 }
@@ -1967,12 +1946,6 @@ function LandingPage() {
   ];
   const scenarios = [
     {
-      label: "Text",
-      title: "Текстовая разметка",
-      text: "Очереди задач, отправка ответов, ревью и экспорт результатов.",
-      href: "/rooms/create/?dataset_mode=json&title=Текстовая%20разметка&dataset_label=Текстовый%20датасет",
-    },
-    {
       label: "Image",
       title: "Image bbox",
       text: "Ручная bbox-разметка изображений с сохранением нормализованных координат.",
@@ -2770,7 +2743,6 @@ function RoomCreatePage() {
   const [datasetMode, setDatasetMode] = useState(preset.datasetMode);
   const [annotationWorkflow, setAnnotationWorkflow] = useState(preset.annotationWorkflow);
   const [datasetLabel, setDatasetLabel] = useState(preset.datasetLabel || "Тестовый датасет");
-  const [testTaskCount, setTestTaskCount] = useState("12");
   const [videoExtractionFps, setVideoExtractionFps] = useState("");
   const [videoFrameStep, setVideoFrameStep] = useState("1");
   const [videoMaxFrames, setVideoMaxFrames] = useState("1000");
@@ -2785,12 +2757,6 @@ function RoomCreatePage() {
 
   useEffect(() => {
     const config = datasetModeConfig[datasetMode];
-    if (!config?.usesFiles) {
-      setSelectedFiles([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
     if (config?.usesLabels && !labels.length) {
       setLabels([{ name: "", color: pickRandomLabelColor() }]);
     }
@@ -2806,11 +2772,7 @@ function RoomCreatePage() {
   const modeConfig = datasetModeConfig[datasetMode];
   const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
   const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
-  const filesPreview = modeConfig.usesFiles
-    ? selectedFiles.length
-      ? `${selectedFiles.length} файл(ов) выбрано`
-      : "Файлы ещё не выбраны"
-    : "Загрузка файлов не нужна";
+  const filesPreview = selectedFiles.length ? `${selectedFiles.length} файл(ов) выбрано` : "Файлы ещё не выбраны";
   const qualityPreview = crossValidationEnabled
     ? `Перекрестная разметка: ${crossValidationCount || 2} исполнителя`
     : "Обычная разметка";
@@ -2876,7 +2838,7 @@ function RoomCreatePage() {
     }
 
     if (stepId === "data") {
-      if (datasetMode !== "demo" && !selectedFiles.length) {
+      if (!selectedFiles.length) {
         throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
       }
       if (labelsRequired && !normalizedLabels.length) {
@@ -3003,7 +2965,7 @@ function RoomCreatePage() {
     const normalizedVideoMaxFrames = Number(videoMaxFrames || 1000);
     const normalizedVideoManualPercent = Number(videoManualKeyframePercent || 10);
 
-    if (datasetMode !== "demo" && !selectedFiles.length) {
+    if (!selectedFiles.length) {
       throw new Error("Загрузи файл или набор файлов для выбранного типа датасета.");
     }
 
@@ -3116,7 +3078,6 @@ function RoomCreatePage() {
       payload.append("dataset_mode", datasetMode);
       payload.append("annotation_workflow", annotationWorkflow);
       payload.append("dataset_label", datasetLabel.trim() || "Тестовый датасет");
-      payload.append("test_task_count", String(Number(testTaskCount || 12)));
       payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
       payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
       payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
@@ -3363,7 +3324,6 @@ function RoomCreatePage() {
               <label className="field">
                 <span>Тип датасета</span>
                 <select value={datasetMode} name="dataset_mode" onChange={(event) => setDatasetMode(event.currentTarget.value)}>
-                  <option value="json">JSON файл</option>
                   <option value="image">Фото</option>
                   <option value="video">Видео</option>
                 </select>
@@ -3417,13 +3377,12 @@ function RoomCreatePage() {
             <div className="dataset-box room-create-upload-box">
               <div>
                 <h2>Загрузка датасета</h2>
-                <p>{modeConfig.usesFiles ? "Выбери файлы, которые станут задачами комнаты." : "Demo-комната создаст задачи автоматически."}</p>
+                <p>Выбери файлы, которые станут задачами комнаты.</p>
               </div>
               <div className="dataset-box__actions dataset-box__actions--stack">
                 <input
                   ref={fileInputRef}
                   type="file"
-                  disabled={!modeConfig.usesFiles}
                   accept={modeConfig.accept}
                   multiple={modeConfig.multiple}
                   onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files || []))}
@@ -6598,6 +6557,19 @@ function createMediaAnnotationEditor(options: {
     return getTask()?.input_payload?.origin_source_type === "video" || getTask()?.source_type === "video";
   }
 
+  function getNextTrackId() {
+    const usedTrackIds = new Set(
+      editor.annotations
+        .map((annotation) => String(annotation.track_id || "").trim())
+        .filter(Boolean)
+    );
+    let index = 1;
+    while (usedTrackIds.has(`track-${index}`)) {
+      index += 1;
+    }
+    return `track-${index}`;
+  }
+
   function isReadOnly() {
     return editor.readOnly;
   }
@@ -7765,7 +7737,7 @@ function createMediaAnnotationEditor(options: {
         frame: getCurrentFrame(),
         attributes: [],
         occluded: false,
-        track_id: "track-1",
+        track_id: isVideoFrameTask() ? getNextTrackId() : "track-1",
       });
     }
 
@@ -8976,6 +8948,8 @@ function RoomWorkPage() {
                       <small>
                         {task.review_outcome === "validation"
                           ? `${task.validation_votes_count}/${task.validation_votes_required} голосов`
+                          : task.review_outcome === "generated" && task.tracking_confidence != null
+                            ? `Автотрекинг ${Math.round(task.tracking_confidence * 100)}%`
                           : `${task.submitted_annotations_count}/${task.required_annotations_count || 0} разметок`}
                       </small>
                     </button>
@@ -9030,6 +9004,11 @@ function RoomWorkPage() {
                     {reviewDetail.trajectory_warnings?.length ? (
                       <div className="editor-sidepanel__note">
                         Проверь траекторию: {reviewDetail.trajectory_warnings.map((item) => translateVideoFrameState(item)).join(", ")}
+                      </div>
+                    ) : null}
+                    {reviewDetail.tracking_confidence != null ? (
+                      <div className="editor-sidepanel__note">
+                        Уверенность автотрекинга: {Math.round(reviewDetail.tracking_confidence * 100)}%
                       </div>
                     ) : null}
                   </div>

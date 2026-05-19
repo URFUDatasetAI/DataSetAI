@@ -17,6 +17,7 @@ from apps.labeling.models import (
     VideoSelection,
 )
 from apps.labeling.services import get_submission_editability
+from apps.labeling.tracking import get_payload_tracking_confidence
 
 
 class TaskSerializer(serializers.ModelSerializer):
@@ -244,6 +245,7 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
     can_vote = serializers.SerializerMethodField()
     video_frame_state = serializers.SerializerMethodField()
     trajectory_warnings = serializers.SerializerMethodField()
+    tracking_confidence = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -271,6 +273,7 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
             "can_vote",
             "video_frame_state",
             "trajectory_warnings",
+            "tracking_confidence",
             "updated_at",
         )
 
@@ -351,6 +354,9 @@ class ReviewTaskListItemSerializer(serializers.ModelSerializer):
         except VideoFrame.DoesNotExist:
             return []
 
+    def get_tracking_confidence(self, obj):
+        return get_payload_tracking_confidence(obj.consensus_payload)
+
 
 class ReviewAnnotationSerializer(AnnotationSerializer):
     review_outcome = serializers.CharField()
@@ -380,6 +386,7 @@ class ReviewTaskDetailSerializer(serializers.Serializer):
     generated_payload = serializers.JSONField(allow_null=True, required=False)
     generated_from_frames = serializers.JSONField(required=False)
     trajectory_warnings = serializers.JSONField(required=False)
+    tracking_confidence = serializers.FloatField(allow_null=True, required=False)
 
 
 class EditableSubmissionListItemSerializer(serializers.ModelSerializer):

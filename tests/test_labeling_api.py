@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 from django.core.files.base import ContentFile
 from django.urls import reverse
@@ -8,6 +9,12 @@ from rest_framework.test import APITestCase
 
 from apps.labeling.jobs import interpolate_video_asset
 from apps.labeling.models import Annotation, Task, TaskAssignment, ValidationVote, VideoAsset, VideoFrame
+from apps.labeling.tracking import (
+    GENERATED_TRACKING_SOURCE,
+    TRACKING_METHOD_KEYFRAME_LINEAR,
+    build_tracking_proposals,
+    get_payload_tracking_confidence,
+)
 from apps.rooms.models import RoomAssignmentQuota, RoomMembership
 from apps.users.models import User
 from tests.factories import invite_annotator, make_room, make_task, make_user
@@ -435,6 +442,82 @@ class LabelingApiTests(APITestCase):
         generated = target_task.consensus_payload["annotations"][0]
         self.assertEqual(generated["track_id"], "drone-1")
         self.assertEqual(generated["points"], [20.0, 20.0, 40.0, 40.0])
+        self.assertEqual(generated["source"], GENERATED_TRACKING_SOURCE)
+        self.assertEqual(generated["tracking"]["method"], TRACKING_METHOD_KEYFRAME_LINEAR)
+        self.assertEqual(target_task.consensus_payload["source"], GENERATED_TRACKING_SOURCE)
+        self.assertEqual(target_task.video_frame.generated_from_frames, [1, 3])
+        self.assertIsNotNone(target_task.consensus_payload["tracking"]["confidence"])
+
+    def test_tracking_proposals_include_confidence_and_keyframe_gap_warning(self):
+        label_id = 101
+        left_frame = SimpleNamespace(
+            frame_number=1,
+            task=SimpleNamespace(
+                consensus_payload={
+                    "annotations": [
+                        {"type": "bbox", "label_id": label_id, "points": [10, 10, 30, 30], "frame": 0, "track_id": "drone-1"}
+                    ]
+                }
+            ),
+        )
+        right_frame = SimpleNamespace(
+            frame_number=40,
+            task=SimpleNamespace(
+                consensus_payload={
+                    "annotations": [
+                        {"type": "bbox", "label_id": label_id, "points": [90, 90, 120, 120], "frame": 0, "track_id": "drone-1"}
+                    ]
+                }
+            ),
+        )
+        target_frame = SimpleNamespace(frame_number=20)
+
+        proposals = build_tracking_proposals(
+            accepted_frames=[left_frame, right_frame],
+            target_frames_by_number={20: target_frame},
+        )
+
+        self.assertIn(20, proposals)
+        generated = proposals[20]["annotations"][0]
+        self.assertEqual(generated["source"], GENERATED_TRACKING_SOURCE)
+        self.assertEqual(generated["tracking"]["method"], TRACKING_METHOD_KEYFRAME_LINEAR)
+        self.assertEqual(generated["generated_from_frames"], [1, 40])
+        self.assertIn("long_keyframe_gap", proposals[20]["trajectory_warnings"])
+        self.assertEqual(get_payload_tracking_confidence({"annotations": [generated]}), generated["tracking_confidence"])
+
+    def test_tracking_proposals_flag_overlapping_tracks_for_review(self):
+        left_frame = SimpleNamespace(
+            frame_number=1,
+            task=SimpleNamespace(
+                consensus_payload={
+                    "annotations": [
+                        {"type": "bbox", "label_id": 1, "points": [10, 10, 40, 40], "frame": 0, "track_id": "drone-1"},
+                        {"type": "bbox", "label_id": 1, "points": [12, 12, 42, 42], "frame": 0, "track_id": "drone-2"},
+                    ]
+                }
+            ),
+        )
+        right_frame = SimpleNamespace(
+            frame_number=3,
+            task=SimpleNamespace(
+                consensus_payload={
+                    "annotations": [
+                        {"type": "bbox", "label_id": 1, "points": [10, 10, 40, 40], "frame": 0, "track_id": "drone-1"},
+                        {"type": "bbox", "label_id": 1, "points": [12, 12, 42, 42], "frame": 0, "track_id": "drone-2"},
+                    ]
+                }
+            ),
+        )
+
+        proposals = build_tracking_proposals(
+            accepted_frames=[left_frame, right_frame],
+            target_frames_by_number={2: SimpleNamespace(frame_number=2)},
+        )
+
+        self.assertIn("overlapping_tracks", proposals[2]["trajectory_warnings"])
+        self.assertTrue(
+            all("overlapping_tracks" in annotation["tracking_warnings"] for annotation in proposals[2]["annotations"])
+        )
 
     def test_reviewer_can_approve_or_reject_generated_video_proposal(self):
         video_room = make_room(customer=self.customer, title="Generated review", dataset_type="video")
@@ -457,7 +540,7 @@ class LabelingApiTests(APITestCase):
             "annotations": [
                 {"type": "bbox", "label_id": label.id, "points": [20, 20, 40, 40], "frame": 0, "track_id": "drone-1"}
             ],
-            "source": "generated_interpolation",
+            "source": GENERATED_TRACKING_SOURCE,
         }
         task.save(update_fields=["status", "consensus_payload", "updated_at"])
         task.video_frame.generated_payload = task.consensus_payload

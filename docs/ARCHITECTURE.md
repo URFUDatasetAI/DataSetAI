@@ -73,8 +73,6 @@ DataSetAI построен как монолитное Django-приложени
 
 Поддерживаемые типы датасетов:
 
-- `demo`
-- `json`
 - `image`
 - `video`
 
@@ -92,7 +90,7 @@ DataSetAI построен как монолитное Django-приложени
 
 Поддерживаемые типы источников:
 
-- `text`
+- `text` (legacy/internal; new room creation uses image/video)
 - `image`
 - `video`
 
@@ -150,7 +148,7 @@ DataSetAI построен как монолитное Django-приложени
 
 `Task` относится к комнате и может содержать:
 
-- `input_payload` для текстовых/JSON-задач
+- `input_payload` с метаданными задачи
 - `source_file` для image/video
 - `source_name`
 - статус и текущий раунд
@@ -239,10 +237,11 @@ The first workflow version is rules-only:
 - Only manual keyframes are assignable before interpolation.
 - Bbox annotations on video frames require `track_id` so object identity can be matched across frames.
 - Empty frames are explicit `frame_state=no_object`, not skipped tasks.
-- Accepted keyframes enqueue interpolation proposals between matching tracks.
+- Accepted keyframes enqueue keyframe-seeded tracking proposals between matching tracks.
+- Tracking proposals include confidence and trajectory warnings for long gaps, abrupt motion/scale shifts and suspicious track overlap.
 - Generated proposals go to review and must be approved, rejected to manual correction, or marked no-object before export.
 
-Detector exports (COCO/YOLO/Pascal VOC) include only final manual frames and approved generated frames with annotations. No-object frames are excluded there, while Native JSON/JSONL keep video/frame provenance, track ids, generated/manual source and no-object state for audit.
+Detector exports (COCO/YOLO/Pascal VOC) include only final manual frames and approved generated frames with annotations. No-object frames are excluded there, while Native JSON/JSONL keep video/frame provenance, track ids, generated/manual source, tracking confidence, warnings and no-object state for audit.
 
 ### Bootstrap страницы
 

@@ -7,7 +7,7 @@
         <div class="page-topbar__copy">
             <span class="eyebrow">Создание комнаты</span>
             <h1>Новая комната для разметки</h1>
-            <p>Загрузи JSON, фото или видео, задай label palette и пригласи исполнителей в комнату.</p>
+            <p>Загрузи фото или видео, задай label palette и пригласи исполнителей в комнату.</p>
         </div>
     </section>
 
@@ -52,8 +52,7 @@
                 <label class="field">
                     <span>Тип датасета</span>
                     <select id="dataset-mode-select" name="dataset_mode">
-                        <option value="json" selected>JSON файл</option>
-                        <option value="image">Фото</option>
+                        <option value="image" selected>Фото</option>
                         <option value="video">Видео</option>
                     </select>
                 </label>
@@ -73,7 +72,7 @@
             <div class="dataset-box">
                 <div>
                     <h2>Загрузка датасета</h2>
-                    <p id="dataset-upload-hint">Для demo-режима будет создан встроенный набор текстовых задач. Для JSON, фото и видео можно загрузить реальные файлы.</p>
+                    <p id="dataset-upload-hint">Загрузи изображения, видео или ZIP-архив с файлами выбранного типа.</p>
                 </div>
                 <div class="dataset-box__actions dataset-box__actions--stack">
                     <input id="dataset-files-input" name="dataset_files" type="file">
