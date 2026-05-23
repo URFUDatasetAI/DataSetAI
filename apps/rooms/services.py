@@ -108,6 +108,7 @@ def create_room(
     creator: User,
     title: str,
     description: str = "",
+    description_pdf=None,
     password: str = "",
     deadline=None,
     cross_validation_enabled: bool = False,
@@ -152,6 +153,7 @@ def create_room(
         room = Room(
             title=title,
             description=description,
+            description_pdf=description_pdf,
             created_by=creator,
             deadline=deadline,
             dataset_label=normalized_label,

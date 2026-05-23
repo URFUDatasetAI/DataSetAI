@@ -85,6 +85,9 @@ def _build_room_create_payload(request):
 
     dataset_files = request.FILES.getlist("dataset_files")
     data["dataset_files"] = dataset_files
+    description_pdf = request.FILES.get("description_pdf")
+    if description_pdf is not None:
+        data["description_pdf"] = description_pdf
 
     return data
 

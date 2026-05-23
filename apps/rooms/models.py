@@ -29,6 +29,11 @@ def generate_room_invite_token() -> str:
     )
 
 
+def room_description_pdf_upload_to(instance, filename: str) -> str:
+    room_id = instance.pk or getattr(instance, "invite_token", "") or "pending"
+    return f"rooms/{room_id}/description/{filename}"
+
+
 class Room(TimeStampedModel):
     """
     The aggregate root defining a labeling dataset container.
@@ -53,6 +58,7 @@ class Room(TimeStampedModel):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    description_pdf = models.FileField(upload_to=room_description_pdf_upload_to, blank=True)
     invite_token = models.CharField(
         max_length=ROOM_INVITE_TOKEN_LENGTH,
         default=generate_room_invite_token,
