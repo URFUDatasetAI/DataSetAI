@@ -49,6 +49,7 @@ from apps.labeling.services import (
     submit_validation_vote,
     update_submitted_annotation,
 )
+from apps.labeling.tracking import get_payload_tracking_confidence
 from apps.labeling.video_services import (
     create_video_selection,
     delete_video_selection,
@@ -243,6 +244,9 @@ class TaskReviewDetailView(APIView):
                     "generated_payload": video_frame.generated_payload,
                     "generated_from_frames": video_frame.generated_from_frames,
                     "trajectory_warnings": video_frame.trajectory_warnings,
+                    "tracking_confidence": get_payload_tracking_confidence(
+                        task.consensus_payload or video_frame.generated_payload
+                    ),
                 }
             )
         return Response(ReviewTaskDetailSerializer(payload, context={"request": request}).data)

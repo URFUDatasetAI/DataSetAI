@@ -43,30 +43,42 @@ class RoomsApiTests(APITestCase):
                 archive.writestr(file_name, content)
         return SimpleUploadedFile(name, buffer.getvalue(), content_type="application/zip")
 
+    def make_image_room_payload(self, **overrides):
+        payload = {
+            "title": "New room",
+            "description": "MVP room",
+            "dataset_mode": "image",
+            "dataset_label": "Images",
+            "labels": json.dumps([{"name": "object", "color": "#FF6B6B"}]),
+            "dataset_files": [SimpleUploadedFile("sample.jpg", b"fake-image", content_type="image/jpeg")],
+        }
+        payload.update(overrides)
+        return payload
+
     def test_customer_can_create_room(self):
         response = self.client.post(
             reverse("room-list-create"),
-            {"title": "New room", "description": "MVP room"},
-            format="json",
+            self.make_image_room_payload(),
+            format="multipart",
             **self.auth(self.customer),
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data["title"], "New room")
         self.assertEqual(response.data["created_by_id"], self.customer.id)
-        self.assertEqual(response.data["default_assignment_quota"], 12)
+        self.assertEqual(response.data["default_assignment_quota"], 1)
 
     def test_customer_can_create_room_with_cross_validation_settings(self):
         response = self.client.post(
             reverse("room-list-create"),
-            {
-                "title": "Cross room",
-                "cross_validation_enabled": True,
-                "cross_validation_annotators_count": 3,
-                "cross_validation_similarity_threshold": 85,
-                "default_assignment_quota": 50,
-            },
-            format="json",
+            self.make_image_room_payload(
+                title="Cross room",
+                cross_validation_enabled=True,
+                cross_validation_annotators_count=3,
+                cross_validation_similarity_threshold=85,
+                default_assignment_quota=50,
+            ),
+            format="multipart",
             **self.auth(self.customer),
         )
 
@@ -79,13 +91,13 @@ class RoomsApiTests(APITestCase):
     def test_customer_can_create_room_with_review_voting_settings(self):
         response = self.client.post(
             reverse("room-list-create"),
-            {
-                "title": "Voting room",
-                "review_voting_enabled": True,
-                "review_votes_required": 3,
-                "review_acceptance_threshold": 67,
-            },
-            format="json",
+            self.make_image_room_payload(
+                title="Voting room",
+                review_voting_enabled=True,
+                review_votes_required=3,
+                review_acceptance_threshold=67,
+            ),
+            format="multipart",
             **self.auth(self.customer),
         )
 

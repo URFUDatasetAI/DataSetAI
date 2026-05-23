@@ -4,7 +4,6 @@ import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from itertools import cycle
 from pathlib import Path
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -15,6 +14,7 @@ from django.utils import timezone
 
 from apps.labeling.jobs import extract_video_frames
 from apps.labeling.models import Task, VideoAsset, VideoFrame
+from apps.labeling.tracking import get_payload_tracking_confidence
 from apps.labeling.workflows import get_room_final_tasks_queryset, get_room_primary_tasks_queryset
 from apps.rooms.models import (
     Room,
@@ -36,24 +36,13 @@ Write-side business logic for rooms and dataset import/export.
 This file owns the most important room lifecycle operations:
 - room creation
 - invitation / join flow
-- dataset import for demo/json/image/video sources
+- dataset import for image/video sources
 - export of completed annotations
 
 If a change affects persisted room/task state, it likely belongs here rather
 than in API views.
 """
 
-
-DEMO_DATASET_SAMPLES = [
-    "Пользователь оставил положительный отзыв о качестве сервиса.",
-    "Нужно определить тематику короткого сообщения из поддержки.",
-    "Определи тональность комментария под товаром.",
-    "Классифицируй новостной заголовок по теме публикации.",
-    "Отметь, содержит ли текст токсичную лексику.",
-    "Определи язык сообщения в пользовательском фидбэке.",
-    "Разметь интент обращения клиента в поддержку.",
-    "Определи, относится ли сообщение к жалобе или благодарности.",
-]
 
 DEFAULT_LABEL_COLORS = [
     "#FF6B6B",
@@ -68,7 +57,6 @@ DEFAULT_LABEL_COLORS = [
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi", ".mkv"}
-JSON_EXTENSIONS = {".json"}
 ARCHIVE_EXTENSIONS = {".zip"}
 UNSET = object()
 MAX_PINNED_ROOMS = 5
@@ -121,8 +109,7 @@ def create_room(
     default_assignment_quota=UNSET,
     annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     annotator_ids: list[int] | None = None,
-    dataset_mode: str = "demo",
-    test_task_count: int = 12,
+    dataset_mode: str = Room.DatasetType.IMAGE,
     dataset_label: str = "",
     dataset_files: list | None = None,
     labels: list[dict] | None = None,
@@ -136,7 +123,7 @@ def create_room(
     Creates a new Room, triggers initial parsing, and invites users.
     
     This is the core entry point for Room creation, separating the UI/Validation layer from the business logic.
-    Depending on the `dataset_mode`, it parses JSON, stores images, or stores source videos for staged frame annotation.
+    Depending on the `dataset_mode`, it stores images or source videos for staged frame annotation.
     
     Important: The entire structure is wrapped in `transaction.atomic()`, ensuring we don't end up
     with an orphaned Room if dataset parsing fails.
@@ -148,6 +135,9 @@ def create_room(
     dataset_files = list(dataset_files or [])
     label_definitions = list(labels or [])
     media_manifest = list(media_manifest or [])
+
+    if dataset_mode not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
+        raise ConflictError("Создание комнат поддерживает только датасеты изображений и видео.")
 
     with transaction.atomic():
         room = Room(
@@ -171,11 +161,7 @@ def create_room(
         room.set_access_password(password)
         room.save()
 
-        if dataset_mode == "demo":
-            _create_demo_tasks(room=room, task_count=test_task_count, dataset_label=normalized_label)
-        elif dataset_mode == Room.DatasetType.JSON:
-            _create_json_tasks(room=room, dataset_label=normalized_label, dataset_files=dataset_files)
-        elif dataset_mode == Room.DatasetType.IMAGE:
+        if dataset_mode == Room.DatasetType.IMAGE:
             _create_media_tasks(
                 room=room,
                 dataset_label=normalized_label,
@@ -728,25 +714,6 @@ def delete_room_dataset_tasks(*, room: Room, actor: User, task_ids: list[int]) -
     return deleted_count
 
 
-def _create_demo_tasks(*, room: Room, task_count: int, dataset_label: str) -> None:
-    sample_iterator = cycle(DEMO_DATASET_SAMPLES)
-    tasks = []
-    for index in range(task_count):
-        tasks.append(
-            Task(
-                room=room,
-                source_type=Task.SourceType.TEXT,
-                input_payload={
-                    "dataset": dataset_label,
-                    "item_number": index + 1,
-                    "text": next(sample_iterator),
-                },
-            )
-        )
-
-    Task.objects.bulk_create(tasks)
-
-
 def _create_room_labels(*, room: Room, label_definitions: list[dict]) -> None:
     labels = []
     for index, item in enumerate(label_definitions):
@@ -759,55 +726,6 @@ def _create_room_labels(*, room: Room, label_definitions: list[dict]) -> None:
             )
         )
     RoomLabel.objects.bulk_create(labels)
-
-
-def _normalize_json_task_payload(item, dataset_label: str, item_number: int) -> dict:
-    if isinstance(item, dict):
-        payload = dict(item)
-    else:
-        payload = {"value": item}
-    payload.setdefault("dataset", dataset_label)
-    payload.setdefault("item_number", item_number)
-    return payload
-
-
-def _load_json_dataset_items(dataset_file) -> list:
-    try:
-        payload = json.loads(dataset_file.read().decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConflictError("JSON-датасет должен быть корректным UTF-8 JSON-файлом.") from exc
-
-    if isinstance(payload, list):
-        return payload
-
-    if isinstance(payload, dict):
-        for key in ("tasks", "items", "data"):
-            if isinstance(payload.get(key), list):
-                return payload[key]
-        return [payload]
-
-    raise ConflictError("JSON-датасет должен содержать массив или объект.")
-
-
-def _create_json_tasks(*, room: Room, dataset_label: str, dataset_files: list) -> None:
-    dataset_files = _expand_dataset_files(dataset_mode=Room.DatasetType.JSON, dataset_files=dataset_files)
-    if len(dataset_files) != 1:
-        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
-
-    items = _load_json_dataset_items(dataset_files[0])
-    if not items:
-        raise ConflictError("JSON-файл датасета пуст.")
-
-    tasks = []
-    for index, item in enumerate(items):
-        tasks.append(
-            Task(
-                room=room,
-                source_type=Task.SourceType.TEXT,
-                input_payload=_normalize_json_task_payload(item, dataset_label, index + 1),
-            )
-        )
-    Task.objects.bulk_create(tasks)
 
 
 def _create_media_tasks(
@@ -1037,18 +955,13 @@ def _create_video_frame_tasks(
 
 
 def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
-    if dataset_mode == Room.DatasetType.DEMO:
-        return
+    if dataset_mode not in (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO):
+        raise ConflictError("Создание комнат поддерживает только датасеты изображений и видео.")
 
     if not dataset_files:
         raise ConflictError("Загрузи хотя бы один файл датасета.")
 
     suffixes = {Path(file.name).suffix.lower() for file in dataset_files}
-
-    if dataset_mode == Room.DatasetType.JSON:
-        if suffixes - (JSON_EXTENSIONS | ARCHIVE_EXTENSIONS):
-            raise ConflictError("JSON-режим принимает .json-файлы или .zip-архивы с JSON-датасетами.")
-        return
 
     allowed_extensions = IMAGE_EXTENSIONS if dataset_mode == Room.DatasetType.IMAGE else VIDEO_EXTENSIONS
     if suffixes - (allowed_extensions | ARCHIVE_EXTENSIONS):
@@ -1056,12 +969,12 @@ def validate_dataset_upload(*, dataset_mode: str, dataset_files: list) -> None:
 
 
 def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
-    if dataset_mode == Room.DatasetType.JSON:
-        allowed_extensions = JSON_EXTENSIONS
-    elif dataset_mode == Room.DatasetType.IMAGE:
+    if dataset_mode == Room.DatasetType.IMAGE:
         allowed_extensions = IMAGE_EXTENSIONS
-    else:
+    elif dataset_mode == Room.DatasetType.VIDEO:
         allowed_extensions = VIDEO_EXTENSIONS
+    else:
+        raise ConflictError("Создание комнат поддерживает только датасеты изображений и видео.")
 
     expanded_files = []
     for dataset_file in dataset_files:
@@ -1078,9 +991,6 @@ def _expand_dataset_files(*, dataset_mode: str, dataset_files: list) -> list:
 
     if not expanded_files:
         raise ConflictError("Архив не содержит поддерживаемых файлов датасета.")
-
-    if dataset_mode == Room.DatasetType.JSON and len(expanded_files) != 1:
-        raise ConflictError("Для загрузки JSON-датасета нужен ровно один .json-файл.")
 
     return expanded_files
 
@@ -1475,6 +1385,7 @@ def _get_video_export_metadata(task: Task) -> dict | None:
         ),
         "generated_from_frames": video_frame.generated_from_frames,
         "trajectory_warnings": video_frame.trajectory_warnings,
+        "tracking_confidence": get_payload_tracking_confidence(annotation_payload),
     }
 
 

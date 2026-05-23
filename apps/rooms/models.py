@@ -71,7 +71,7 @@ class Room(TimeStampedModel):
     dataset_type = models.CharField(
         max_length=16,
         choices=DatasetType.choices,
-        default=DatasetType.DEMO,
+        default=DatasetType.IMAGE,
     )
     annotation_workflow = models.CharField(
         max_length=32,

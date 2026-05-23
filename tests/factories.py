@@ -16,7 +16,7 @@ def make_room(
     customer: User,
     title: str = "Room",
     description: str = "",
-    dataset_type: str = Room.DatasetType.DEMO,
+    dataset_type: str = Room.DatasetType.IMAGE,
     annotation_workflow: str = Room.AnnotationWorkflow.STANDARD,
     cross_validation_enabled: bool = False,
     cross_validation_annotators_count: int = 1,

@@ -62,15 +62,17 @@ class RoomListCreateViewTests(TestCase):
         response = self.client.post(
             "/api/v1/rooms/",
             data={
-                "title": "Demo room",
-                "dataset_mode": Room.DatasetType.DEMO,
+                "title": "Image room",
+                "dataset_mode": Room.DatasetType.IMAGE,
+                "labels": json.dumps([{"name": "Object", "color": "#FF0000"}]),
+                "dataset_files": [self._uploaded_file("sample.png")],
                 "annotator_ids": [str(annotator.id)],
             },
             format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        room = Room.objects.get(title="Demo room")
+        room = Room.objects.get(title="Image room")
         membership = RoomMembership.objects.get(room=room, user=annotator)
         self.assertEqual(membership.status, RoomMembership.Status.INVITED)
 
@@ -79,10 +81,12 @@ class RoomListCreateViewTests(TestCase):
             "/api/v1/rooms/",
             data={
                 "title": "Owner reviewer room",
-                "dataset_mode": Room.DatasetType.DEMO,
+                "dataset_mode": Room.DatasetType.IMAGE,
+                "labels": json.dumps([{"name": "Object", "color": "#FF0000"}]),
+                "dataset_files": [self._uploaded_file("sample.png")],
                 "owner_is_annotator": False,
             },
-            format="json",
+            format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -109,7 +113,7 @@ class RoomListCreateViewTests(TestCase):
         task = Task.objects.get(room=room)
         self.assertEqual(task.source_name, "sample.png")
 
-    def test_zip_archive_request_creates_json_room(self):
+    def test_json_dataset_mode_is_not_available_for_new_rooms(self):
         payload = json.dumps([{"text": "hello"}, {"text": "world"}], ensure_ascii=False).encode("utf-8")
         response = self.client.post(
             "/api/v1/rooms/",
@@ -121,9 +125,8 @@ class RoomListCreateViewTests(TestCase):
             format="multipart",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        room = Room.objects.get(title="Archive json room")
-        self.assertEqual(room.tasks.count(), 2)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Room.objects.filter(title="Archive json room").exists())
 
     def test_owner_can_delete_room(self):
         room = Room.objects.create(title="Delete me", created_by=self.user)
@@ -279,9 +282,11 @@ class RoomListCreateViewTests(TestCase):
             data={
                 "title": "Room with oversized description",
                 "description": "x" * 2001,
-                "dataset_mode": Room.DatasetType.DEMO,
+                "dataset_mode": Room.DatasetType.IMAGE,
+                "labels": json.dumps([{"name": "Object", "color": "#FF0000"}]),
+                "dataset_files": [self._uploaded_file("sample.png")],
             },
-            format="json",
+            format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -307,10 +312,12 @@ class RoomListCreateViewTests(TestCase):
             "/api/v1/rooms/",
             data={
                 "title": "Past deadline room",
-                "dataset_mode": Room.DatasetType.DEMO,
+                "dataset_mode": Room.DatasetType.IMAGE,
+                "labels": json.dumps([{"name": "Object", "color": "#FF0000"}]),
+                "dataset_files": [self._uploaded_file("sample.png")],
                 "deadline": (timezone.now() - timezone.timedelta(hours=1)).isoformat(),
             },
-            format="json",
+            format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

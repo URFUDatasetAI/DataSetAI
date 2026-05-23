@@ -16,6 +16,7 @@ ROOM_TITLE_MAX_LENGTH = 128
 ROOM_DESCRIPTION_MAX_LENGTH = 2000
 ROOM_DEADLINE_MAX_DAYS_AHEAD = 365
 ROOM_DESCRIPTION_PDF_MAX_BYTES = 20 * 1024 * 1024
+CREATE_ROOM_DATASET_CHOICES = (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
 
 
 def validate_room_description_pdf(file_obj):
@@ -180,8 +181,11 @@ class RoomCreateSerializer(serializers.Serializer):
         required=False,
         allow_empty=True,
     )
-    dataset_mode = serializers.ChoiceField(choices=Room.DatasetType.values, required=False, default=Room.DatasetType.DEMO)
-    test_task_count = serializers.IntegerField(required=False, min_value=1, max_value=100, default=12)
+    dataset_mode = serializers.ChoiceField(
+        choices=CREATE_ROOM_DATASET_CHOICES,
+        required=False,
+        default=Room.DatasetType.IMAGE,
+    )
     dataset_label = serializers.CharField(required=False, allow_blank=True, default="Тестовый датасет", max_length=ROOM_TEXT_MAX_LENGTH)
     dataset_files = serializers.ListField(
         child=serializers.FileField(allow_empty_file=False),
@@ -222,7 +226,7 @@ class RoomCreateSerializer(serializers.Serializer):
         else:
             attrs["cross_validation_annotators_count"] = 1
 
-        dataset_mode = attrs.get("dataset_mode", Room.DatasetType.DEMO)
+        dataset_mode = attrs.get("dataset_mode", Room.DatasetType.IMAGE)
         annotation_workflow = attrs.get("annotation_workflow", Room.AnnotationWorkflow.STANDARD)
         dataset_files = list(attrs.get("dataset_files") or [])
         labels = attrs.get("labels")
