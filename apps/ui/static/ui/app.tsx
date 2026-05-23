@@ -3969,217 +3969,281 @@ function RoomEditPage() {
   }
 
   return (
-    <>
-      <section className="page-topbar">
-        <div className="page-topbar__copy">
-          <span className="eyebrow">Редактирование комнаты</span>
-          <h1>Настройки комнаты</h1>
-          <p>Обнови название, описание, дедлайн, квоты и параметры разметки без изменения самих задач и файлов.</p>
-        </div>
-      </section>
-
-      <section className="create-layout">
-        <form className="form-card" onSubmit={handleSubmit}>
+    <section className="room-edit-shell">
+      <form className="room-edit-board" onSubmit={handleSubmit}>
+        <aside className="room-edit-board__rail">
+          <div className="room-edit-board__rail-head">
+            <span>Настройка</span>
+            <strong>Комната</strong>
+          </div>
+          <div className="room-edit-board__steps">
+            <div className="room-edit-board__step is-active">
+              <span>1</span>
+              <div>
+                <strong>Основное</strong>
+                <small>{title || "Название комнаты"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>2</span>
+              <div>
+                <strong>Доступ</strong>
+                <small>{passwordEnabled ? "Пароль включен" : "Без пароля"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>3</span>
+              <div>
+                <strong>Контроль</strong>
+                <small>{crossValidationEnabled ? "Cross-validation" : reviewVotingEnabled ? "Пул валидации" : "Обычная проверка"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>4</span>
+              <div>
+                <strong>Описание</strong>
+                <small>{description ? "Заполнено" : "Не заполнено"}</small>
+              </div>
+            </div>
+          </div>
           {room ? (
-            <div className="summary-stack room-edit-summary">
-              <div className="summary-row">
+            <div className="room-edit-board__summary">
+              <div>
                 <span>ID комнаты</span>
                 <strong>#{room.id}</strong>
               </div>
-              <div className="summary-row">
-                <span>Тип датасета</span>
+              <div>
+                <span>Тип</span>
                 <strong>{translateDatasetMode(room.dataset_type)}</strong>
               </div>
-              <div className="summary-row">
+              <div>
                 <span>Сценарий</span>
                 <strong>{translateAnnotationWorkflow(room.annotation_workflow || "standard")}</strong>
               </div>
-              <div className="summary-row">
-                <span>Доступ</span>
-                <strong>{room.has_password ? "С паролем" : "Без пароля"}</strong>
-              </div>
             </div>
           ) : (
-            <div className="summary-stack room-edit-summary empty-card">Загружаем настройки комнаты.</div>
+            <div className="empty-card room-edit-board__loading">Загружаем настройки.</div>
           )}
+        </aside>
 
-          <div className="form-grid">
-            <label className="field">
-              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
-              <input
-                value={title}
-                type="text"
-                placeholder="Например, Разметка отзывов Q2"
-                required
-                className={titleTooLong ? "field__control--invalid" : ""}
-                aria-invalid={titleTooLong}
-                onChange={(event) => setTitle(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
-              <input
-                value={datasetLabel}
-                type="text"
-                placeholder="Например, Отзывы Q2"
-                className={datasetLabelTooLong ? "field__control--invalid" : ""}
-                aria-invalid={datasetLabelTooLong}
-                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Стандартная квота задач</span>
-              <input
-                value={defaultAssignmentQuota}
-                type="number"
-                min="0"
-                step="1"
-                placeholder="Не задана"
-                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Дедлайн (необязательно)</span>
-              <input
-                value={deadline}
-                type="datetime-local"
-                className={deadlineError ? "field__control--invalid" : ""}
-                aria-invalid={Boolean(deadlineError)}
-                onChange={(event) => setDeadline(event.currentTarget.value)}
-              />
-              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
-            </label>
-            <label className="field field--checkbox">
-              <span>Защита паролем</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Требовать пароль для входа</span>
-                <input checked={passwordEnabled} type="checkbox" onChange={(event) => setPasswordEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Перекрестная разметка</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Включить</span>
-                <input
-                  checked={crossValidationEnabled}
-                  type="checkbox"
-                  onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Пул валидации</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
-                <input
-                  checked={reviewVotingEnabled}
-                  type="checkbox"
-                  onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Создатель в разметке</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
-                <input
-                  checked={ownerIsAnnotator}
-                  type="checkbox"
-                  onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field">
-              <span>Независимых исполнителей (n)</span>
-              <input
-                value={crossValidationAnnotatorsCount}
-                type="number"
-                min="2"
-                max="20"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог сходства (%)</span>
-              <input
-                value={crossValidationSimilarityThreshold}
-                type="number"
-                min="1"
-                max="100"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Голосов для решения</span>
-              <input
-                value={reviewVotesRequired}
-                type="number"
-                min="1"
-                max="20"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог принятия (%)</span>
-              <input
-                value={reviewAcceptanceThreshold}
-                type="number"
-                min="1"
-                max="100"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--full">
-              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
-              <textarea
-                value={description}
-                rows={4}
-                placeholder="Кратко опиши задачу и правила разметки"
-                className={descriptionTooLong ? "field__control--invalid" : ""}
-                aria-invalid={descriptionTooLong}
-                onChange={(event) => setDescription(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            <label className="field field--full">
-              <span>Новый пароль комнаты</span>
-              <input
-                value={password}
-                type="password"
-                disabled={!passwordEnabled}
-                className={passwordTooLong ? "field__control--invalid" : ""}
-                aria-invalid={passwordTooLong}
-                placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-              />
-            </label>
-            <div className="panel-note room-edit-password-note">
-              {passwordEnabled
-                ? initialHasPassword
-                  ? "Оставь поле пустым, если текущий пароль менять не нужно. Введи новый пароль, если хочешь его заменить."
-                  : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
-                : "После сохранения доступ в комнату будет открыт без пароля."}
+        <section className="room-edit-board__workspace">
+          <div className="room-edit-board__workspace-head">
+            <div>
+              <span className="eyebrow">Редактирование комнаты</span>
+              <h1>Настройки комнаты</h1>
+              <p>Обнови параметры комнаты без изменения состава задач и файлов.</p>
             </div>
-            <div className="panel-note room-edit-note">
-              Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Перекрестную разметку и стандартную квоту можно
-              перенастроить здесь, не меняя сам состав задач.
+            <div className="room-edit-board__actions">
+              <a className="btn btn--muted" href={`/rooms/${roomId}/`}>
+                Назад к комнате
+              </a>
+              <button className="btn btn--primary" type="submit" disabled={submitting}>
+                {submitting ? "Сохраняем..." : "Сохранить"}
+              </button>
             </div>
           </div>
 
-          <div className="form-actions">
-            <a className="btn btn--muted" href={`/rooms/${roomId}/`}>
-              Назад к комнате
-            </a>
-            <button className="btn btn--primary" type="submit" disabled={submitting}>
-              {submitting ? "Сохраняем..." : "Сохранить изменения"}
-            </button>
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>01</span>
+              <h2>Основное</h2>
+            </div>
+            <div className="room-edit-fields">
+              <label className="field">
+                <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
+                <input
+                  value={title}
+                  type="text"
+                  placeholder="Например, Разметка отзывов Q2"
+                  required
+                  className={titleTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={titleTooLong}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                <input
+                  value={datasetLabel}
+                  type="text"
+                  placeholder="Например, Отзывы Q2"
+                  className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={datasetLabelTooLong}
+                  onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Стандартная квота задач</span>
+                <input
+                  value={defaultAssignmentQuota}
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Не задана"
+                  onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Дедлайн</span>
+                <input
+                  value={deadline}
+                  type="datetime-local"
+                  className={deadlineError ? "field__control--invalid" : ""}
+                  aria-invalid={Boolean(deadlineError)}
+                  onChange={(event) => setDeadline(event.currentTarget.value)}
+                />
+                {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
+              </label>
+            </div>
           </div>
-        </form>
-      </section>
-    </>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>02</span>
+              <h2>Доступ и роли</h2>
+            </div>
+            <div className="room-edit-fields room-edit-fields--toggles">
+              <label className="field field--checkbox">
+                <span>Защита паролем</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Требовать пароль для входа</span>
+                  <input checked={passwordEnabled} type="checkbox" onChange={(event) => setPasswordEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Создатель в разметке</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                  <input
+                    checked={ownerIsAnnotator}
+                    type="checkbox"
+                    onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field field--full">
+                <span>Новый пароль комнаты</span>
+                <input
+                  value={password}
+                  type="password"
+                  disabled={!passwordEnabled}
+                  className={passwordTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={passwordTooLong}
+                  placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                />
+              </label>
+              <div className="panel-note room-edit-password-note">
+                {passwordEnabled
+                  ? initialHasPassword
+                    ? "Оставь поле пустым, если текущий пароль менять не нужно. Введи новый пароль, если хочешь его заменить."
+                    : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
+                  : "После сохранения доступ в комнату будет открыт без пароля."}
+              </div>
+            </div>
+          </div>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>03</span>
+              <h2>Контроль качества</h2>
+            </div>
+            <div className="room-edit-fields room-edit-fields--toggles">
+              <label className="field field--checkbox">
+                <span>Перекрестная разметка</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Включить</span>
+                  <input
+                    checked={crossValidationEnabled}
+                    type="checkbox"
+                    onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Пул валидации</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                  <input
+                    checked={reviewVotingEnabled}
+                    type="checkbox"
+                    onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field">
+                <span>Независимых исполнителей</span>
+                <input
+                  value={crossValidationAnnotatorsCount}
+                  type="number"
+                  min="2"
+                  max="20"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог сходства (%)</span>
+                <input
+                  value={crossValidationSimilarityThreshold}
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Голосов для решения</span>
+                <input
+                  value={reviewVotesRequired}
+                  type="number"
+                  min="1"
+                  max="20"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог принятия (%)</span>
+                <input
+                  value={reviewAcceptanceThreshold}
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>04</span>
+              <h2>Описание</h2>
+            </div>
+            <div className="room-edit-fields">
+              <label className="field field--full">
+                <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
+                <textarea
+                  value={description}
+                  rows={4}
+                  placeholder="Кратко опиши задачу и правила разметки"
+                  className={descriptionTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={descriptionTooLong}
+                  onChange={(event) => setDescription(event.currentTarget.value)}
+                ></textarea>
+              </label>
+              <div className="panel-note room-edit-note">
+                Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Контроль качества и стандартную квоту можно
+                перенастроить здесь, не меняя сам состав задач.
+              </div>
+            </div>
+          </div>
+        </section>
+      </form>
+    </section>
   );
 }
 
@@ -4783,7 +4847,7 @@ function RoomDetailPage() {
   const roomWorkflowLabel = dashboard ? translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") : "";
   const roomPrimaryAction =
     dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask
-      ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "Выбрать кадры" }
+      ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "Продолжить разметку" }
       : dashboard?.actor.can_annotate
         ? { href: `/rooms/${dashboard.room.id}/work/`, label: "Продолжить разметку" }
         : null;
@@ -4905,7 +4969,7 @@ function RoomDetailPage() {
                 Главное меню
               </a>
               {roomPrimaryAction ? (
-                <a className="btn btn--primary" href={roomPrimaryAction.href}>
+                <a className="btn btn--muted" href={roomPrimaryAction.href}>
                   {roomPrimaryAction.label}
                 </a>
               ) : null}
@@ -4952,11 +5016,6 @@ function RoomDetailPage() {
                       </p>
                     </div>
                     <div className="room-console-actions">
-                      {roomPrimaryAction ? (
-                        <a className="btn btn--primary" href={roomPrimaryAction.href}>
-                          {roomPrimaryAction.label}
-                        </a>
-                      ) : null}
                       {dashboard.actor.can_edit_room ? (
                         <a className="btn btn--muted" href={`/rooms/${dashboard.room.id}/edit/`}>
                           Редактировать
@@ -5026,11 +5085,6 @@ function RoomDetailPage() {
                           : `осталось ${dashboard.annotator_stats.remaining_tasks}`}
                       </p>
                     </div>
-                    {roomPrimaryAction ? (
-                      <a className="btn btn--primary" href={roomPrimaryAction.href}>
-                        {roomPrimaryAction.label}
-                      </a>
-                    ) : null}
                   </div>
                   <div className="room-personal-content room-console-panel">
                     <div className="summary-stack room-personal-summary">
@@ -5620,42 +5674,104 @@ function RoomDetailPage() {
 
               {activeRoomSection === "settings" ? (
                 <div className="room-console-section">
-                  <div className="room-console-panel room-console-panel--workspace">
-                    <div className="panel-card__head">
-                      <div>
-                        <span className="eyebrow">Управление</span>
-                        <h2>Параметры комнаты</h2>
+                  <div className="room-settings-board" aria-label="Настройки комнаты">
+                    <aside className="room-settings-board__rail">
+                      <div className="room-settings-board__rail-head">
+                        <span>Настройка</span>
+                        <strong>Комната</strong>
                       </div>
-                    </div>
-                    <div className="room-settings-panel__locks">
-                      <article className="room-settings-panel__lock">
-                        <span>Тип датасета</span>
-                        <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-                      </article>
-                      <article className="room-settings-panel__lock">
-                        <span>Сценарий разметки</span>
-                        <strong>{translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard")}</strong>
-                      </article>
-                      <article className="room-settings-panel__lock">
-                        <span>Стандартная квота</span>
-                        <strong>{dashboard.room.default_assignment_quota == null ? "Не задана" : dashboard.room.default_assignment_quota}</strong>
-                      </article>
-                    </div>
-                    <p className="panel-note room-settings-panel__note">
-                      Название, описание, дедлайн, пароль, стандартная квота и параметры перекрестной разметки редактируются на отдельной странице.
-                    </p>
-                    <div className="role-assignment-box__actions">
-                      {dashboard.actor.can_edit_room ? (
-                        <a className="btn btn--muted" href={`/rooms/${dashboard.room.id}/edit/`}>
-                          Редактировать комнату
-                        </a>
-                      ) : null}
-                      {dashboard.actor.can_delete_room ? (
-                        <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
-                          Удалить комнату
-                        </button>
-                      ) : null}
-                    </div>
+                      <div className="room-settings-board__steps">
+                        <div className="room-settings-board__step is-active">
+                          <span>1</span>
+                          <div>
+                            <strong>Основное</strong>
+                            <small>{dashboard.room.title}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>2</span>
+                          <div>
+                            <strong>Датасет</strong>
+                            <small>{translateDatasetMode(dashboard.room.dataset_type)} · {dashboard.room.dataset_label || "Без названия"}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>3</span>
+                          <div>
+                            <strong>Доступ</strong>
+                            <small>{dashboard.room.has_password ? "Вход по паролю" : "Открытый вход"}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>4</span>
+                          <div>
+                            <strong>Качество</strong>
+                            <small>{dashboard.room.review_voting_enabled ? "Пул валидации включен" : "Без пула валидации"}</small>
+                          </div>
+                        </div>
+                      </div>
+                    </aside>
+
+                    <section className="room-settings-board__workspace">
+                      <div className="room-settings-board__workspace-head">
+                        <div>
+                          <span className="eyebrow">Параметры</span>
+                          <h2>Управление комнатой</h2>
+                          <p>Структура комнаты зафиксирована после создания. Изменяемые поля открываются на отдельной странице редактирования.</p>
+                        </div>
+                        {dashboard.actor.can_edit_room ? (
+                          <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/edit/`}>
+                            Редактировать
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <div className="room-settings-board__fields">
+                        <article className="room-settings-board__field">
+                          <span>Тип датасета</span>
+                          <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Сценарий</span>
+                          <strong>{translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard")}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Датасет</span>
+                          <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Дедлайн</span>
+                          <strong>{formatDate(dashboard.room.deadline)}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Стандартная квота</span>
+                          <strong>{dashboard.room.default_assignment_quota == null ? "Не задана" : dashboard.room.default_assignment_quota}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Cross-validation</span>
+                          <strong>{dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "Выкл."}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Пул валидации</span>
+                          <strong>{dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} голос.` : "Выкл."}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>PDF</span>
+                          <strong>{dashboard.room.description_pdf_name || "Не добавлен"}</strong>
+                        </article>
+                      </div>
+
+                      <div className="room-settings-board__footer">
+                        <p className="panel-note room-settings-panel__note">
+                          Название, описание, дедлайн, пароль, стандартная квота и параметры контроля качества редактируются без изменения состава задач.
+                        </p>
+                        {dashboard.actor.can_delete_room ? (
+                          <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
+                            Удалить комнату
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
                   </div>
                 </div>
               ) : null}

@@ -24518,235 +24518,299 @@
         setSubmitting(false);
       }
     }
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "page-topbar", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "page-topbar__copy", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0431\u043D\u043E\u0432\u0438 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043A\u0432\u043E\u0442\u044B \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u0430\u043C\u0438\u0445 \u0437\u0430\u0434\u0430\u0447 \u0438 \u0444\u0430\u0439\u043B\u043E\u0432." })
-      ] }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "create-layout", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "form-card", onSubmit: handleSubmit, children: [
-        room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-edit-summary", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("section", { className: "room-edit-shell", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("form", { className: "room-edit-board", onSubmit: handleSubmit, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "room-edit-board__rail", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__rail-head", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__steps", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__step is-active", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "1" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: title || "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__step", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "2" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: passwordEnabled ? "\u041F\u0430\u0440\u043E\u043B\u044C \u0432\u043A\u043B\u044E\u0447\u0435\u043D" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__step", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "3" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: crossValidationEnabled ? "Cross-validation" : reviewVotingEnabled ? "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" : "\u041E\u0431\u044B\u0447\u043D\u0430\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__step", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "4" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: description ? "\u0417\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E" : "\u041D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D\u043E" })
+            ] })
+          ] })
+        ] }),
+        room ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__summary", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ID \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("strong", { children: [
               "#",
               room.id
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(room.dataset_type) })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(room.annotation_workflow || "standard") })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: room.has_password ? "\u0421 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" : "\u0411\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F" })
           ] })
-        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "summary-stack room-edit-summary empty-card", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-grid", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: title,
-                type: "text",
-                placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
-                required: true,
-                className: titleTooLong ? "field__control--invalid" : "",
-                "aria-invalid": titleTooLong,
-                onChange: (event) => setTitle(event.currentTarget.value)
-              }
-            )
+        ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "empty-card room-edit-board__loading", children: "\u0417\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u043C \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438." })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-edit-board__workspace", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__workspace-head", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u041E\u0431\u043D\u043E\u0432\u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u043E\u0441\u0442\u0430\u0432\u0430 \u0437\u0430\u0434\u0430\u0447 \u0438 \u0444\u0430\u0439\u043B\u043E\u0432." })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: datasetLabel,
-                type: "text",
-                placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u041E\u0442\u0437\u044B\u0432\u044B Q2",
-                className: datasetLabelTooLong ? "field__control--invalid" : "",
-                "aria-invalid": datasetLabelTooLong,
-                onChange: (event) => setDatasetLabel(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: defaultAssignmentQuota,
-                type: "number",
-                min: "0",
-                step: "1",
-                placeholder: "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430",
-                onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D (\u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: deadline,
-                type: "datetime-local",
-                className: deadlineError ? "field__control--invalid" : "",
-                "aria-invalid": Boolean(deadlineError),
-                onChange: (event) => setDeadline(event.currentTarget.value)
-              }
-            ),
-            deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0449\u0438\u0442\u0430 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0422\u0440\u0435\u0431\u043E\u0432\u0430\u0442\u044C \u043F\u0430\u0440\u043E\u043B\u044C \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: passwordEnabled, type: "checkbox", onChange: (event) => setPasswordEnabled(event.currentTarget.checked) })
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0412\u043A\u043B\u044E\u0447\u0438\u0442\u044C" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  checked: crossValidationEnabled,
-                  type: "checkbox",
-                  onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked)
-                }
-              )
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  checked: reviewVotingEnabled,
-                  type: "checkbox",
-                  onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked)
-                }
-              )
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  checked: ownerIsAnnotator,
-                  type: "checkbox",
-                  onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked)
-                }
-              )
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439 (n)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: crossValidationAnnotatorsCount,
-                type: "number",
-                min: "2",
-                max: "20",
-                disabled: !crossValidationEnabled,
-                onChange: (event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u0441\u0445\u043E\u0434\u0441\u0442\u0432\u0430 (%)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: crossValidationSimilarityThreshold,
-                type: "number",
-                min: "1",
-                max: "100",
-                disabled: !crossValidationEnabled,
-                onChange: (event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: reviewVotesRequired,
-                type: "number",
-                min: "1",
-                max: "20",
-                disabled: !reviewVotingEnabled,
-                onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: reviewAcceptanceThreshold,
-                type: "number",
-                min: "1",
-                max: "100",
-                disabled: !reviewVotingEnabled,
-                onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "textarea",
-              {
-                value: description,
-                rows: 4,
-                placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
-                className: descriptionTooLong ? "field__control--invalid" : "",
-                "aria-invalid": descriptionTooLong,
-                onChange: (event) => setDescription(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                value: password,
-                type: "password",
-                disabled: !passwordEnabled,
-                className: passwordTooLong ? "field__control--invalid" : "",
-                "aria-invalid": passwordTooLong,
-                placeholder: initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u0443\u0441\u0442\u044B\u043C, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C" : "\u0417\u0430\u0434\u0430\u0439 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C",
-                onChange: (event) => setPassword(event.currentTarget.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-password-note", children: passwordEnabled ? initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u043E\u043B\u0435 \u043F\u0443\u0441\u0442\u044B\u043C, \u0435\u0441\u043B\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u043C\u0435\u043D\u044F\u0442\u044C \u043D\u0435 \u043D\u0443\u0436\u043D\u043E. \u0412\u0432\u0435\u0434\u0438 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C, \u0435\u0441\u043B\u0438 \u0445\u043E\u0447\u0435\u0448\u044C \u0435\u0433\u043E \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C." : "\u0423\u043A\u0430\u0436\u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0438 \u0444\u043E\u0440\u043C\u0443, \u0447\u0442\u043E\u0431\u044B \u0437\u0430\u043A\u0440\u044B\u0442\u044C \u0432\u0445\u043E\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E." : "\u041F\u043E\u0441\u043B\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0431\u0443\u0434\u0435\u0442 \u043E\u0442\u043A\u0440\u044B\u0442 \u0431\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F." }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-note", children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043B\u0435\u0439\u0431\u043B\u044B \u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043D\u044B\u0435 \u0444\u0430\u0439\u043B\u044B \u0432 \u044D\u0442\u043E\u0439 \u0444\u043E\u0440\u043C\u0435 \u043D\u0435 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F. \u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u0438 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0443\u044E \u043A\u0432\u043E\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u043F\u0435\u0440\u0435\u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0437\u0434\u0435\u0441\u044C, \u043D\u0435 \u043C\u0435\u043D\u044F\u044F \u0441\u0430\u043C \u0441\u043E\u0441\u0442\u0430\u0432 \u0437\u0430\u0434\u0430\u0447." })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-board__actions", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${roomId}/`, children: "\u041D\u0430\u0437\u0430\u0434 \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", disabled: submitting, children: submitting ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C" })
+          ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "form-actions", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${roomId}/`, children: "\u041D\u0430\u0437\u0430\u0434 \u043A \u043A\u043E\u043C\u043D\u0430\u0442\u0435" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--primary", type: "submit", disabled: submitting, children: submitting ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C..." : "\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section__head", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "01" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-fields", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", value: title, maxLength: ROOM_TITLE_MAX_LENGTH }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: title,
+                  type: "text",
+                  placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u043E\u0442\u0437\u044B\u0432\u043E\u0432 Q2",
+                  required: true,
+                  className: titleTooLong ? "field__control--invalid" : "",
+                  "aria-invalid": titleTooLong,
+                  onChange: (event) => setTitle(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430", value: datasetLabel, maxLength: ROOM_DATASET_LABEL_MAX_LENGTH }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: datasetLabel,
+                  type: "text",
+                  placeholder: "\u041D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \u041E\u0442\u0437\u044B\u0432\u044B Q2",
+                  className: datasetLabelTooLong ? "field__control--invalid" : "",
+                  "aria-invalid": datasetLabelTooLong,
+                  onChange: (event) => setDatasetLabel(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0437\u0430\u0434\u0430\u0447" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: defaultAssignmentQuota,
+                  type: "number",
+                  min: "0",
+                  step: "1",
+                  placeholder: "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430",
+                  onChange: (event) => setDefaultAssignmentQuota(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: deadline,
+                  type: "datetime-local",
+                  className: deadlineError ? "field__control--invalid" : "",
+                  "aria-invalid": Boolean(deadlineError),
+                  onChange: (event) => setDeadline(event.currentTarget.value)
+                }
+              ),
+              deadlineError ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note", children: deadlineError }) : null
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section__head", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "02" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0414\u043E\u0441\u0442\u0443\u043F \u0438 \u0440\u043E\u043B\u0438" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-fields room-edit-fields--toggles", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0417\u0430\u0449\u0438\u0442\u0430 \u043F\u0430\u0440\u043E\u043B\u0435\u043C" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0422\u0440\u0435\u0431\u043E\u0432\u0430\u0442\u044C \u043F\u0430\u0440\u043E\u043B\u044C \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { checked: passwordEnabled, type: "checkbox", onChange: (event) => setPasswordEnabled(event.currentTarget.checked) })
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0432 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0435" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0421\u043E\u0437\u0434\u0430\u0442\u0435\u043B\u044C \u0442\u043E\u0436\u0435 \u0440\u0430\u0437\u043C\u0435\u0447\u0430\u0435\u0442 \u0437\u0430\u0434\u0430\u0447\u0438" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    checked: ownerIsAnnotator,
+                    type: "checkbox",
+                    onChange: (event) => setOwnerIsAnnotator(event.currentTarget.checked)
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u044B" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: password,
+                  type: "password",
+                  disabled: !passwordEnabled,
+                  className: passwordTooLong ? "field__control--invalid" : "",
+                  "aria-invalid": passwordTooLong,
+                  placeholder: initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u0443\u0441\u0442\u044B\u043C, \u0447\u0442\u043E\u0431\u044B \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C" : "\u0417\u0430\u0434\u0430\u0439 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C",
+                  onChange: (event) => setPassword(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-password-note", children: passwordEnabled ? initialHasPassword ? "\u041E\u0441\u0442\u0430\u0432\u044C \u043F\u043E\u043B\u0435 \u043F\u0443\u0441\u0442\u044B\u043C, \u0435\u0441\u043B\u0438 \u0442\u0435\u043A\u0443\u0449\u0438\u0439 \u043F\u0430\u0440\u043E\u043B\u044C \u043C\u0435\u043D\u044F\u0442\u044C \u043D\u0435 \u043D\u0443\u0436\u043D\u043E. \u0412\u0432\u0435\u0434\u0438 \u043D\u043E\u0432\u044B\u0439 \u043F\u0430\u0440\u043E\u043B\u044C, \u0435\u0441\u043B\u0438 \u0445\u043E\u0447\u0435\u0448\u044C \u0435\u0433\u043E \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C." : "\u0423\u043A\u0430\u0436\u0438 \u043F\u0430\u0440\u043E\u043B\u044C \u0438 \u0441\u043E\u0445\u0440\u0430\u043D\u0438 \u0444\u043E\u0440\u043C\u0443, \u0447\u0442\u043E\u0431\u044B \u0437\u0430\u043A\u0440\u044B\u0442\u044C \u0432\u0445\u043E\u0434 \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E." : "\u041F\u043E\u0441\u043B\u0435 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u0434\u043E\u0441\u0442\u0443\u043F \u0432 \u043A\u043E\u043C\u043D\u0430\u0442\u0443 \u0431\u0443\u0434\u0435\u0442 \u043E\u0442\u043A\u0440\u044B\u0442 \u0431\u0435\u0437 \u043F\u0430\u0440\u043E\u043B\u044F." })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section__head", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "03" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-fields room-edit-fields--toggles", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u0430\u044F \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0430" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u0412\u043A\u043B\u044E\u0447\u0438\u0442\u044C" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    checked: crossValidationEnabled,
+                    type: "checkbox",
+                    onChange: (event) => setCrossValidationEnabled(event.currentTarget.checked)
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--checkbox", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "field--checkbox__control", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "field--checkbox__text", children: "\u041E\u0442\u043F\u0440\u0430\u0432\u043B\u044F\u0442\u044C \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u0443\u044E \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443 \u043D\u0430 \u0433\u043E\u043B\u043E\u0441\u043E\u0432\u0430\u043D\u0438\u0435" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    checked: reviewVotingEnabled,
+                    type: "checkbox",
+                    onChange: (event) => setReviewVotingEnabled(event.currentTarget.checked)
+                  }
+                )
+              ] })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0435\u0437\u0430\u0432\u0438\u0441\u0438\u043C\u044B\u0445 \u0438\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u0435\u0439" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: crossValidationAnnotatorsCount,
+                  type: "number",
+                  min: "2",
+                  max: "20",
+                  disabled: !crossValidationEnabled,
+                  onChange: (event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u0441\u0445\u043E\u0434\u0441\u0442\u0432\u0430 (%)" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: crossValidationSimilarityThreshold,
+                  type: "number",
+                  min: "1",
+                  max: "100",
+                  disabled: !crossValidationEnabled,
+                  onChange: (event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0413\u043E\u043B\u043E\u0441\u043E\u0432 \u0434\u043B\u044F \u0440\u0435\u0448\u0435\u043D\u0438\u044F" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: reviewVotesRequired,
+                  type: "number",
+                  min: "1",
+                  max: "20",
+                  disabled: !reviewVotingEnabled,
+                  onChange: (event) => setReviewVotesRequired(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u043E\u0440\u043E\u0433 \u043F\u0440\u0438\u043D\u044F\u0442\u0438\u044F (%)" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  value: reviewAcceptanceThreshold,
+                  type: "number",
+                  min: "1",
+                  max: "100",
+                  disabled: !reviewVotingEnabled,
+                  onChange: (event) => setReviewAcceptanceThreshold(event.currentTarget.value)
+                }
+              )
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-section__head", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "04" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-edit-fields", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "field field--full", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CharacterLimitLabel, { label: "\u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435", value: description, maxLength: ROOM_DESCRIPTION_MAX_LENGTH }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "textarea",
+                {
+                  value: description,
+                  rows: 4,
+                  placeholder: "\u041A\u0440\u0430\u0442\u043A\u043E \u043E\u043F\u0438\u0448\u0438 \u0437\u0430\u0434\u0430\u0447\u0443 \u0438 \u043F\u0440\u0430\u0432\u0438\u043B\u0430 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438",
+                  className: descriptionTooLong ? "field__control--invalid" : "",
+                  "aria-invalid": descriptionTooLong,
+                  onChange: (event) => setDescription(event.currentTarget.value)
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-note room-edit-note", children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430, \u0441\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438, \u043B\u0435\u0439\u0431\u043B\u044B \u0438 \u0437\u0430\u0433\u0440\u0443\u0436\u0435\u043D\u043D\u044B\u0435 \u0444\u0430\u0439\u043B\u044B \u0432 \u044D\u0442\u043E\u0439 \u0444\u043E\u0440\u043C\u0435 \u043D\u0435 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F. \u041A\u043E\u043D\u0442\u0440\u043E\u043B\u044C \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430 \u0438 \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0443\u044E \u043A\u0432\u043E\u0442\u0443 \u043C\u043E\u0436\u043D\u043E \u043F\u0435\u0440\u0435\u043D\u0430\u0441\u0442\u0440\u043E\u0438\u0442\u044C \u0437\u0434\u0435\u0441\u044C, \u043D\u0435 \u043C\u0435\u043D\u044F\u044F \u0441\u0430\u043C \u0441\u043E\u0441\u0442\u0430\u0432 \u0437\u0430\u0434\u0430\u0447." })
+          ] })
         ] })
-      ] }) })
-    ] });
+      ] })
+    ] }) });
   }
   function RoomDetailPage() {
     const { bootstrap: bootstrap2, authUser, api, addToast, clearToasts } = useApp();
@@ -25256,7 +25320,7 @@
     const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
     const canShowRoomWorkspace = Boolean(dashboard && (dashboard.actor.can_annotate || hasRoomManagementActions));
     const roomWorkflowLabel = dashboard ? translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") : "";
-    const roomPrimaryAction = dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" } : dashboard?.actor.can_annotate ? { href: `/rooms/${dashboard.room.id}/work/`, label: "\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" } : null;
+    const roomPrimaryAction = dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" } : dashboard?.actor.can_annotate ? { href: `/rooms/${dashboard.room.id}/work/`, label: "\u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0443" } : null;
     const roomDetailSections = dashboard ? [
       {
         id: "overview",
@@ -25348,7 +25412,7 @@
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-console__hero-actions", "aria-label": "\u0414\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: "/", children: "\u0413\u043B\u0430\u0432\u043D\u043E\u0435 \u043C\u0435\u043D\u044E" }),
-              roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: roomPrimaryAction.href, children: roomPrimaryAction.label }) : null,
+              roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: roomPrimaryAction.href, children: roomPrimaryAction.label }) : null,
               dashboard.actor.can_review ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--secondary", href: `/rooms/${dashboard.room.id}/work/?mode=review`, children: "\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443" }) : null,
               dashboard.room.description_pdf_url ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: dashboard.room.description_pdf_url, target: "_blank", rel: "noreferrer", children: dashboard.room.description_pdf_name || "PDF \u0441 \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435\u043C" }) : null
             ] })
@@ -25377,7 +25441,6 @@
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0417\u0434\u0435\u0441\u044C \u0441\u043E\u0431\u0440\u0430\u043D\u044B \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441, \u0431\u044B\u0441\u0442\u0440\u044B\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044F \u0438 \u0431\u0430\u0437\u043E\u0432\u044B\u0435 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B. \u0420\u0430\u0437\u043C\u0435\u0442\u043A\u0430 \u0438 \u0440\u0435\u0432\u044C\u044E \u043E\u0441\u0442\u0430\u044E\u0442\u0441\u044F \u0432 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u043C fullscreen-\u0440\u0435\u0434\u0430\u043A\u0442\u043E\u0440\u0435." })
                   ] }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-console-actions", children: [
-                    roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: roomPrimaryAction.href, children: roomPrimaryAction.label }) : null,
                     dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C" }) : null,
                     dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--muted", type: "button", onClick: () => handleRoomSectionChange("export"), children: "\u042D\u043A\u0441\u043F\u043E\u0440\u0442" }) : null
                   ] })
@@ -25422,21 +25485,18 @@
                 ] })
               ] }) : null,
               activeRoomSection === "personal" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-console-section", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-console-panel room-console-panel--intro", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041C\u043E\u044F \u043E\u0447\u0435\u0440\u0435\u0434\u044C" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [
-                      translateRole(dashboard.actor.role),
-                      " \u2022 ",
-                      formatPercent(dashboard.annotator_stats?.progress_percent || 0),
-                      " \u2022",
-                      " ",
-                      dashboard.annotator_stats?.remaining_tasks == null ? "\u043E\u0441\u0442\u0430\u0442\u043E\u043A \u043D\u0435 \u0437\u0430\u0434\u0430\u043D" : `\u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C ${dashboard.annotator_stats.remaining_tasks}`
-                    ] })
-                  ] }),
-                  roomPrimaryAction ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: roomPrimaryAction.href, children: roomPrimaryAction.label }) : null
-                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-console-panel room-console-panel--intro", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041C\u043E\u044F \u043E\u0447\u0435\u0440\u0435\u0434\u044C" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041B\u0438\u0447\u043D\u0430\u044F \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u043A\u0430" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { children: [
+                    translateRole(dashboard.actor.role),
+                    " \u2022 ",
+                    formatPercent(dashboard.annotator_stats?.progress_percent || 0),
+                    " \u2022",
+                    " ",
+                    dashboard.annotator_stats?.remaining_tasks == null ? "\u043E\u0441\u0442\u0430\u0442\u043E\u043A \u043D\u0435 \u0437\u0430\u0434\u0430\u043D" : `\u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C ${dashboard.annotator_stats.remaining_tasks}`
+                  ] })
+                ] }) }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-personal-content room-console-panel", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-stack room-personal-summary", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "summary-row", children: [
@@ -25900,29 +25960,94 @@
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--secondary", type: "button", onClick: handleExport, children: "\u0412\u044B\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
               ] }) }) : null,
-              activeRoomSection === "settings" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-console-section", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-console-panel room-console-panel--workspace", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-card__head", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043C\u043D\u0430\u0442\u044B" })
-                ] }) }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-panel__locks", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+              activeRoomSection === "settings" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "room-console-section", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board", "aria-label": "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043A\u043E\u043C\u043D\u0430\u0442\u044B", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("aside", { className: "room-settings-board__rail", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__rail-head", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0430" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u043E\u043C\u043D\u0430\u0442\u0430" })
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-panel__lock", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430" }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.default_assignment_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : dashboard.room.default_assignment_quota })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__steps", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__step is-active", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "1" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041E\u0441\u043D\u043E\u0432\u043D\u043E\u0435" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: dashboard.room.title })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__step", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "2" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("small", { children: [
+                          translateDatasetMode(dashboard.room.dataset_type),
+                          " \xB7 ",
+                          dashboard.room.dataset_label || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F"
+                        ] })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__step", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "3" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u0414\u043E\u0441\u0442\u0443\u043F" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: dashboard.room.has_password ? "\u0412\u0445\u043E\u0434 \u043F\u043E \u043F\u0430\u0440\u043E\u043B\u044E" : "\u041E\u0442\u043A\u0440\u044B\u0442\u044B\u0439 \u0432\u0445\u043E\u0434" })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__step", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "4" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: "\u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("small", { children: dashboard.room.review_voting_enabled ? "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438 \u0432\u043A\u043B\u044E\u0447\u0435\u043D" : "\u0411\u0435\u0437 \u043F\u0443\u043B\u0430 \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" })
+                      ] })
+                    ] })
                   ] })
                 ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C, \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043F\u0435\u0440\u0435\u043A\u0440\u0435\u0441\u0442\u043D\u043E\u0439 \u0440\u0430\u0437\u043C\u0435\u0442\u043A\u0438 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435." }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "role-assignment-box__actions", children: [
-                  dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--muted", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null,
-                  dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "room-settings-board__workspace", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__workspace-head", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "eyebrow", children: "\u041F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { children: "\u0423\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u0438\u0435 \u043A\u043E\u043C\u043D\u0430\u0442\u043E\u0439" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: "\u0421\u0442\u0440\u0443\u043A\u0442\u0443\u0440\u0430 \u043A\u043E\u043C\u043D\u0430\u0442\u044B \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u0430 \u043F\u043E\u0441\u043B\u0435 \u0441\u043E\u0437\u0434\u0430\u043D\u0438\u044F. \u0418\u0437\u043C\u0435\u043D\u044F\u0435\u043C\u044B\u0435 \u043F\u043E\u043B\u044F \u043E\u0442\u043A\u0440\u044B\u0432\u0430\u044E\u0442\u0441\u044F \u043D\u0430 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u044F." })
+                    ] }),
+                    dashboard.actor.can_edit_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary", href: `/rooms/${dashboard.room.id}/edit/`, children: "\u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C" }) : null
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__fields", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0422\u0438\u043F \u0434\u0430\u0442\u0430\u0441\u0435\u0442\u0430" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateDatasetMode(dashboard.room.dataset_type) })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0446\u0435\u043D\u0430\u0440\u0438\u0439" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0430\u0442\u0430\u0441\u0435\u0442" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.dataset_label || "\u0422\u0435\u0441\u0442\u043E\u0432\u044B\u0439 \u0434\u0430\u0442\u0430\u0441\u0435\u0442" })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0414\u0435\u0434\u043B\u0430\u0439\u043D" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: formatDate(dashboard.room.deadline) })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u0421\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.default_assignment_quota == null ? "\u041D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430" : dashboard.room.default_assignment_quota })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Cross-validation" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "\u0412\u044B\u043A\u043B." })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u041F\u0443\u043B \u0432\u0430\u043B\u0438\u0434\u0430\u0446\u0438\u0438" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} \u0433\u043E\u043B\u043E\u0441.` : "\u0412\u044B\u043A\u043B." })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("article", { className: "room-settings-board__field", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "PDF" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("strong", { children: dashboard.room.description_pdf_name || "\u041D\u0435 \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" })
+                    ] })
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "room-settings-board__footer", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "panel-note room-settings-panel__note", children: "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435, \u0434\u0435\u0434\u043B\u0430\u0439\u043D, \u043F\u0430\u0440\u043E\u043B\u044C, \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u0430\u044F \u043A\u0432\u043E\u0442\u0430 \u0438 \u043F\u0430\u0440\u0430\u043C\u0435\u0442\u0440\u044B \u043A\u043E\u043D\u0442\u0440\u043E\u043B\u044F \u043A\u0430\u0447\u0435\u0441\u0442\u0432\u0430 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u0443\u044E\u0442\u0441\u044F \u0431\u0435\u0437 \u0438\u0437\u043C\u0435\u043D\u0435\u043D\u0438\u044F \u0441\u043E\u0441\u0442\u0430\u0432\u0430 \u0437\u0430\u0434\u0430\u0447." }),
+                    dashboard.actor.can_delete_room ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "btn btn--danger", type: "button", onClick: handleDeleteRoom, disabled: deleteRoomBusy, children: "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u043A\u043E\u043C\u043D\u0430\u0442\u0443" }) : null
+                  ] })
                 ] })
               ] }) }) : null
             ] }),
