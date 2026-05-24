@@ -9407,7 +9407,6 @@ function RoomWorkPage() {
   const [payloadText, setPayloadText] = useState(JSON.stringify(createDefaultGenericPayload(), null, 2));
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeInspector, setActiveInspector] = useState<"annotations" | "payload" | null>(null);
   const [submittedTasks, setSubmittedTasks] = useState<EditableSubmissionListItem[]>([]);
   const [submittedTasksLoading, setSubmittedTasksLoading] = useState(false);
   const [selectedSubmittedTaskId, setSelectedSubmittedTaskId] = useState<number | null>(null);
@@ -9518,10 +9517,6 @@ function RoomWorkPage() {
         : submittedDetail?.editable
           ? "Сохранить изменения"
           : "Только чтение";
-
-  function toggleInspector(nextInspector: "annotations" | "payload") {
-    setActiveInspector((current) => (current === nextInspector ? null : nextInspector));
-  }
 
   useEffect(() => {
     if (
@@ -9712,7 +9707,6 @@ function RoomWorkPage() {
     options?: { taskId?: number | null; annotatorId?: number | null }
   ) {
     setWorkspaceMode(nextMode);
-    setActiveInspector(null);
     setSubmitting(false);
     setCurrentTask(null);
     setLoading(true);
@@ -10148,31 +10142,6 @@ function RoomWorkPage() {
               </button>
             ) : null}
           </div>
-          <div className="room-editor__action-group room-editor__action-group--inspect" aria-label="Панели редактора">
-            <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
-              Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
-            </button>
-            <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
-              JSON
-            </button>
-          </div>
-          {workspaceMode === "review" ? null : (
-            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
-              {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                <>
-                  <button className="btn btn--secondary btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleNoObjectTask}>
-                    {noObjecting ? "Отмечаем..." : "Объекта нет"}
-                  </button>
-                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleSkipTask}>
-                    {skipping ? "Пропускаем..." : "Пропустить"}
-                  </button>
-                </>
-              ) : null}
-              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-                {submitButtonLabel}
-              </button>
-            </div>
-          )}
         </div>
       </header>
 
@@ -10470,7 +10439,7 @@ function RoomWorkPage() {
             </div>
 
             <div ref={mediaToolRef} className={isMediaTask || workspaceMode === "review" ? "editor-toolbar" : "editor-toolbar hidden"}>
-              <div className="editor-toolbar__frame">
+              <div className={`editor-toolbar__frame ${workspaceMode === "review" || videoFrameContext ? "" : "hidden"}`}>
                 {workspaceMode === "review" ? (
                   <div className="room-editor__review-filters" role="group" aria-label="Фильтр проверки">
                     <button
@@ -10525,7 +10494,6 @@ function RoomWorkPage() {
                     ))}
                   </div>
                 ) : null}
-                <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" ? "hidden" : ""}`}></div>
               </div>
               <div ref={zoomToolbarRef} className={isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden"}>
                 <div className="media-zoom">
@@ -10539,45 +10507,77 @@ function RoomWorkPage() {
           </div>
         </section>
 
-        <aside className={`room-editor__inspector ${activeInspector ? "is-open" : ""}`}>
-          <section className={activeInspector === "annotations" ? "editor-panel" : "editor-panel hidden"}>
-            <div className="editor-panel__head">
-              <span className="editor-panel__title">
-                {scenario.annotationsTitle}
-                {editorState.annotationCount ? ` (${editorState.annotationCount})` : ""}
+        <aside className="room-editor__answerrail">
+          <section className="editor-panel editor-panel--answer">
+            <div className="editor-panel__head room-editor__answer-head">
+              <div>
+                <span className="editor-panel__title">Ответ</span>
+                <strong>{scenario.annotationsTitle}</strong>
+              </div>
+              <span className="editor-chip editor-chip--ghost">
+                {editorState.annotationCount ? `${editorState.annotationCount} обл.` : "Нет областей"}
               </span>
-              <div className="editor-panel__actions">
-                <button
-                  ref={clearAnnotationsBtnRef}
-                  className={`btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`}
-                  type="button"
-                >
-                  Очистить
+            </div>
+
+            <div className="room-editor__answer-scroll">
+              <div className={`room-editor__answer-section ${workspaceMode === "review" || !isMediaTask ? "hidden" : ""}`}>
+                <span className="room-editor__answer-label">Класс объекта</span>
+                <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" || !isMediaTask ? "hidden" : ""}`}></div>
+              </div>
+
+              <div className="room-editor__answer-section room-editor__answer-section--fill">
+                <div className="room-editor__answer-section-head">
+                  <span className="room-editor__answer-label">Области</span>
+                  <button
+                    ref={clearAnnotationsBtnRef}
+                    className={`btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`}
+                    type="button"
+                  >
+                    Очистить
+                  </button>
+                </div>
+                <div ref={annotationListRef} className="annotation-list empty-card">
+                  Разметка пока отсутствует.
+                </div>
+              </div>
+
+              <details className="room-editor__payload-details" open={!isMediaTask}>
+                <summary>JSON результата</summary>
+                <label className="field editor-field editor-field--payload">
+                  <span ref={resultLabelRef}>Результат разметки</span>
+                  <textarea
+                    ref={resultJsonRef}
+                    rows={12}
+                    value={payloadText}
+                    readOnly={Boolean(currentTask && isMediaTask) || isReadOnlyStage}
+                    onChange={(event) => setPayloadText(event.currentTarget.value)}
+                  ></textarea>
+                </label>
+                {bootstrap.app_debug_mode && currentTask ? (
+                  <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
+                ) : null}
+              </details>
+            </div>
+
+            {workspaceMode === "review" ? (
+              <div className="room-editor__answer-note">Решение по проверке доступно в левой панели ревью.</div>
+            ) : (
+              <div className="room-editor__answer-actions" aria-label="Действия с задачей">
+                {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                  <div className="room-editor__answer-secondary-actions">
+                    <button className="btn btn--secondary btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleNoObjectTask}>
+                      {noObjecting ? "Отмечаем..." : "Объекта нет"}
+                    </button>
+                    <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleSkipTask}>
+                      {skipping ? "Пропускаем..." : "Пропустить"}
+                    </button>
+                  </div>
+                ) : null}
+                <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                  {submitButtonLabel}
                 </button>
               </div>
-            </div>
-            <div ref={annotationListRef} className="annotation-list empty-card">
-              Разметка пока отсутствует.
-            </div>
-          </section>
-
-          <section className={activeInspector === "payload" ? "editor-panel" : "editor-panel hidden"}>
-            <div className="editor-panel__head">
-              <span className="editor-panel__title">Результат</span>
-            </div>
-            <label className="field editor-field editor-field--payload">
-              <span ref={resultLabelRef}>Результат разметки</span>
-              <textarea
-                ref={resultJsonRef}
-                rows={16}
-                value={payloadText}
-                readOnly={Boolean(currentTask && isMediaTask) || isReadOnlyStage}
-                onChange={(event) => setPayloadText(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            {bootstrap.app_debug_mode && currentTask ? (
-              <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
-            ) : null}
+            )}
           </section>
         </aside>
       </div>

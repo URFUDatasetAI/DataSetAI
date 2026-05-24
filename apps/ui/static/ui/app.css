@@ -3571,7 +3571,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
     height: 100%;
     margin: 0;
     display: grid;
-    grid-template-columns: minmax(240px, 280px) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(220px, 250px) minmax(0, 1fr) minmax(288px, 328px);
     align-items: stretch;
     border: 0;
     background: transparent;
@@ -3820,6 +3820,13 @@ input[type="file"]::-webkit-file-upload-button:hover {
     background: var(--editor-surface-muted);
 }
 
+.room-editor__answerrail {
+    min-width: 0;
+    border-left: 1px solid var(--editor-border);
+    background: var(--editor-surface-muted);
+    overflow: hidden;
+}
+
 .editor-panel {
     display: flex;
     flex-direction: column;
@@ -3848,6 +3855,146 @@ input[type="file"]::-webkit-file-upload-button:hover {
     align-items: center;
     gap: 8px;
     justify-content: flex-end;
+}
+
+.editor-panel--answer {
+    gap: 14px;
+    overflow: hidden;
+}
+
+.room-editor__answer-head {
+    align-items: flex-start;
+}
+
+.room-editor__answer-head > div {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.room-editor__answer-head strong {
+    min-width: 0;
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.room-editor__answer-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+    scrollbar-width: thin;
+}
+
+.room-editor__answer-section {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.room-editor__answer-section--fill {
+    flex: 1 1 auto;
+    min-height: 160px;
+}
+
+.room-editor__answer-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.room-editor__answer-label {
+    color: var(--text-soft);
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.room-editor__answerrail .editor-label-palette {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.room-editor__answerrail .annotation-list {
+    min-height: 0;
+}
+
+.room-editor__answer-section--fill .annotation-list {
+    flex: 1 1 auto;
+}
+
+.room-editor__payload-details {
+    flex: 0 0 auto;
+    border: 1px solid var(--editor-border);
+    background: var(--editor-surface-muted);
+    overflow: hidden;
+}
+
+.room-editor__payload-details summary {
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.86rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.room-editor__payload-details .editor-field {
+    padding: 0 12px 12px;
+}
+
+.room-editor__payload-details .editor-field > span {
+    color: var(--text-soft);
+    font-size: 0.78rem;
+}
+
+.room-editor__payload-details textarea {
+    min-height: 180px;
+}
+
+.room-editor__answer-actions,
+.room-editor__answer-secondary-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.room-editor__answer-actions {
+    flex: 0 0 auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--editor-border);
+}
+
+.room-editor__answer-secondary-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.room-editor__answer-actions .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.room-editor__answer-note {
+    flex: 0 0 auto;
+    padding-top: 12px;
+    border-top: 1px solid var(--editor-border);
+    color: var(--text-soft);
+    font-size: 0.84rem;
+    line-height: 1.45;
 }
 
 .editor-toolbar {
@@ -4212,6 +4359,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 @media (max-width: 1180px) {
+    .room-editor__body {
+        grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(260px, 300px);
+    }
+
     .room-editor__inspector.is-open {
         width: min(288px, 40vw);
     }
@@ -4239,6 +4390,24 @@ input[type="file"]::-webkit-file-upload-button:hover {
     .room-editor__taskrail {
         border-right: 0;
         border-bottom: 1px solid rgba(23, 23, 23, 0.08);
+    }
+
+    .room-editor__answerrail {
+        border-left: 0;
+        border-top: 1px solid rgba(23, 23, 23, 0.08);
+        min-height: 420px;
+    }
+
+    .editor-panel--answer {
+        min-height: 420px;
+    }
+
+    .room-editor__answer-scroll {
+        max-height: 58vh;
+    }
+
+    .room-editor__answer-secondary-actions {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .room-editor__stage,
@@ -7974,6 +8143,7 @@ body[data-page="room-work"]::before,
 }
 
 .room-editor__taskrail,
+.room-editor__answerrail,
 .room-editor__inspector.is-open,
 :root[data-theme="dark"] .room-editor__inspector.is-open {
     border: 1px solid var(--line);
@@ -7984,6 +8154,10 @@ body[data-page="room-work"]::before,
 
 .room-editor__taskrail {
     border-right: 1px solid var(--line);
+}
+
+.room-editor__answerrail {
+    border-left: 1px solid var(--line);
 }
 
 .room-editor__inspector.is-open,
@@ -8027,12 +8201,18 @@ body[data-page="room-work"]::before,
 .room-editor__filter-chip,
 .editor-toolbar__frame,
 .room-editor__frame-chip,
+.room-editor__payload-details,
 .room-editor .annotation-row,
 .room-editor .annotation-list.empty-card,
 .room-editor .editor-field textarea {
     border-color: var(--line);
     border-radius: 16px;
     background: var(--soft-panel-background);
+}
+
+.room-editor__answerrail .editor-panel__title,
+.room-editor__answer-label {
+    background: transparent;
 }
 
 .room-editor__taskitem:hover {
@@ -8057,6 +8237,20 @@ body[data-page="room-work"]::before,
     border-color: var(--line);
     background: var(--soft-panel-background);
     color: var(--text-soft);
+}
+
+.room-editor .room-editor__answerrail .editor-panel__title,
+.room-editor .room-editor__answer-label {
+    border: 0;
+    background: transparent;
+    padding: 0;
+}
+
+.room-editor .room-editor__answerrail .editor-label-palette {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
 }
 
 .room-editor .media-zoom__range {
