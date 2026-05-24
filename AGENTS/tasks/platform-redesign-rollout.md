@@ -11,7 +11,8 @@
 - Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и прямое создание после финальной валидации. Backend payload и validation constraints остались прежними.
 - Room detail переведён с command-center + раскрывающихся блоков на room console: компактный hero, левая навигация по разделам, центральная рабочая область и правая сводка. `room-work` остаётся отдельным fullscreen editor-ом.
 - Rooms list получил первый room navigator слой: compact dashboard topbar, KPI, поиск, фильтры по статусу/типу датасета, отдельные pinned rooms и плотные карточки с progress/quick actions.
-- Остальные рабочие поверхности пока живут в прежней visual system: edit forms, profile, invite, room-work editor, video screens.
+- Room edit и `room-work` получили visual alignment с новой платформенной системой: editor остаётся fullscreen/no-page-scroll, но использует общие surface/line/accent tokens вместо отдельной purple shell-темы.
+- Остальные рабочие поверхности пока живут в прежней visual system: profile, invite, video screens.
 
 ## Rollout Order
 
@@ -28,7 +29,7 @@
    - базовый room console уже добавлен;
    - дальше проверить реальные room payload-ы на owner/reviewer/annotator ролях и точечно дожать плотность dataset/team/export/review блоков.
 5. Work editors:
-   - менять осторожно: `room-work`, image/video annotation и review являются production surfaces;
+   - `room-work` уже визуально выровнен с платформой, но менять его дальше осторожно: image/video annotation и review являются production surfaces;
    - не нарушать fullscreen/no-page-scroll invariant и pointer UX.
 
 ## Non-Negotiables

@@ -7926,6 +7926,161 @@ textarea::placeholder {
     border-radius: 999px;
 }
 
+body[data-page="room-work"]::before,
+:root[data-theme="dark"] body[data-page="room-work"]::before {
+    background: var(--page-background);
+}
+
+.room-editor,
+:root[data-theme="dark"] .room-editor {
+    --editor-border: var(--line);
+    --editor-border-strong: rgba(59, 166, 241, 0.24);
+    --editor-surface: var(--surface);
+    --editor-surface-muted: var(--soft-panel-background);
+    --editor-shell: transparent;
+    --editor-stage-matte:
+        radial-gradient(circle at 50% 100%, rgba(59, 166, 241, 0.08), transparent 62%),
+        linear-gradient(180deg, var(--field-background), var(--soft-panel-background));
+    background: var(--editor-shell);
+}
+
+.room-editor__topbar,
+:root[data-theme="dark"] .room-editor__topbar {
+    min-height: 74px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--header-background);
+    box-shadow: 0 14px 34px rgba(17, 17, 17, 0.045);
+    backdrop-filter: blur(18px);
+}
+
+.room-editor__home-link,
+:root[data-theme="dark"] .room-editor__home-link {
+    border: 1px solid var(--line);
+    background: var(--field-background);
+    color: var(--text);
+    box-shadow: none;
+}
+
+.room-editor__action-group,
+.room-editor__action-group--submit {
+    border-color: var(--line);
+    background: var(--soft-panel-background);
+}
+
+.room-editor__body {
+    gap: 12px;
+    padding: 12px;
+}
+
+.room-editor__taskrail,
+.room-editor__inspector.is-open,
+:root[data-theme="dark"] .room-editor__inspector.is-open {
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: var(--surface);
+    box-shadow: 0 14px 34px rgba(17, 17, 17, 0.045);
+}
+
+.room-editor__taskrail {
+    border-right: 1px solid var(--line);
+}
+
+.room-editor__inspector.is-open,
+:root[data-theme="dark"] .room-editor__inspector.is-open {
+    border-left: 1px solid var(--line);
+}
+
+.room-editor__canvas-shell {
+    padding: 0;
+}
+
+.room-editor__stage-surface {
+    padding: 0;
+}
+
+.room-editor .media-stage,
+:root[data-theme="dark"] .room-editor .media-stage {
+    border-color: var(--line);
+    border-radius: 24px !important;
+    background: var(--editor-stage-matte);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 14px 34px rgba(17, 17, 17, 0.045);
+    scrollbar-color: rgba(59, 166, 241, 0.6) transparent;
+}
+
+.room-editor .media-stage::-webkit-scrollbar-thumb,
+.media-stage::-webkit-scrollbar-thumb {
+    background: rgba(59, 166, 241, 0.6);
+}
+
+.room-editor .media-canvas,
+.room-editor .media-stage__asset,
+.room-editor .media-overlay {
+    border-radius: 14px !important;
+}
+
+.room-editor__meta-stack,
+.room-editor__taskitem,
+.room-editor__source-chip,
+.room-editor__filter-chip,
+.editor-toolbar__frame,
+.room-editor__frame-chip,
+.room-editor .annotation-row,
+.room-editor .annotation-list.empty-card,
+.room-editor .editor-field textarea {
+    border-color: var(--line);
+    border-radius: 16px;
+    background: var(--soft-panel-background);
+}
+
+.room-editor__taskitem:hover {
+    border-color: rgba(59, 166, 241, 0.3);
+    background: var(--disclosure-hover-background);
+}
+
+.room-editor__taskitem.is-active,
+.room-editor__source-chip.is-active,
+.room-editor__filter-chip.is-active,
+.room-editor__frame-chip.is-active,
+.editor-chip--accent,
+.room-editor .btn.is-active,
+:root[data-theme="dark"] .room-editor .btn.is-active {
+    border-color: rgba(59, 166, 241, 0.42);
+    background: rgba(59, 166, 241, 0.14);
+    color: var(--text);
+}
+
+.room-editor .editor-panel__title,
+.room-editor .editor-sidepanel__label {
+    border-color: var(--line);
+    background: var(--soft-panel-background);
+    color: var(--text-soft);
+}
+
+.room-editor .media-zoom__range {
+    accent-color: var(--accent-strong);
+}
+
+.room-editor .media-zoom__range::-webkit-slider-runnable-track,
+:root[data-theme="dark"] .room-editor .media-zoom__range::-webkit-slider-runnable-track,
+.room-editor .media-zoom__range::-moz-range-track,
+:root[data-theme="dark"] .room-editor .media-zoom__range::-moz-range-track {
+    background: rgba(59, 166, 241, 0.32);
+}
+
+.room-editor .media-zoom__range::-webkit-slider-thumb,
+:root[data-theme="dark"] .room-editor .media-zoom__range::-webkit-slider-thumb,
+.room-editor .media-zoom__range::-moz-range-thumb,
+:root[data-theme="dark"] .room-editor .media-zoom__range::-moz-range-thumb {
+    background: var(--accent-strong);
+}
+
+.room-editor .label-chip {
+    border-radius: 999px;
+}
+
 .payload-preview,
 .bbox-result-card__json {
     border: 1px solid var(--line);
