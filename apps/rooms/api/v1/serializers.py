@@ -15,7 +15,27 @@ ROOM_TEXT_MAX_LENGTH = 255
 ROOM_TITLE_MAX_LENGTH = 128
 ROOM_DESCRIPTION_MAX_LENGTH = 2000
 ROOM_DEADLINE_MAX_DAYS_AHEAD = 365
+ROOM_DESCRIPTION_PDF_MAX_BYTES = 20 * 1024 * 1024
 CREATE_ROOM_DATASET_CHOICES = (Room.DatasetType.IMAGE, Room.DatasetType.VIDEO)
+
+
+def validate_room_description_pdf(file_obj):
+    if file_obj in (None, ""):
+        return file_obj
+
+    filename = getattr(file_obj, "name", "") or ""
+    if not filename.lower().endswith(".pdf"):
+        raise serializers.ValidationError("Файл описания должен быть PDF.")
+
+    content_type = getattr(file_obj, "content_type", "") or ""
+    if content_type and content_type not in {"application/pdf", "application/x-pdf"}:
+        raise serializers.ValidationError("Файл описания должен быть PDF.")
+
+    size = getattr(file_obj, "size", 0) or 0
+    if size > ROOM_DESCRIPTION_PDF_MAX_BYTES:
+        raise serializers.ValidationError("PDF-файл описания должен быть не больше 20 МБ.")
+
+    return file_obj
 
 
 class JsonStringField(serializers.Field):
@@ -140,6 +160,7 @@ class RoomDatasetDeleteSerializer(serializers.Serializer):
 class RoomCreateSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=ROOM_TITLE_MAX_LENGTH)
     description = serializers.CharField(required=False, allow_blank=True, max_length=ROOM_DESCRIPTION_MAX_LENGTH)
+    description_pdf = serializers.FileField(required=False, allow_empty_file=False, write_only=True)
     password = serializers.CharField(required=False, allow_blank=True, write_only=True, max_length=ROOM_TEXT_MAX_LENGTH)
     deadline = serializers.DateTimeField(required=False, allow_null=True)
     cross_validation_enabled = serializers.BooleanField(required=False, default=False)
@@ -178,6 +199,9 @@ class RoomCreateSerializer(serializers.Serializer):
     video_frame_step = serializers.IntegerField(required=False, min_value=1, max_value=1000, default=1)
     video_max_frames = serializers.IntegerField(required=False, min_value=1, max_value=100000, default=1000)
     video_manual_keyframe_percent = serializers.IntegerField(required=False, min_value=1, max_value=100, default=10)
+
+    def validate_description_pdf(self, value):
+        return validate_room_description_pdf(value)
 
     def validate_deadline(self, value):
         if value is None:
@@ -336,6 +360,8 @@ class RoomLabelSerializer(serializers.ModelSerializer):
 
 class RoomSerializer(serializers.ModelSerializer):
     created_by_id = serializers.IntegerField(read_only=True)
+    description_pdf_url = serializers.SerializerMethodField()
+    description_pdf_name = serializers.SerializerMethodField()
     membership_status = serializers.SerializerMethodField()
     membership_role = serializers.SerializerMethodField()
     has_password = serializers.SerializerMethodField()
@@ -354,6 +380,8 @@ class RoomSerializer(serializers.ModelSerializer):
             "id",
             "title",
             "description",
+            "description_pdf_url",
+            "description_pdf_name",
             "dataset_label",
             "dataset_type",
             "annotation_workflow",
@@ -381,6 +409,19 @@ class RoomSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def get_description_pdf_url(self, obj):
+        if not obj.description_pdf:
+            return None
+        request = self.context.get("request")
+        if request is None:
+            return obj.description_pdf.url
+        return request.build_absolute_uri(obj.description_pdf.url)
+
+    def get_description_pdf_name(self, obj):
+        if not obj.description_pdf:
+            return ""
+        return obj.description_pdf.name.rsplit("/", 1)[-1]
 
     def get_membership_status(self, obj):
         request = self.context.get("request")

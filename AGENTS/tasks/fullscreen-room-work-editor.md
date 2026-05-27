@@ -39,6 +39,7 @@
 - Pointer-intensive bbox flow допускает императивные участки ради производительности.
 - Workspace size не должен зависеть от размеров текущего media.
 - Label rail и похожие элементы должны жить внутри собственных rail/frame-ов с internal scroll.
+- Основной annotate layout теперь трёхпанельный: слева контекст/очереди, по центру media stage, справа постоянная панель ответа с лейблами, bbox-списком, действиями и сворачиваемым JSON. Не возвращай `Области`/`JSON` в переключаемый topbar-inspector без отдельной причины.
 - `Shift`, `Ctrl`, `Esc` уже считаются частью нормального editor UX.
 - Один и тот же stage/controller должен переиспользоваться для annotate, edit своей submitted-разметки и reviewer review; не нужно плодить отдельные mini-viewer-ы.
 

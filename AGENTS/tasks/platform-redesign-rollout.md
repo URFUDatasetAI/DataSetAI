@@ -8,8 +8,11 @@
 
 - Главная уже переведена на новый landing/dashboard style и поддерживает light/dark theme.
 - Сценарии разметки на главной должны вести в создание комнаты с предвыбранным типом датасета/workflow.
-- Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и модальное подтверждение перед созданием. Backend payload и validation constraints остались прежними.
-- Остальные рабочие поверхности пока живут в прежней visual system: rooms list, room detail, create/edit forms, profile, invite, room-work editor, video screens.
+- Экран создания комнаты уже переведён на progressive wizard: сценарий, основное, данные, команда, контроль качества и прямое создание после финальной валидации. Backend payload и validation constraints остались прежними.
+- Room detail переведён с command-center + раскрывающихся блоков на room console: компактный hero, левая навигация по разделам, центральная рабочая область и правая сводка. `room-work` остаётся отдельным fullscreen editor-ом.
+- Rooms list получил первый room navigator слой: compact dashboard topbar, KPI, поиск, фильтры по статусу/типу датасета, отдельные pinned rooms и плотные карточки с progress/quick actions.
+- Room edit и `room-work` получили visual alignment с новой платформенной системой: editor остаётся fullscreen/no-page-scroll, но использует общие surface/line/accent tokens вместо отдельной purple shell-темы.
+- Остальные рабочие поверхности пока живут в прежней visual system: profile, invite, video screens.
 
 ## Rollout Order
 
@@ -17,14 +20,16 @@
    - унифицировать header/nav/buttons/theme toggle;
    - вынести общие цветовые токены нового стиля без ломки editor-specific CSS.
 2. Rooms list and profile:
-   - привести room cards, filters, pinned state, empty states и profile stats к новой плотной dashboard-сетке.
+   - rooms list уже переведён в navigator с фильтрами и compact cards;
+   - дальше проверить реальные большие списки комнат и привести profile stats к той же плотной dashboard-сетке.
 3. Create/edit room:
    - форма создания комнаты уже сценарная; дальше нужно привести edit room к той же визуальной системе;
    - сохранить все текущие validation constraints.
 4. Room detail:
-   - переразложить dashboard комнаты вокруг progress, actions, dataset management, invite/access, review/export.
+   - базовый room console уже добавлен;
+   - дальше проверить реальные room payload-ы на owner/reviewer/annotator ролях и точечно дожать плотность dataset/team/export/review блоков.
 5. Work editors:
-   - менять осторожно: `room-work`, image/video annotation и review являются production surfaces;
+   - `room-work` уже визуально выровнен с платформой, но менять его дальше осторожно: image/video annotation и review являются production surfaces;
    - не нарушать fullscreen/no-page-scroll invariant и pointer UX.
 
 ## Non-Negotiables

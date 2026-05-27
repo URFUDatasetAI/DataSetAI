@@ -79,6 +79,8 @@ type RoomItem = {
   id: number;
   title: string;
   description: string;
+  description_pdf_url: string | null;
+  description_pdf_name: string;
   dataset_label: string;
   dataset_type: string;
   annotation_workflow: string;
@@ -106,6 +108,9 @@ type RoomItem = {
   created_at: string;
   updated_at: string;
 };
+
+type RoomDatasetFilter = "all" | "text" | "image" | "video";
+type RoomListFilter = "all" | "pinned" | "owned" | "active" | "review";
 
 type ActivitySeriesItem = {
   date: string;
@@ -168,6 +173,8 @@ type RoomDashboard = {
     id: number;
     title: string;
     description: string;
+    description_pdf_url: string | null;
+    description_pdf_name: string;
     dataset_label: string;
     dataset_type: string;
     annotation_workflow: string;
@@ -277,6 +284,7 @@ type VideoFrameContext = {
 };
 
 type ReviewTaskFilter = "validation" | "validation_voted" | "generated" | "final" | "incomplete";
+type RoomDetailSectionId = "overview" | "personal" | "dataset" | "team" | "review" | "export" | "settings";
 
 type ReviewTaskListItem = {
   id: number;
@@ -404,6 +412,8 @@ type RoomInvitePreview = {
     id: number;
     title: string;
     description: string;
+    description_pdf_url: string | null;
+    description_pdf_name: string;
     dataset_label: string;
     has_password: boolean;
     created_by_display_name: string;
@@ -747,9 +757,9 @@ const roomCreateWizardSteps: Array<{
   },
   {
     id: "quality",
-    title: "Контроль качества",
+    title: "Проверка",
     eyebrow: "Шаг 5",
-    description: "Перекрестная разметка, валидация и пороги принятия.",
+    description: "Пул валидации и пороги принятия итоговой разметки.",
   },
 ];
 
@@ -1938,139 +1948,194 @@ function PageRouter() {
 }
 
 function LandingPage() {
-  const { bootstrap, authUser } = useApp();
-  const stats = [
-    { label: "Пользователи", value: bootstrap.stats.users },
-    { label: "Комнаты", value: bootstrap.stats.rooms },
-    { label: "Задачи", value: bootstrap.stats.tasks },
+  const { authUser, api } = useApp();
+  const [activeTab, setActiveTab] = useState("all");
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(Boolean(authUser));
+  const [roomsLoadError, setRoomsLoadError] = useState("");
+
+  useEffect(() => {
+    if (!authUser) {
+      setRooms([]);
+      setRoomsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function loadLandingRooms() {
+      setRoomsLoading(true);
+      setRoomsLoadError("");
+      try {
+        const [ownedRooms, memberRooms] = await Promise.all<RoomItem[]>([api("/api/v1/rooms/"), api("/api/v1/me/rooms/")]);
+        if (isCancelled) {
+          return;
+        }
+        const roomMap = new Map<number, RoomItem>();
+        [...(ownedRooms || []), ...(memberRooms || [])].forEach((room) => {
+          if (!roomMap.has(room.id)) {
+            roomMap.set(room.id, room);
+          }
+        });
+        setRooms(
+          Array.from(roomMap.values()).sort((left, right) => {
+            if (Boolean(left.is_pinned) !== Boolean(right.is_pinned)) {
+              return Number(Boolean(right.is_pinned)) - Number(Boolean(left.is_pinned));
+            }
+            const rightAccess = right.last_accessed_at ? new Date(right.last_accessed_at).getTime() : 0;
+            const leftAccess = left.last_accessed_at ? new Date(left.last_accessed_at).getTime() : 0;
+            if (rightAccess !== leftAccess) {
+              return rightAccess - leftAccess;
+            }
+            return Number(right.id) - Number(left.id);
+          })
+        );
+      } catch (error) {
+        if (!isCancelled) {
+          setRoomsLoadError(getErrorMessage(error));
+        }
+      } finally {
+        if (!isCancelled) {
+          setRoomsLoading(false);
+        }
+      }
+    }
+
+    void loadLandingRooms();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [authUser]);
+
+  const workItems = rooms.map((room) => {
+    const progress = Math.max(0, Math.min(100, Number(room.progress_percent || 0)));
+    const filterType = room.dataset_type === "json" || room.dataset_type === "demo" ? "text" : room.dataset_type || "text";
+    return {
+      id: room.id,
+      tab: room.total_tasks > 0 && progress < 100 ? "active" : "all",
+      filter: filterType,
+      label: translateDatasetMode(room.dataset_type),
+      title: room.title,
+      text: room.description || room.dataset_label || "Описание комнаты пока не заполнено.",
+      status: formatPercent(progress),
+      meta: [room.dataset_label || "Датасет", translateAnnotationWorkflow(room.annotation_workflow || "standard"), `${room.completed_tasks}/${room.total_tasks} задач`],
+      href: `/rooms/${room.id}/`,
+      action: "Открыть",
+    };
+  });
+  const boardTabs = [
+    { id: "all", label: "Все", count: workItems.length },
+    { id: "active", label: "В работе", count: workItems.filter((item) => item.tab === "active").length },
   ];
-  const scenarios = [
-    {
-      label: "Image",
-      title: "Image bbox",
-      text: "Ручная bbox-разметка изображений с сохранением нормализованных координат.",
-      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&title=Image%20bbox&dataset_label=Изображения",
-    },
-    {
-      label: "Video",
-      title: "Видеоинтервалы",
-      text: "Предварительный выбор кадров и интервалов перед детальной разметкой.",
-      href: "/rooms/create/?dataset_mode=video&workflow=standard&label=object&title=Видеоразметка&dataset_label=Видео",
-    },
-    {
-      label: "Review",
-      title: "Cross-validation",
-      text: "Несколько независимых разметок, consensus и ручная проверка спорных задач.",
-      href: "/rooms/create/?dataset_mode=image&workflow=standard&label=object&cross_validation=1&review_voting=1&title=Разметка%20с%20проверкой&dataset_label=Контроль%20качества",
-    },
+  const filters = [
+    { id: "all", label: "Все типы" },
+    { id: "text", label: "Текст" },
+    { id: "image", label: "Изображения" },
+    { id: "video", label: "Видео" },
   ];
-  const primaryHref = authUser ? "/rooms/" : "/auth/register/";
-  const primaryLabel = authUser ? "Открыть комнаты" : "Начать работу";
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const visibleItems = workItems.filter((item) => {
+    const matchesTab = activeTab === "all" || item.tab === activeTab;
+    const matchesFilter = activeFilter === "all" || item.filter === activeFilter;
+    const searchable = `${item.label} ${item.title} ${item.text} ${item.status} ${item.meta.join(" ")}`.toLowerCase();
+    const matchesSearch = !normalizedQuery || searchable.includes(normalizedQuery);
+    return matchesTab && matchesFilter && matchesSearch;
+  });
 
   return (
     <main className="landing-shell">
-      <section className="landing-hero" aria-labelledby="landing-title">
-        <span className="landing-chip">DataSetAI Workspace</span>
-        <h1 id="landing-title">Разметка датасетов в одном рабочем контуре</h1>
-        <p>
-          Комнаты, роли, очереди задач, ручная разметка изображений и видео, cross-validation и экспорт собраны в спокойный
-          интерфейс для ежедневной командной работы.
-        </p>
-        <div className="landing-actions">
-          <a className="btn btn--primary" href={primaryHref}>
-            {primaryLabel}
-          </a>
-          <a className="btn btn--muted" href="/rooms/">
-            Посмотреть комнаты
-          </a>
-        </div>
-        <div className="landing-stats" aria-label="Сводная статистика">
-          {stats.map((item) => (
-            <div className="landing-stat-pill" key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </div>
-          ))}
-        </div>
-      </section>
+      <section className="taskboard-layout" aria-label="Рабочая доска DataSetAI">
+        <aside className="taskboard-panel taskboard-panel--filters">
+          <div className="taskboard-panel__head">
+            <span>Фильтры</span>
+            <strong>Тип работы</strong>
+          </div>
+          <div className="taskboard-filter-list" role="list" aria-label="Фильтр по типу">
+            {filters.map((item) => (
+              <button
+                className={["taskboard-filter", activeFilter === item.id ? "is-active" : ""].filter(Boolean).join(" ")}
+                type="button"
+                onClick={() => setActiveFilter(item.id)}
+                key={item.id}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </aside>
 
-      <section className="landing-dashboard" aria-label="Рабочая сводка DataSetAI">
-        <div className="landing-dashboard__top">
-          <div>
-            <span>Room overview</span>
-            <strong>Dataset Quality Run</strong>
-          </div>
-          <a className="landing-dashboard__link" href="/rooms/">
-            Все комнаты
-          </a>
-        </div>
-        <div className="landing-dashboard__grid">
-          <div className="landing-dashboard-card landing-dashboard-card--large">
-            <div className="landing-card-head">
-              <span>Очередь разметки</span>
-              <strong>72%</strong>
-            </div>
-            <div className="landing-progress">
-              <span style={{ width: "72%" }}></span>
-            </div>
-            <div className="landing-queue">
-              <span>Image bbox</span>
-              <strong>148 задач</strong>
-            </div>
-            <div className="landing-queue">
-              <span>Video frames</span>
-              <strong>326 кадров</strong>
-            </div>
-          </div>
-          <div className="landing-dashboard-card">
-            <span>Ревью</span>
-            <strong>24</strong>
-            <small>ожидают проверки</small>
-          </div>
-          <div className="landing-dashboard-card">
-            <span>Consensus</span>
-            <strong>91%</strong>
-            <small>согласовано</small>
-          </div>
-          <div className="landing-dashboard-card landing-dashboard-card--preview">
-            <div className="landing-frame-preview">
-              <span className="landing-frame-box landing-frame-box--one"></span>
-              <span className="landing-frame-box landing-frame-box--two"></span>
-            </div>
-            <small>ручная bbox-разметка</small>
-          </div>
-        </div>
-      </section>
-
-      <section className="landing-section">
-        <div className="landing-section__head">
-          <span className="landing-chip">Workflows</span>
-          <h2>Сценарии разметки без лишнего переключения контекста</h2>
-        </div>
-        <div className="landing-scenario-grid">
-          {scenarios.map((item) => (
-            <a className="landing-scenario-card" href={item.href} key={item.title}>
-              <span>{item.label}</span>
-              <h3>{item.title}</h3>
-              <p>{item.text}</p>
-              <strong className="landing-scenario-card__action">Создать комнату</strong>
+        <section className="taskboard-main" aria-label="Список задач и сценариев">
+          <div className="taskboard-toolbar">
+            <label className="taskboard-search">
+              <span>Поиск</span>
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Название комнаты, датасет или тип данных"
+              />
+            </label>
+            <a className="taskboard-create" href={authUser ? "/rooms/create/" : "/auth/login/"}>
+              Создать комнату
             </a>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      <section className="landing-flow">
-        <div>
-          <span className="landing-chip">Pipeline</span>
-          <h2>От загрузки данных до JSON-экспорта</h2>
-        </div>
-        <div className="landing-flow__steps">
-          <span>Комната</span>
-          <span>Назначение</span>
-          <span>Разметка</span>
-          <span>Ревью</span>
-          <span>Экспорт</span>
-        </div>
+          <div className="taskboard-tabs" role="tablist" aria-label="Разделы главного экрана">
+            {boardTabs.map((item) => (
+              <button
+                className={["taskboard-tab", activeTab === item.id ? "is-active" : ""].filter(Boolean).join(" ")}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === item.id}
+                onClick={() => setActiveTab(item.id)}
+                key={item.id}
+              >
+                <span>{item.label}</span>
+                <strong>{item.count}</strong>
+              </button>
+            ))}
+          </div>
+
+          <div className="taskboard-list">
+            {roomsLoading ? (
+              <div className="taskboard-empty">
+                <strong>Загружаем комнаты</strong>
+                <span>Список появится через пару секунд.</span>
+              </div>
+            ) : roomsLoadError ? (
+              <div className="taskboard-empty">
+                <strong>Не удалось загрузить комнаты</strong>
+                <span>{roomsLoadError}</span>
+              </div>
+            ) : visibleItems.length ? (
+              visibleItems.map((item) => (
+                <a className="taskboard-item taskboard-item--room" href={item.href} key={item.id}>
+                  <span className="taskboard-item__label">{item.label}</span>
+                  <div className="taskboard-item__body">
+                    <div className="taskboard-item__title">
+                      <h2>{item.title}</h2>
+                      <span>{item.status}</span>
+                    </div>
+                    <p>{item.text}</p>
+                    <div className="taskboard-item__meta">
+                      {item.meta.map((metaItem) => (
+                        <small key={metaItem}>{metaItem}</small>
+                      ))}
+                    </div>
+                  </div>
+                  <strong className="taskboard-item__action">{item.action}</strong>
+                </a>
+              ))
+            ) : (
+              <div className="taskboard-empty">
+                <strong>{authUser ? "Комнат не найдено" : "Войдите, чтобы увидеть комнаты"}</strong>
+                <span>{authUser ? "Попробуйте другой запрос или сбросьте фильтр." : "На главной показываются только комнаты, доступные вашему аккаунту."}</span>
+              </div>
+            )}
+          </div>
+        </section>
       </section>
     </main>
   );
@@ -2170,6 +2235,9 @@ function RoomsPage() {
   const [rooms, setRooms] = useState<RoomItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [pinBusyRoomId, setPinBusyRoomId] = useState<number | null>(null);
+  const [roomSearch, setRoomSearch] = useState("");
+  const [roomFilter, setRoomFilter] = useState<RoomListFilter>("all");
+  const [datasetFilter, setDatasetFilter] = useState<RoomDatasetFilter>("all");
 
   function sortRooms(list: RoomItem[]) {
     return [...list].sort((left, right) => {
@@ -2267,114 +2335,302 @@ function RoomsPage() {
   }
 
   const pinnedRooms = rooms.filter((room) => room.is_pinned);
+  const activeRoomsCount = rooms.filter((room) => room.total_tasks > 0 && room.progress_percent < 100).length;
+  const ownedRoomsCount = rooms.filter((room) => room.created_by_id === authUser?.id || (room.membership_role || "owner") === "owner").length;
+  const reviewRoomsCount = rooms.filter((room) => ["admin", "owner", "reviewer"].includes(room.membership_role || "owner")).length;
+  const normalizedRoomSearch = roomSearch.trim().toLowerCase();
+  const hasActiveRoomFilters = Boolean(normalizedRoomSearch || roomFilter !== "all" || datasetFilter !== "all");
+  const roomFilters: Array<{ value: RoomListFilter; label: string; count: number }> = [
+    { value: "all", label: "Все", count: rooms.length },
+    { value: "pinned", label: "Закрепленные", count: pinnedRooms.length },
+    { value: "owned", label: "Мои", count: ownedRoomsCount },
+    { value: "active", label: "В работе", count: activeRoomsCount },
+    { value: "review", label: "Ревью", count: reviewRoomsCount },
+  ];
+  const datasetFilters: Array<{ value: RoomDatasetFilter; label: string }> = [
+    { value: "all", label: "Все типы" },
+    { value: "text", label: "Текст" },
+    { value: "image", label: "Изображения" },
+    { value: "video", label: "Видео" },
+  ];
+
+  function roomMatchesFilters(room: RoomItem) {
+    if (datasetFilter !== "all" && room.dataset_type !== datasetFilter) {
+      return false;
+    }
+
+    if (roomFilter === "pinned" && !room.is_pinned) {
+      return false;
+    }
+    if (roomFilter === "owned" && room.created_by_id !== authUser?.id && (room.membership_role || "owner") !== "owner") {
+      return false;
+    }
+    if (roomFilter === "active" && !(room.total_tasks > 0 && room.progress_percent < 100)) {
+      return false;
+    }
+    if (roomFilter === "review" && !["admin", "owner", "reviewer"].includes(room.membership_role || "owner")) {
+      return false;
+    }
+
+    if (!normalizedRoomSearch) {
+      return true;
+    }
+
+    return [
+      `#${room.id}`,
+      `комната ${room.id}`,
+      room.title,
+      room.description,
+      room.dataset_label,
+      translateDatasetMode(room.dataset_type),
+      translateAnnotationWorkflow(room.annotation_workflow || "standard"),
+      translateRole(room.membership_role || "owner"),
+      translateMembership(room.membership_status || "owner"),
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedRoomSearch);
+  }
+
+  const filteredRooms = rooms.filter(roomMatchesFilters);
+  const visiblePinnedRooms = hasActiveRoomFilters ? [] : pinnedRooms;
+  const visibleMainRooms = hasActiveRoomFilters ? filteredRooms : filteredRooms.filter((room) => !room.is_pinned);
+  const mainSectionTitle = hasActiveRoomFilters ? "Найденные комнаты" : "Все комнаты";
+  const mainSectionNote = hasActiveRoomFilters
+    ? `${filteredRooms.length} из ${rooms.length} комнат подходят под текущие фильтры.`
+    : "Комнаты, которые вы создали или к которым у вас уже есть доступ.";
+
+  function renderRoomCard(room: RoomItem) {
+    const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
+    const canMoveUp = room.is_pinned && pinnedIndex > 0;
+    const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+    const role = room.membership_role || "owner";
+    const canOpenWork = ["admin", "annotator", "owner"].includes(role);
+    const canOpenReview = ["admin", "owner", "reviewer"].includes(role);
+    const remainingTasks = Math.max(0, Number(room.total_tasks || 0) - Number(room.completed_tasks || 0));
+
+    return (
+      <article
+        key={room.id}
+        className={`room-card room-card--navigator ${room.is_pinned ? "is-pinned" : ""}`}
+        onClick={() => {
+          window.location.href = `/rooms/${room.id}/`;
+        }}
+      >
+        <div className="room-card__body">
+          <div className="room-card__head">
+            <div className="room-card__id">Комната #{room.id}</div>
+            <div className="room-card__actions">
+              {room.is_pinned ? (
+                <div className="room-card__pin-order">
+                  <button
+                    className="room-card__reorder"
+                    type="button"
+                    disabled={!canMoveUp || pinBusyRoomId === room.id}
+                    aria-label="Поднять закреплённую комнату выше"
+                    title="Поднять выше"
+                    onClick={(event) => handleReorderPin(event, room, "up")}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className="room-card__reorder"
+                    type="button"
+                    disabled={!canMoveDown || pinBusyRoomId === room.id}
+                    aria-label="Опустить закреплённую комнату ниже"
+                    title="Опустить ниже"
+                    onClick={(event) => handleReorderPin(event, room, "down")}
+                  >
+                    ↓
+                  </button>
+                </div>
+              ) : null}
+              <button
+                className="room-card__pin"
+                type="button"
+                disabled={pinBusyRoomId === room.id}
+                aria-pressed={room.is_pinned}
+                aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
+                title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
+                onClick={(event) => handleTogglePin(event, room)}
+              >
+                {room.is_pinned ? "★" : "☆"}
+              </button>
+            </div>
+          </div>
+          <div className="room-card__title">{room.title}</div>
+          <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
+          <div className="room-card__chips" aria-label="Параметры комнаты">
+            <span>{translateDatasetMode(room.dataset_type)}</span>
+            <span>{translateAnnotationWorkflow(room.annotation_workflow || "standard")}</span>
+            <span>{translateRole(role)}</span>
+          </div>
+        </div>
+        <div className="room-card__progress" aria-label={`Прогресс ${formatPercent(room.progress_percent)}`}>
+          <div className="room-card__progress-meta">
+            <span>Прогресс</span>
+            <strong>{formatPercent(room.progress_percent)}</strong>
+          </div>
+          <div className="room-card__progress-track">
+            <span style={{ width: `${Math.max(0, Math.min(100, Number(room.progress_percent || 0)))}%` }}></span>
+          </div>
+        </div>
+        <div className="room-card__footer">
+          <div>
+            Задачи: {room.completed_tasks}/{room.total_tasks}
+          </div>
+          <div>Осталось: {remainingTasks}</div>
+          <div>Дедлайн: {formatDate(room.deadline)}</div>
+        </div>
+        <div className="room-card__quick-actions" aria-label="Быстрые действия">
+          <a
+            className="btn btn--secondary btn--compact"
+            href={`/rooms/${room.id}/`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            Открыть
+          </a>
+          {canOpenWork ? (
+            <a
+              className="btn btn--muted btn--compact"
+              href={`/rooms/${room.id}/work/`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              Разметка
+            </a>
+          ) : null}
+          {canOpenReview ? (
+            <a
+              className="btn btn--muted btn--compact"
+              href={`/rooms/${room.id}/work/?mode=review`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              Ревью
+            </a>
+          ) : null}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <>
-      <section className="page-topbar page-topbar--rooms">
+      <section className="page-topbar page-topbar--rooms rooms-navigator-hero">
         <div className="page-topbar__copy">
-          <span className="eyebrow">Комнаты</span>
-          <h1>Доступные комнаты</h1>
-          <p>Создайте комнату или откройте комнату из списка доступных. Для новых участников используйте invite-ссылку комнаты.</p>
+          <span className="eyebrow">Навигатор комнат</span>
+          <h1>Комнаты</h1>
+          <p>Быстрый вход в рабочие пространства: закрепляйте важные комнаты, фильтруйте по сценарию и переходите прямо к разметке или ревью.</p>
         </div>
-        <div className="room-toolbar-stack">
-          <div className="room-create-card">
-            <div className="room-create-card__copy">
-              <span className="header-note">Новая комната</span>
-              <strong>Создайте новую комнату</strong>
-              <p>Откроется полная форма с выбором названия, описания и прочих параметров и загрузкой датасета.</p>
-            </div>
-            <a className="btn btn--primary room-create-card__action" href="/rooms/create/">
-              Создать комнату
-            </a>
+        <div className="rooms-navigator-hero__side">
+          <div className="rooms-navigator-metrics" aria-label="Сводка комнат">
+            <article>
+              <span>Доступно</span>
+              <strong>{rooms.length}</strong>
+            </article>
+            <article>
+              <span>Закреплено</span>
+              <strong>{pinnedRooms.length}</strong>
+            </article>
+            <article>
+              <span>В работе</span>
+              <strong>{activeRoomsCount}</strong>
+            </article>
           </div>
+          <a className="btn btn--primary rooms-navigator-create" href="/rooms/create/">
+            Создать комнату
+          </a>
         </div>
       </section>
 
-      <section className="room-grid-section">
-        <div className="room-grid-section__header">
-          <div className="room-grid-section__divider">
-            <span>Ваши комнаты</span>
-          </div>
-          <p>Комнаты, которые вы создали или к которым у вас уже есть доступ.</p>
+      <section className="rooms-control-panel" aria-label="Фильтры комнат">
+        <label className="rooms-search">
+          <span>Поиск</span>
+          <input
+            value={roomSearch}
+            type="text"
+            placeholder="Название, ID, датасет или роль"
+            onChange={(event) => setRoomSearch(event.currentTarget.value)}
+          />
+        </label>
+        <div className="rooms-filter-bar" aria-label="Фильтр списка комнат">
+          {roomFilters.map((filter) => (
+            <button
+              key={filter.value}
+              className={`rooms-filter-chip ${roomFilter === filter.value ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setRoomFilter(filter.value)}
+            >
+              <span>{filter.label}</span>
+              <strong>{filter.count}</strong>
+            </button>
+          ))}
         </div>
-        {loading ? <div className="empty-card">Загружаем комнаты.</div> : null}
-        {!loading && !rooms.length ? (
-          <div className="empty-card">У выбранного пользователя пока нет доступных комнат.</div>
-        ) : (
-          <div className="room-grid">
-            {rooms.map((room) => {
-              const pinnedIndex = pinnedRooms.findIndex((item) => item.id === room.id);
-              const canMoveUp = room.is_pinned && pinnedIndex > 0;
-              const canMoveDown = room.is_pinned && pinnedIndex > -1 && pinnedIndex < pinnedRooms.length - 1;
+        <label className="rooms-dataset-filter">
+          <span>Тип датасета</span>
+          <select value={datasetFilter} onChange={(event) => setDatasetFilter(event.currentTarget.value as RoomDatasetFilter)}>
+            {datasetFilters.map((filter) => (
+              <option key={filter.value} value={filter.value}>
+                {filter.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
 
-              return (
-                <article
-                  key={room.id}
-                  className={`room-card ${room.is_pinned ? "is-pinned" : ""}`}
+      {loading ? <div className="empty-card">Загружаем комнаты.</div> : null}
+      {!loading && !rooms.length ? (
+        <div className="empty-card rooms-empty-state">
+          <strong>У вас пока нет доступных комнат.</strong>
+          <span>Создайте первую комнату или попросите владельца отправить invite-ссылку.</span>
+          <a className="btn btn--primary" href="/rooms/create/">
+            Создать комнату
+          </a>
+        </div>
+      ) : null}
+
+      {!loading && rooms.length ? (
+        <>
+          {visiblePinnedRooms.length ? (
+            <section className="room-grid-section room-grid-section--pinned">
+              <div className="room-grid-section__header">
+                <div className="room-grid-section__divider">
+                  <span>Закрепленные</span>
+                </div>
+                <p>Комнаты, которые должны быть под рукой.</p>
+              </div>
+              <div className="room-grid room-grid--navigator">{visiblePinnedRooms.map(renderRoomCard)}</div>
+            </section>
+          ) : null}
+
+          <section className="room-grid-section">
+            <div className="room-grid-section__header">
+              <div className="room-grid-section__divider">
+                <span>{mainSectionTitle}</span>
+              </div>
+              <p>{mainSectionNote}</p>
+            </div>
+            {visibleMainRooms.length ? (
+              <div className="room-grid room-grid--navigator">{visibleMainRooms.map(renderRoomCard)}</div>
+            ) : (
+              <div className="empty-card rooms-empty-state">
+                <strong>Комнаты не найдены.</strong>
+                <span>Попробуйте изменить поиск, фильтр или тип датасета.</span>
+                <button
+                  className="btn btn--muted"
+                  type="button"
                   onClick={() => {
-                    window.location.href = `/rooms/${room.id}/`;
+                    setRoomSearch("");
+                    setRoomFilter("all");
+                    setDatasetFilter("all");
                   }}
                 >
-                  <div>
-                    <div className="room-card__head">
-                      <div className="room-card__id">Комната #{room.id}</div>
-                      <div className="room-card__actions">
-                        {room.is_pinned ? (
-                          <div className="room-card__pin-order">
-                            <button
-                              className="room-card__reorder"
-                              type="button"
-                              disabled={!canMoveUp || pinBusyRoomId === room.id}
-                              aria-label="Поднять закреплённую комнату выше"
-                              title="Поднять выше"
-                              onClick={(event) => handleReorderPin(event, room, "up")}
-                            >
-                              ↑
-                            </button>
-                            <button
-                              className="room-card__reorder"
-                              type="button"
-                              disabled={!canMoveDown || pinBusyRoomId === room.id}
-                              aria-label="Опустить закреплённую комнату ниже"
-                              title="Опустить ниже"
-                              onClick={(event) => handleReorderPin(event, room, "down")}
-                            >
-                              ↓
-                            </button>
-                          </div>
-                        ) : null}
-                        <button
-                          className="room-card__pin"
-                          type="button"
-                          disabled={pinBusyRoomId === room.id}
-                          aria-pressed={room.is_pinned}
-                          aria-label={room.is_pinned ? "Убрать комнату из закреплённых" : "Закрепить комнату"}
-                          title={room.is_pinned ? "Убрать из закреплённых" : "Закрепить комнату"}
-                          onClick={(event) => handleTogglePin(event, room)}
-                        >
-                          {room.is_pinned ? "★" : "☆"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="room-card__title">{room.title}</div>
-                    <div className="room-card__meta">{room.description || "Описание пока не заполнено."}</div>
-                  </div>
-                  <div className="room-card__footer">
-                    <div>ID: {room.id}</div>
-                    <div>Статус: {translateMembership(room.membership_status || "owner")}</div>
-                    <div>Роль в комнате: {translateRole(room.membership_role || "owner")}</div>
-                    <div>Прогресс: {formatPercent(room.progress_percent)}</div>
-                    <div>
-                      Задачи: {room.completed_tasks}/{room.total_tasks}
-                    </div>
-                    <div>Защита: {room.has_password ? "С паролем" : "Без пароля"}</div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                  Сбросить фильтры
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
     </>
   );
 }
@@ -2629,6 +2885,11 @@ function RoomInvitePage() {
           <span className="eyebrow">Invite</span>
           <h1>{preview?.room.title || "Обрабатываем invite-ссылку..."}</h1>
           <p>{preview?.room.description || "Проверяем доступ к комнате и текущее состояние заявки."}</p>
+          {preview?.room.description_pdf_url ? (
+            <a className="btn btn--muted btn--compact room-description-pdf-link" href={preview.room.description_pdf_url} target="_blank" rel="noreferrer">
+              {preview.room.description_pdf_name || "Открыть PDF с описанием"}
+            </a>
+          ) : null}
         </div>
       </section>
 
@@ -2730,11 +2991,9 @@ function RoomCreatePage() {
   const [title, setTitle] = useState(preset.title);
   const [password, setPassword] = useState("");
   const [description, setDescription] = useState("");
+  const [descriptionPdf, setDescriptionPdf] = useState<File | null>(null);
   const [deadline, setDeadline] = useState("");
   const [annotatorIds, setAnnotatorIds] = useState("");
-  const [crossValidationEnabled, setCrossValidationEnabled] = useState(preset.crossValidationEnabled);
-  const [crossValidationCount, setCrossValidationCount] = useState("2");
-  const [crossValidationThreshold, setCrossValidationThreshold] = useState("80");
   const [reviewVotingEnabled, setReviewVotingEnabled] = useState(preset.reviewVotingEnabled);
   const [reviewVotesRequired, setReviewVotesRequired] = useState("1");
   const [reviewAcceptanceThreshold, setReviewAcceptanceThreshold] = useState("100");
@@ -2752,7 +3011,6 @@ function RoomCreatePage() {
   const [selectedScenarioId, setSelectedScenarioId] = useState(getRoomCreateScenarioId(preset));
   const [currentStep, setCurrentStep] = useState<RoomCreateStepId>("scenario");
   const [maxUnlockedStepIndex, setMaxUnlockedStepIndex] = useState(0);
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -2771,16 +3029,17 @@ function RoomCreatePage() {
 
   const modeConfig = datasetModeConfig[datasetMode];
   const currentScenario = roomCreateScenarioPresets.find((item) => item.id === selectedScenarioId) || roomCreateScenarioPresets[0];
-  const normalizedLabelsPreview = labels.map((item) => item.name.trim()).filter(Boolean);
-  const filesPreview = selectedFiles.length ? `${selectedFiles.length} файл(ов) выбрано` : "Файлы ещё не выбраны";
-  const qualityPreview = crossValidationEnabled
-    ? `Перекрестная разметка: ${crossValidationCount || 2} исполнителя`
-    : "Обычная разметка";
+  const filesPreview = modeConfig.usesFiles
+    ? selectedFiles.length
+      ? `${selectedFiles.length} файл(ов) выбрано`
+      : "Файлы ещё не выбраны"
+    : "Загрузка файлов не нужна";
   const reviewPreview = reviewVotingEnabled ? `Пул валидации: ${reviewVotesRequired || 1} голос(ов)` : "Без пула валидации";
   const currentStepIndex = Math.max(
     roomCreateWizardSteps.findIndex((item) => item.id === currentStep),
     0
   );
+  const activeStep = roomCreateWizardSteps[currentStepIndex] || roomCreateWizardSteps[0];
   const labelsRequired = (datasetMode === "image" || datasetMode === "video") && annotationWorkflow !== "text_detect_text";
   const titleTooLong = isTextLimitExceeded(title, ROOM_TITLE_MAX_LENGTH);
   const passwordTooLong = isTextLimitExceeded(password, ROOM_PASSWORD_MAX_LENGTH);
@@ -2791,6 +3050,13 @@ function RoomCreatePage() {
   const deadlineError = validateRoomDeadline(deadline);
   const hasCreateTextLimitError = titleTooLong || passwordTooLong || descriptionTooLong || annotatorIdsTooLong || datasetLabelTooLong || hasLabelNameTooLong;
   const selectedFilesSummary = summarizeSelectedFiles(selectedFiles);
+  const roomCreateDraftItems = [
+    { label: "Сценарий", value: currentScenario.title },
+    { label: "Датасет", value: datasetLabel.trim() || currentScenario.datasetLabel },
+    { label: "Тип", value: translateDatasetMode(datasetMode) },
+    { label: "Файлы", value: filesPreview },
+    { label: "Команда", value: ownerIsAnnotator ? "Создатель размечает" : "Создатель не размечает" },
+  ];
 
   function updateLabel(index: number, key: "name" | "color", value: string) {
     setLabels((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, [key]: value } : item)));
@@ -2879,9 +3145,6 @@ function RoomCreatePage() {
     }
 
     if (stepId === "quality") {
-      if (crossValidationEnabled && Number(crossValidationCount) < 2) {
-        throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
-      }
       if (
         reviewVotingEnabled &&
         (!Number.isFinite(normalizedReviewVotesRequired) ||
@@ -2923,7 +3186,7 @@ function RoomCreatePage() {
         .filter(Boolean).length;
       return invitedCount ? `Приглашено ID: ${invitedCount} · ${ownerIsAnnotator ? "создатель размечает" : "создатель не размечает"}` : ownerIsAnnotator ? "Создатель размечает задачи" : "Создатель не размечает задачи";
     }
-    return `${qualityPreview} · ${reviewPreview}`;
+    return reviewPreview;
   }
 
 
@@ -2951,6 +3214,23 @@ function RoomCreatePage() {
     setCurrentStep(roomCreateWizardSteps[previousIndex].id);
   }
 
+  function goBackFromRoomCreate() {
+    const referrer = document.referrer;
+    if (referrer) {
+      try {
+        const previousUrl = new URL(referrer);
+        const currentUrl = new URL(window.location.href);
+        if (previousUrl.origin === currentUrl.origin && previousUrl.pathname !== currentUrl.pathname) {
+          window.location.href = previousUrl.href;
+          return;
+        }
+      } catch (error) {
+        // Fall through to the stable landing page fallback.
+      }
+    }
+    window.location.href = "/";
+  }
+
   function getNormalizedRoomCreateValues() {
     const normalizedAnnotatorIds = annotatorIds
       .split(",")
@@ -2971,10 +3251,6 @@ function RoomCreatePage() {
 
     if (labelsRequired && !normalizedLabels.length) {
       throw new Error("Добавь хотя бы один лейбл для фото или видео.");
-    }
-
-    if (crossValidationEnabled && Number(crossValidationCount) < 2) {
-      throw new Error("Для перекрестной разметки укажи минимум двух независимых исполнителей.");
     }
 
     if (
@@ -3044,8 +3320,7 @@ function RoomCreatePage() {
 
     try {
       validateRoomCreateWizard();
-      getNormalizedRoomCreateValues();
-      setConfirmationOpen(true);
+      void submitRoomCreate();
     } catch (error) {
       addToast(getErrorMessage(error), "error");
     }
@@ -3074,13 +3349,16 @@ function RoomCreatePage() {
 
       payload.append("title", title.trim());
       payload.append("description", description.trim());
+      if (descriptionPdf) {
+        payload.append("description_pdf", descriptionPdf);
+      }
       payload.append("password", password.trim());
       payload.append("dataset_mode", datasetMode);
       payload.append("annotation_workflow", annotationWorkflow);
       payload.append("dataset_label", datasetLabel.trim() || "Тестовый датасет");
-      payload.append("cross_validation_enabled", crossValidationEnabled ? "true" : "false");
-      payload.append("cross_validation_annotators_count", String(Number(crossValidationCount || 1)));
-      payload.append("cross_validation_similarity_threshold", String(Number(crossValidationThreshold || 80)));
+      payload.append("cross_validation_enabled", "false");
+      payload.append("cross_validation_annotators_count", "1");
+      payload.append("cross_validation_similarity_threshold", "80");
       payload.append("review_voting_enabled", reviewVotingEnabled ? "true" : "false");
       payload.append("review_votes_required", String(normalizedReviewVotesRequired));
       payload.append("review_acceptance_threshold", String(normalizedReviewAcceptanceThreshold));
@@ -3113,7 +3391,6 @@ function RoomCreatePage() {
         method: "POST",
         formData: payload,
       });
-      setConfirmationOpen(false);
       addToast(`Комната #${room.id} создана. Переходим к ней.`, "success");
       window.setTimeout(() => {
         window.location.href = `/rooms/${room.id}/`;
@@ -3129,78 +3406,49 @@ function RoomCreatePage() {
     const stepIndex = roomCreateWizardSteps.findIndex((item) => item.id === stepId);
     const step = roomCreateWizardSteps[stepIndex];
     const isActive = currentStep === stepId;
-    const isUnlocked = stepIndex <= maxUnlockedStepIndex;
 
-    if (!step) {
+    if (!step || !isActive) {
       return null;
     }
 
     return (
-      <section key={step.id} className={`room-create-section room-create-wizard-section ${isActive ? "is-active" : ""} ${isUnlocked ? "is-unlocked" : "is-locked"}`}>
-        <div className="room-create-wizard-head">
-          <button
-            className="room-create-wizard-head__main"
-            type="button"
-            disabled={!isUnlocked || isActive}
-            onClick={() => openRoomCreateStep(step.id)}
-          >
-            <span className="room-create-step-number">{stepIndex + 1}</span>
-            <span className="room-create-wizard-head__copy">
-              <span className="eyebrow">{step.eyebrow}</span>
-              <strong>{step.title}</strong>
-              <small>{isActive ? step.description : getRoomCreateStepSummary(step.id)}</small>
-            </span>
-          </button>
-          {!isActive && isUnlocked ? (
-            <button className="btn btn--muted btn--compact" type="button" onClick={() => openRoomCreateStep(step.id)}>
-              Изменить
-            </button>
-          ) : null}
-        </div>
-
-        {isActive ? (
-          <div className="room-create-step-body">
-            {children}
-            <div className="room-create-step-actions">
-              {currentStepIndex > 0 ? (
-                <button className="btn btn--muted" type="button" onClick={goToPreviousRoomCreateStep}>
-                  Назад
-                </button>
-              ) : (
-                <a className="btn btn--muted" href="/rooms/">
-                  Назад к комнатам
-                </a>
-              )}
-              {currentStepIndex < roomCreateWizardSteps.length - 1 ? (
-                <button className="btn btn--primary" type="button" onClick={goToNextRoomCreateStep}>
-                  Далее
-                </button>
-              ) : (
-                <button className="btn btn--primary" type="submit" disabled={submitting}>
-                  Проверить и создать
-                </button>
-              )}
-            </div>
+      <section key={step.id} className="room-create-section room-create-wizard-section is-active">
+        <div className="room-create-step-body">
+          {children}
+          <div className="room-create-step-actions">
+            {currentStepIndex > 0 ? (
+              <button className="btn btn--muted" type="button" onClick={goToPreviousRoomCreateStep}>
+                Назад
+              </button>
+            ) : (
+              <button className="btn btn--muted" type="button" onClick={goBackFromRoomCreate}>
+                Назад
+              </button>
+            )}
+            {currentStepIndex < roomCreateWizardSteps.length - 1 ? (
+              <button className="btn btn--primary" type="button" onClick={goToNextRoomCreateStep}>
+                Далее
+              </button>
+            ) : (
+              <button className="btn btn--primary" type="submit" disabled={submitting}>
+                Создать комнату
+              </button>
+            )}
           </div>
-        ) : null}
+        </div>
       </section>
     );
   }
 
   return (
-    <>
-      <section className="page-topbar page-topbar--create">
-        <div className="page-topbar__copy">
-          <span className="eyebrow">Создание комнаты</span>
-          <h1>Новая комната</h1>
-          <p>Настрой датасет, участников и проверку в одном рабочем потоке.</p>
-        </div>
-      </section>
-
-
-      <section className="create-layout create-layout--room-create">
-        <form id="room-create-form" className="room-create-form" onSubmit={handleSubmit}>
-          <div className="room-create-stepper" aria-label="Шаги создания комнаты">
+    <section className="create-layout create-layout--room-create">
+      <form id="room-create-form" className="room-create-form" onSubmit={handleSubmit}>
+        <div className="room-create-board">
+          <aside className="room-create-stepper" aria-label="Шаги создания комнаты">
+            <div className="room-create-stepper__head">
+              <span>Создание</span>
+              <strong>Комната</strong>
+            </div>
             {roomCreateWizardSteps.map((step, index) => {
               const isActive = currentStep === step.id;
               const isUnlocked = index <= maxUnlockedStepIndex;
@@ -3215,10 +3463,20 @@ function RoomCreatePage() {
                 >
                   <span>{index + 1}</span>
                   <strong>{step.title}</strong>
+                  <small>{isUnlocked ? getRoomCreateStepSummary(step.id) : "Заполните предыдущий шаг"}</small>
                 </button>
               );
             })}
-          </div>
+          </aside>
+
+          <section className="room-create-workspace" aria-labelledby="room-create-active-step">
+            <div className="room-create-workspace__head">
+              <span className="landing-chip">{activeStep.eyebrow}</span>
+              <div>
+                <h1 id="room-create-active-step">{activeStep.title}</h1>
+                <p>{activeStep.description}</p>
+              </div>
+            </div>
 
           {renderRoomCreateStep(
             "scenario",
@@ -3293,6 +3551,16 @@ function RoomCreatePage() {
                   aria-invalid={descriptionTooLong}
                   onChange={(event) => setDescription(event.currentTarget.value)}
                 ></textarea>
+              </label>
+              <label className="field field--full">
+                <span>PDF с описанием</span>
+                <input
+                  name="description_pdf"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={(event) => setDescriptionPdf(event.currentTarget.files?.[0] || null)}
+                />
+                <div className="panel-note">{descriptionPdf ? descriptionPdf.name : "Можно добавить PDF с правилами или техническим заданием."}</div>
               </label>
               <label className="field">
                 <span>Дедлайн (необязательно)</span>
@@ -3496,48 +3764,17 @@ function RoomCreatePage() {
             <>
             <div className="room-create-section__head">
               <div>
-                <span className="eyebrow">Контроль качества</span>
-                <h2>Перекрестная разметка и ревью</h2>
+                <span className="eyebrow">Проверка</span>
+                <h2>Ревью финальной разметки</h2>
               </div>
             </div>
             <div className="room-create-fields">
-              <label className="field field--checkbox">
-                <span>Перекрестная разметка</span>
-                <span className="field--checkbox__control">
-                  <span className="field--checkbox__text">Включить независимых исполнителей</span>
-                  <input checked={crossValidationEnabled} name="cross_validation_enabled" type="checkbox" onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)} />
-                </span>
-              </label>
               <label className="field field--checkbox">
                 <span>Пул валидации</span>
                 <span className="field--checkbox__control">
                   <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
                   <input checked={reviewVotingEnabled} name="review_voting_enabled" type="checkbox" onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)} />
                 </span>
-              </label>
-              <label className="field">
-                <span>Количество независимых исполнителей (n)</span>
-                <input
-                  value={crossValidationCount}
-                  name="cross_validation_annotators_count"
-                  type="number"
-                  min="2"
-                  max="20"
-                  disabled={!crossValidationEnabled}
-                  onChange={(event) => setCrossValidationCount(event.currentTarget.value)}
-                />
-              </label>
-              <label className="field">
-                <span>Порог сходства (%)</span>
-                <input
-                  value={crossValidationThreshold}
-                  name="cross_validation_similarity_threshold"
-                  type="number"
-                  min="1"
-                  max="100"
-                  disabled={!crossValidationEnabled}
-                  onChange={(event) => setCrossValidationThreshold(event.currentTarget.value)}
-                />
               </label>
               <label className="field">
                 <span>Голосов для решения</span>
@@ -3567,77 +3804,25 @@ function RoomCreatePage() {
             </>
           )}
 
-        </form>
+          </section>
 
-        {confirmationOpen ? (
-          <div className="modal-shell" role="presentation" onClick={() => (submitting ? undefined : setConfirmationOpen(false))}>
-            <div
-              className="modal-card modal-card--room-create"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="room-create-confirm-title"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="modal-card__head">
-                <span className="eyebrow">Подтверждение</span>
-                <h2 id="room-create-confirm-title">Создать комнату?</h2>
-                <p>Проверь основные параметры перед созданием. После создания комнату можно будет открыть и продолжить настройку доступа.</p>
-              </div>
-              <div className="room-create-confirm-grid">
-                <div>
-                  <span>Название</span>
-                  <strong>{title.trim() || currentScenario.defaultTitle}</strong>
-                </div>
-                <div>
-                  <span>Сценарий</span>
-                  <strong>{currentScenario.title}</strong>
-                </div>
-                <div>
-                  <span>Датасет</span>
-                  <strong>{translateDatasetMode(datasetMode)}</strong>
-                </div>
-                <div>
-                  <span>Workflow</span>
-                  <strong>{translateAnnotationWorkflow(annotationWorkflow)}</strong>
-                </div>
-                <div>
-                  <span>Файлы</span>
-                  <strong>{filesPreview}</strong>
-                </div>
-                <div>
-                  <span>Качество</span>
-                  <strong>{qualityPreview}</strong>
-                </div>
-                <div>
-                  <span>Ревью</span>
-                  <strong>{reviewPreview}</strong>
-                </div>
-              </div>
-              <div className="room-create-confirm-labels">
-                <span>Лейблы</span>
-                {normalizedLabelsPreview.length ? (
-                  <div>
-                    {normalizedLabelsPreview.map((label) => (
-                      <strong key={label}>{label}</strong>
-                    ))}
-                  </div>
-                ) : (
-                  <p>{modeConfig.usesLabels ? "Лейблы не заполнены." : "Для этого сценария label palette не нужен."}</p>
-                )}
-              </div>
-              <div className="modal-card__actions">
-                <button className="btn btn--muted" type="button" disabled={submitting} onClick={() => setConfirmationOpen(false)}>
-                  Вернуться к форме
-                </button>
-                <button className="btn btn--primary" type="button" disabled={submitting} onClick={submitRoomCreate}>
-                  {submitting ? "Создаем..." : "Подтвердить создание"}
-                </button>
-              </div>
+          <aside className="room-create-draft" aria-label="Черновик комнаты">
+            <div className="room-create-draft__head">
+              <span>Черновик</span>
+              <strong>{title.trim() || currentScenario.defaultTitle}</strong>
             </div>
-          </div>
-        ) : null}
-      </section>
-    </>
+            <div className="room-create-draft__list">
+              {roomCreateDraftItems.map((item) => (
+                <div className="room-create-draft__item" key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -3784,217 +3969,281 @@ function RoomEditPage() {
   }
 
   return (
-    <>
-      <section className="page-topbar">
-        <div className="page-topbar__copy">
-          <span className="eyebrow">Редактирование комнаты</span>
-          <h1>Настройки комнаты</h1>
-          <p>Обнови название, описание, дедлайн, квоты и параметры разметки без изменения самих задач и файлов.</p>
-        </div>
-      </section>
-
-      <section className="create-layout">
-        <form className="form-card" onSubmit={handleSubmit}>
+    <section className="room-edit-shell">
+      <form className="room-edit-board" onSubmit={handleSubmit}>
+        <aside className="room-edit-board__rail">
+          <div className="room-edit-board__rail-head">
+            <span>Настройка</span>
+            <strong>Комната</strong>
+          </div>
+          <div className="room-edit-board__steps">
+            <div className="room-edit-board__step is-active">
+              <span>1</span>
+              <div>
+                <strong>Основное</strong>
+                <small>{title || "Название комнаты"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>2</span>
+              <div>
+                <strong>Доступ</strong>
+                <small>{passwordEnabled ? "Пароль включен" : "Без пароля"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>3</span>
+              <div>
+                <strong>Контроль</strong>
+                <small>{crossValidationEnabled ? "Cross-validation" : reviewVotingEnabled ? "Пул валидации" : "Обычная проверка"}</small>
+              </div>
+            </div>
+            <div className="room-edit-board__step">
+              <span>4</span>
+              <div>
+                <strong>Описание</strong>
+                <small>{description ? "Заполнено" : "Не заполнено"}</small>
+              </div>
+            </div>
+          </div>
           {room ? (
-            <div className="summary-stack room-edit-summary">
-              <div className="summary-row">
+            <div className="room-edit-board__summary">
+              <div>
                 <span>ID комнаты</span>
                 <strong>#{room.id}</strong>
               </div>
-              <div className="summary-row">
-                <span>Тип датасета</span>
+              <div>
+                <span>Тип</span>
                 <strong>{translateDatasetMode(room.dataset_type)}</strong>
               </div>
-              <div className="summary-row">
+              <div>
                 <span>Сценарий</span>
                 <strong>{translateAnnotationWorkflow(room.annotation_workflow || "standard")}</strong>
               </div>
-              <div className="summary-row">
-                <span>Доступ</span>
-                <strong>{room.has_password ? "С паролем" : "Без пароля"}</strong>
-              </div>
             </div>
           ) : (
-            <div className="summary-stack room-edit-summary empty-card">Загружаем настройки комнаты.</div>
+            <div className="empty-card room-edit-board__loading">Загружаем настройки.</div>
           )}
+        </aside>
 
-          <div className="form-grid">
-            <label className="field">
-              <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
-              <input
-                value={title}
-                type="text"
-                placeholder="Например, Разметка отзывов Q2"
-                required
-                className={titleTooLong ? "field__control--invalid" : ""}
-                aria-invalid={titleTooLong}
-                onChange={(event) => setTitle(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
-              <input
-                value={datasetLabel}
-                type="text"
-                placeholder="Например, Отзывы Q2"
-                className={datasetLabelTooLong ? "field__control--invalid" : ""}
-                aria-invalid={datasetLabelTooLong}
-                onChange={(event) => setDatasetLabel(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Стандартная квота задач</span>
-              <input
-                value={defaultAssignmentQuota}
-                type="number"
-                min="0"
-                step="1"
-                placeholder="Не задана"
-                onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Дедлайн (необязательно)</span>
-              <input
-                value={deadline}
-                type="datetime-local"
-                className={deadlineError ? "field__control--invalid" : ""}
-                aria-invalid={Boolean(deadlineError)}
-                onChange={(event) => setDeadline(event.currentTarget.value)}
-              />
-              {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
-            </label>
-            <label className="field field--checkbox">
-              <span>Защита паролем</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Требовать пароль для входа</span>
-                <input checked={passwordEnabled} type="checkbox" onChange={(event) => setPasswordEnabled(event.currentTarget.checked)} />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Перекрестная разметка</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Включить</span>
-                <input
-                  checked={crossValidationEnabled}
-                  type="checkbox"
-                  onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Пул валидации</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
-                <input
-                  checked={reviewVotingEnabled}
-                  type="checkbox"
-                  onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field field--checkbox">
-              <span>Создатель в разметке</span>
-              <span className="field--checkbox__control">
-                <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
-                <input
-                  checked={ownerIsAnnotator}
-                  type="checkbox"
-                  onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)}
-                />
-              </span>
-            </label>
-            <label className="field">
-              <span>Независимых исполнителей (n)</span>
-              <input
-                value={crossValidationAnnotatorsCount}
-                type="number"
-                min="2"
-                max="20"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог сходства (%)</span>
-              <input
-                value={crossValidationSimilarityThreshold}
-                type="number"
-                min="1"
-                max="100"
-                disabled={!crossValidationEnabled}
-                onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Голосов для решения</span>
-              <input
-                value={reviewVotesRequired}
-                type="number"
-                min="1"
-                max="20"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field">
-              <span>Порог принятия (%)</span>
-              <input
-                value={reviewAcceptanceThreshold}
-                type="number"
-                min="1"
-                max="100"
-                disabled={!reviewVotingEnabled}
-                onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
-              />
-            </label>
-            <label className="field field--full">
-              <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
-              <textarea
-                value={description}
-                rows={4}
-                placeholder="Кратко опиши задачу и правила разметки"
-                className={descriptionTooLong ? "field__control--invalid" : ""}
-                aria-invalid={descriptionTooLong}
-                onChange={(event) => setDescription(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            <label className="field field--full">
-              <span>Новый пароль комнаты</span>
-              <input
-                value={password}
-                type="password"
-                disabled={!passwordEnabled}
-                className={passwordTooLong ? "field__control--invalid" : ""}
-                aria-invalid={passwordTooLong}
-                placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-              />
-            </label>
-            <div className="panel-note room-edit-password-note">
-              {passwordEnabled
-                ? initialHasPassword
-                  ? "Оставь поле пустым, если текущий пароль менять не нужно. Введи новый пароль, если хочешь его заменить."
-                  : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
-                : "После сохранения доступ в комнату будет открыт без пароля."}
+        <section className="room-edit-board__workspace">
+          <div className="room-edit-board__workspace-head">
+            <div>
+              <span className="eyebrow">Редактирование комнаты</span>
+              <h1>Настройки комнаты</h1>
+              <p>Обнови параметры комнаты без изменения состава задач и файлов.</p>
             </div>
-            <div className="panel-note room-edit-note">
-              Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Перекрестную разметку и стандартную квоту можно
-              перенастроить здесь, не меняя сам состав задач.
+            <div className="room-edit-board__actions">
+              <a className="btn btn--muted" href={`/rooms/${roomId}/`}>
+                Назад к комнате
+              </a>
+              <button className="btn btn--primary" type="submit" disabled={submitting}>
+                {submitting ? "Сохраняем..." : "Сохранить"}
+              </button>
             </div>
           </div>
 
-          <div className="form-actions">
-            <a className="btn btn--muted" href={`/rooms/${roomId}/`}>
-              Назад к комнате
-            </a>
-            <button className="btn btn--primary" type="submit" disabled={submitting}>
-              {submitting ? "Сохраняем..." : "Сохранить изменения"}
-            </button>
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>01</span>
+              <h2>Основное</h2>
+            </div>
+            <div className="room-edit-fields">
+              <label className="field">
+                <CharacterLimitLabel label="Название комнаты" value={title} maxLength={ROOM_TITLE_MAX_LENGTH} />
+                <input
+                  value={title}
+                  type="text"
+                  placeholder="Например, Разметка отзывов Q2"
+                  required
+                  className={titleTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={titleTooLong}
+                  onChange={(event) => setTitle(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <CharacterLimitLabel label="Название датасета" value={datasetLabel} maxLength={ROOM_DATASET_LABEL_MAX_LENGTH} />
+                <input
+                  value={datasetLabel}
+                  type="text"
+                  placeholder="Например, Отзывы Q2"
+                  className={datasetLabelTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={datasetLabelTooLong}
+                  onChange={(event) => setDatasetLabel(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Стандартная квота задач</span>
+                <input
+                  value={defaultAssignmentQuota}
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Не задана"
+                  onChange={(event) => setDefaultAssignmentQuota(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Дедлайн</span>
+                <input
+                  value={deadline}
+                  type="datetime-local"
+                  className={deadlineError ? "field__control--invalid" : ""}
+                  aria-invalid={Boolean(deadlineError)}
+                  onChange={(event) => setDeadline(event.currentTarget.value)}
+                />
+                {deadlineError ? <div className="panel-note">{deadlineError}</div> : null}
+              </label>
+            </div>
           </div>
-        </form>
-      </section>
-    </>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>02</span>
+              <h2>Доступ и роли</h2>
+            </div>
+            <div className="room-edit-fields room-edit-fields--toggles">
+              <label className="field field--checkbox">
+                <span>Защита паролем</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Требовать пароль для входа</span>
+                  <input checked={passwordEnabled} type="checkbox" onChange={(event) => setPasswordEnabled(event.currentTarget.checked)} />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Создатель в разметке</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Создатель тоже размечает задачи</span>
+                  <input
+                    checked={ownerIsAnnotator}
+                    type="checkbox"
+                    onChange={(event) => setOwnerIsAnnotator(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field field--full">
+                <span>Новый пароль комнаты</span>
+                <input
+                  value={password}
+                  type="password"
+                  disabled={!passwordEnabled}
+                  className={passwordTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={passwordTooLong}
+                  placeholder={initialHasPassword ? "Оставь пустым, чтобы сохранить текущий пароль" : "Задай новый пароль"}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                />
+              </label>
+              <div className="panel-note room-edit-password-note">
+                {passwordEnabled
+                  ? initialHasPassword
+                    ? "Оставь поле пустым, если текущий пароль менять не нужно. Введи новый пароль, если хочешь его заменить."
+                    : "Укажи пароль и сохрани форму, чтобы закрыть вход в комнату по паролю."
+                  : "После сохранения доступ в комнату будет открыт без пароля."}
+              </div>
+            </div>
+          </div>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>03</span>
+              <h2>Контроль качества</h2>
+            </div>
+            <div className="room-edit-fields room-edit-fields--toggles">
+              <label className="field field--checkbox">
+                <span>Перекрестная разметка</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Включить</span>
+                  <input
+                    checked={crossValidationEnabled}
+                    type="checkbox"
+                    onChange={(event) => setCrossValidationEnabled(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field field--checkbox">
+                <span>Пул валидации</span>
+                <span className="field--checkbox__control">
+                  <span className="field--checkbox__text">Отправлять финальную разметку на голосование</span>
+                  <input
+                    checked={reviewVotingEnabled}
+                    type="checkbox"
+                    onChange={(event) => setReviewVotingEnabled(event.currentTarget.checked)}
+                  />
+                </span>
+              </label>
+              <label className="field">
+                <span>Независимых исполнителей</span>
+                <input
+                  value={crossValidationAnnotatorsCount}
+                  type="number"
+                  min="2"
+                  max="20"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationAnnotatorsCount(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог сходства (%)</span>
+                <input
+                  value={crossValidationSimilarityThreshold}
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!crossValidationEnabled}
+                  onChange={(event) => setCrossValidationSimilarityThreshold(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Голосов для решения</span>
+                <input
+                  value={reviewVotesRequired}
+                  type="number"
+                  min="1"
+                  max="20"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewVotesRequired(event.currentTarget.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Порог принятия (%)</span>
+                <input
+                  value={reviewAcceptanceThreshold}
+                  type="number"
+                  min="1"
+                  max="100"
+                  disabled={!reviewVotingEnabled}
+                  onChange={(event) => setReviewAcceptanceThreshold(event.currentTarget.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="room-edit-section">
+            <div className="room-edit-section__head">
+              <span>04</span>
+              <h2>Описание</h2>
+            </div>
+            <div className="room-edit-fields">
+              <label className="field field--full">
+                <CharacterLimitLabel label="Описание" value={description} maxLength={ROOM_DESCRIPTION_MAX_LENGTH} />
+                <textarea
+                  value={description}
+                  rows={4}
+                  placeholder="Кратко опиши задачу и правила разметки"
+                  className={descriptionTooLong ? "field__control--invalid" : ""}
+                  aria-invalid={descriptionTooLong}
+                  onChange={(event) => setDescription(event.currentTarget.value)}
+                ></textarea>
+              </label>
+              <div className="panel-note room-edit-note">
+                Тип датасета, сценарий разметки, лейблы и загруженные файлы в этой форме не меняются. Контроль качества и стандартную квоту можно
+                перенастроить здесь, не меняя сам состав задач.
+              </div>
+            </div>
+          </div>
+        </section>
+      </form>
+    </section>
   );
 }
 
@@ -4027,14 +4276,21 @@ function RoomDetailPage() {
   const [datasetUploadBusy, setDatasetUploadBusy] = useState(false);
   const [datasetDeleteBusy, setDatasetDeleteBusy] = useState(false);
   const manageSectionStorageKey = roomId ? `datasetai-room:${roomId}:manage` : null;
+  const personalSectionStorageKey = roomId ? `datasetai-room:${roomId}:personal` : null;
   const reviewSectionStorageKey = roomId ? `datasetai-room:${roomId}:review` : null;
   const [manageSectionOpen, setManageSectionOpen] = useState(() => readStoredDisclosureState(manageSectionStorageKey, false));
+  const [personalSectionOpen, setPersonalSectionOpen] = useState(() => readStoredDisclosureState(personalSectionStorageKey, false));
   const [reviewSectionOpen, setReviewSectionOpen] = useState(() => readStoredDisclosureState(reviewSectionStorageKey, false));
   const [reviewTasksLoading, setReviewTasksLoading] = useState(false);
+  const [activeRoomSection, setActiveRoomSection] = useState<RoomDetailSectionId>("overview");
 
   useEffect(() => {
     writeStoredDisclosureState(manageSectionStorageKey, manageSectionOpen);
   }, [manageSectionOpen, manageSectionStorageKey]);
+
+  useEffect(() => {
+    writeStoredDisclosureState(personalSectionStorageKey, personalSectionOpen);
+  }, [personalSectionOpen, personalSectionStorageKey]);
 
   useEffect(() => {
     writeStoredDisclosureState(reviewSectionStorageKey, reviewSectionOpen);
@@ -4587,55 +4843,1072 @@ function RoomDetailPage() {
   const firstVideoTask = dashboard?.video_tasks?.[0] || null;
   const canManageDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "image");
   const canManageVideoDataset = Boolean(dashboard?.actor.can_edit_room && dashboard.room.dataset_type === "video");
+  const canShowRoomWorkspace = Boolean(dashboard && (dashboard.actor.can_annotate || hasRoomManagementActions));
+  const roomWorkflowLabel = dashboard ? translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard") : "";
+  const roomPrimaryAction =
+    dashboard?.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask
+      ? { href: `/videos/${firstVideoTask.id}/pre-annotate/`, label: "Продолжить разметку" }
+      : dashboard?.actor.can_annotate
+        ? { href: `/rooms/${dashboard.room.id}/work/`, label: "Продолжить разметку" }
+        : null;
+  const roomDetailSections = dashboard
+    ? ([
+        {
+          id: "overview",
+          label: "Обзор",
+          summary: `${dashboard.overview.completed_tasks}/${dashboard.overview.total_tasks} задач`,
+        },
+        dashboard.actor.can_annotate
+          ? {
+              id: "personal",
+              label: "Моя статистика",
+              summary: formatPercent(dashboard.annotator_stats?.progress_percent || 0),
+            }
+          : null,
+        canManageDataset || canManageVideoDataset
+          ? {
+              id: "dataset",
+              label: "Датасет",
+              summary: canManageVideoDataset ? "Видео и интервалы" : "Файлы и объекты",
+            }
+          : null,
+        dashboard.actor.can_invite || dashboard.actor.can_assign_roles || dashboard.actor.can_assign_quotas || Boolean(dashboard.annotators?.length)
+          ? {
+              id: "team",
+              label: "Команда",
+              summary: `${dashboard.annotators?.length || 0} участников`,
+            }
+          : null,
+        dashboard.actor.can_review
+          ? {
+              id: "review",
+              label: "Проверка",
+              summary: reviewTasksLoading ? "Загрузка" : `${reviewTasks.length} объектов`,
+            }
+          : null,
+        dashboard.actor.can_export
+          ? {
+              id: "export",
+              label: "Экспорт",
+              summary: `${dashboard.export_formats.length} форматов`,
+            }
+          : null,
+        dashboard.actor.can_edit_room || dashboard.actor.can_delete_room
+          ? {
+              id: "settings",
+              label: "Настройки",
+              summary: dashboard.room.has_password ? "Закрытая" : "Открытая",
+            }
+          : null,
+      ].filter(Boolean) as Array<{ id: RoomDetailSectionId; label: string; summary: string }>)
+    : [];
+  const activeRoomSectionAvailable = roomDetailSections.some((section) => section.id === activeRoomSection);
+
+  function handleRoomSectionChange(sectionId: RoomDetailSectionId) {
+    setActiveRoomSection(sectionId);
+    if (["dataset", "team", "export", "settings"].includes(sectionId)) {
+      setManageSectionOpen(true);
+    }
+    if (sectionId === "review") {
+      setReviewSectionOpen(true);
+    }
+  }
+
+  useEffect(() => {
+    if (dashboard && !activeRoomSectionAvailable) {
+      setActiveRoomSection("overview");
+    }
+  }, [dashboard, activeRoomSectionAvailable]);
+
+  useEffect(() => {
+    if (!dashboard?.actor.can_review || activeRoomSection !== "review") {
+      return;
+    }
+
+    setReviewSectionOpen(true);
+    if (!reviewTasks.length && !reviewTasksLoading) {
+      loadReviewTasks();
+    }
+  }, [dashboard?.actor.can_review, activeRoomSection]);
+
+  useEffect(() => {
+    if (
+      !dashboard?.actor.can_edit_room ||
+      !["image", "video"].includes(dashboard.room.dataset_type) ||
+      activeRoomSection !== "dataset"
+    ) {
+      return;
+    }
+
+    setManageSectionOpen(true);
+    if (!datasetTasks.length && !datasetTasksLoading) {
+      loadDatasetTasks();
+    }
+  }, [dashboard?.actor.can_edit_room, dashboard?.room.dataset_type, activeRoomSection]);
+
+  if (dashboard) {
+    const activeSectionTitle = roomDetailSections.find((section) => section.id === activeRoomSection)?.label || "Обзор";
+
+    return (
+      <>
+        <section className="room-console">
+          <header className="room-console__hero">
+            <div className="room-console__hero-copy">
+              <span className="eyebrow">Комната #{dashboard.room.id}</span>
+              <h1>{dashboard.room.title}</h1>
+              <p>{dashboard.room.description || "Описание комнаты пока не добавлено."}</p>
+              <div className="room-console-tags" aria-label="Параметры комнаты">
+                <span>{translateDatasetMode(dashboard.room.dataset_type)}</span>
+                <span>{roomWorkflowLabel}</span>
+                <span>{formatDate(dashboard.room.deadline)}</span>
+                <span>{dashboard.room.has_password ? "Доступ по паролю" : "Открытый доступ"}</span>
+              </div>
+            </div>
+            <div className="room-console__hero-actions" aria-label="Действия комнаты">
+              <a className="btn btn--muted" href="/">
+                Главное меню
+              </a>
+              {roomPrimaryAction ? (
+                <a className="btn btn--muted" href={roomPrimaryAction.href}>
+                  {roomPrimaryAction.label}
+                </a>
+              ) : null}
+              {dashboard.actor.can_review ? (
+                <a className="btn btn--secondary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
+                  Открыть проверку
+                </a>
+              ) : null}
+              {dashboard.room.description_pdf_url ? (
+                <a className="btn btn--muted" href={dashboard.room.description_pdf_url} target="_blank" rel="noreferrer">
+                  {dashboard.room.description_pdf_name || "PDF с описанием"}
+                </a>
+              ) : null}
+            </div>
+          </header>
+
+          {loading ? <div className="empty-card room-console__loading">Обновляем данные комнаты.</div> : null}
+
+          <div className="room-console__layout">
+            <aside className="room-console-nav" aria-label="Разделы комнаты">
+              {roomDetailSections.map((section) => (
+                <button
+                  key={section.id}
+                  className={`room-console-nav__item ${activeRoomSection === section.id ? "is-active" : ""}`}
+                  type="button"
+                  onClick={() => handleRoomSectionChange(section.id)}
+                >
+                  <span>{section.label}</span>
+                  <small>{section.summary}</small>
+                </button>
+              ))}
+            </aside>
+
+            <main className="room-console-main" aria-label={activeSectionTitle}>
+              {activeRoomSection === "overview" ? (
+                <div className="room-console-section">
+                  <div className="room-console-panel room-console-panel--intro">
+                    <div>
+                      <span className="eyebrow">Состояние комнаты</span>
+                      <h2>Обзор работы</h2>
+                      <p>
+                        Здесь собраны прогресс, быстрые действия и базовые параметры комнаты. Разметка и ревью остаются в отдельном
+                        fullscreen-редакторе.
+                      </p>
+                    </div>
+                    <div className="room-console-actions">
+                      {dashboard.actor.can_edit_room ? (
+                        <a className="btn btn--muted" href={`/rooms/${dashboard.room.id}/edit/`}>
+                          Редактировать
+                        </a>
+                      ) : null}
+                      {dashboard.actor.can_export ? (
+                        <button className="btn btn--muted" type="button" onClick={() => handleRoomSectionChange("export")}>
+                          Экспорт
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="room-console-card-grid">
+                    <article className="room-console-panel">
+                      <span className="eyebrow">Датасет</span>
+                      <h2>{dashboard.room.dataset_label || "Тестовый датасет"}</h2>
+                      <div className="summary-stack">
+                        <div className="summary-row">
+                          <span>Тип</span>
+                          <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Сценарий</span>
+                          <strong>{roomWorkflowLabel}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Cross-validation</span>
+                          <strong>
+                            {dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "Выкл."}
+                          </strong>
+                        </div>
+                      </div>
+                    </article>
+                    <article className="room-console-panel">
+                      <span className="eyebrow">Контроль качества</span>
+                      <h2>Проверка</h2>
+                      <div className="summary-stack">
+                        <div className="summary-row">
+                          <span>Голосование</span>
+                          <strong>{dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} голос.` : "Выкл."}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Лейблы</span>
+                          <strong>{dashboard.labels.length}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Моя роль</span>
+                          <strong>{translateRole(dashboard.actor.role)}</strong>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeRoomSection === "personal" ? (
+                <div className="room-console-section">
+                  <div className="room-console-panel room-console-panel--intro">
+                    <div>
+                      <span className="eyebrow">Моя очередь</span>
+                      <h2>Личная статистика</h2>
+                      <p>
+                        {translateRole(dashboard.actor.role)} • {formatPercent(dashboard.annotator_stats?.progress_percent || 0)} •{" "}
+                        {dashboard.annotator_stats?.remaining_tasks == null
+                          ? "остаток не задан"
+                          : `осталось ${dashboard.annotator_stats.remaining_tasks}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="room-personal-content room-console-panel">
+                    <div className="summary-stack room-personal-summary">
+                      <div className="summary-row">
+                        <span>Роль в комнате</span>
+                        <strong>{translateRole(dashboard.actor.role)}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Выполнено мной</span>
+                        <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>В работе</span>
+                        <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Осталось</span>
+                        <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Квота</span>
+                        <strong>
+                          {dashboard.annotator_stats?.task_quota == null
+                            ? "Не задана"
+                            : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
+                        </strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Мой прогресс</span>
+                        <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
+                      </div>
+                    </div>
+                    <div className="activity-board">
+                      <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeRoomSection === "dataset" ? (
+                <div className="room-console-section">
+                  {canManageDataset ? (
+                    <div className="room-console-panel room-console-panel--workspace">
+                      <div className="panel-card__head">
+                        <div>
+                          <span className="eyebrow">Датасет</span>
+                          <h2>Изображения комнаты</h2>
+                        </div>
+                      </div>
+                      <div className="dataset-manager-upload">
+                        <label className="field">
+                          <span>Добавить изображения</span>
+                          <input
+                            ref={datasetFileInputRef}
+                            type="file"
+                            accept={datasetModeConfig.image.accept}
+                            multiple
+                            onChange={(event) => setDatasetUploadFiles(Array.from(event.currentTarget.files || []))}
+                          />
+                        </label>
+                        <div className="panel-note">{summarizeSelectedFiles(datasetUploadFiles)}</div>
+                        <button
+                          className="btn btn--primary"
+                          type="button"
+                          disabled={datasetUploadBusy || !datasetUploadFiles.length}
+                          onClick={handleDatasetUpload}
+                        >
+                          {datasetUploadBusy ? "Загружаем..." : "Добавить в комнату"}
+                        </button>
+                      </div>
+                      <div className="dataset-manager-toolbar">
+                        <label className="field panel-search">
+                          <span>Поиск по датасету</span>
+                          <input
+                            value={datasetTaskSearch}
+                            type="text"
+                            placeholder="Файл, номер или ID"
+                            onChange={(event) => setDatasetTaskSearch(event.currentTarget.value)}
+                          />
+                        </label>
+                        <div className="dataset-manager-toolbar__actions">
+                          <button
+                            className="btn btn--muted btn--compact"
+                            type="button"
+                            disabled={!displayedDatasetTasks.length}
+                            onClick={handleDatasetSelectDisplayed}
+                          >
+                            {allDisplayedDatasetTasksSelected ? "Снять выбор" : "Выбрать показанные"}
+                          </button>
+                          <button
+                            className="btn btn--danger btn--compact"
+                            type="button"
+                            disabled={datasetDeleteBusy || !selectedDatasetTaskCount}
+                            onClick={handleDatasetDelete}
+                          >
+                            {datasetDeleteBusy ? "Удаляем..." : `Удалить (${selectedDatasetTaskCount})`}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="summary-stack dataset-manager-summary">
+                        <div className="summary-row">
+                          <span>Всего объектов</span>
+                          <strong>{datasetTasks.length}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>По фильтру</span>
+                          <strong>{filteredDatasetTasks.length}</strong>
+                        </div>
+                      </div>
+                      {datasetTasksLoading ? (
+                        <div className="empty-card">Загружаем состав датасета.</div>
+                      ) : !datasetTasks.length ? (
+                        <div className="empty-card">В датасете пока нет изображений.</div>
+                      ) : !filteredDatasetTasks.length ? (
+                        <div className="empty-card">По этому запросу изображения не найдены.</div>
+                      ) : (
+                        <>
+                          <div className="dataset-task-list" aria-label="Изображения датасета">
+                            {displayedDatasetTasks.map((task) => (
+                              <label key={task.id} className="dataset-task-row">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedDatasetTaskIds.includes(task.id)}
+                                  onChange={() => handleDatasetTaskToggle(task.id)}
+                                />
+                                {task.source_file_url ? (
+                                  <img
+                                    className="dataset-task-row__thumb"
+                                    src={task.source_file_url}
+                                    alt={task.source_name || `Задача ${task.id}`}
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <span className="dataset-task-row__thumb dataset-task-row__thumb--empty" aria-hidden="true"></span>
+                                )}
+                                <span className="dataset-task-row__meta">
+                                  <strong>{task.source_name || `Задача #${task.id}`}</strong>
+                                  <span>
+                                    #{task.id} · № {getTaskItemNumber(task) || "?"} · {translateTaskStatus(task.status)} ·{" "}
+                                    {task.submitted_annotations_count} разметок
+                                  </span>
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                          {filteredDatasetTasks.length > displayedDatasetTasks.length ? (
+                            <div className="panel-note">
+                              Показаны первые {displayedDatasetTasks.length} из {filteredDatasetTasks.length}. Уточни поиск, чтобы быстрее найти
+                              нужные изображения.
+                            </div>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {canManageVideoDataset ? (
+                    <div className="room-console-panel room-console-panel--workspace">
+                      <div className="panel-card__head">
+                        <div>
+                          <span className="eyebrow">Видео</span>
+                          <h2>Видео датасет</h2>
+                        </div>
+                      </div>
+                      <label className="field panel-search">
+                        <span>Поиск по видео</span>
+                        <input
+                          value={datasetTaskSearch}
+                          type="text"
+                          placeholder="Файл или ID"
+                          onChange={(event) => setDatasetTaskSearch(event.currentTarget.value)}
+                        />
+                      </label>
+                      <div className="summary-stack dataset-manager-summary">
+                        <div className="summary-row">
+                          <span>Видео</span>
+                          <strong>{datasetTasks.length}</strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>По фильтру</span>
+                          <strong>{filteredDatasetTasks.length}</strong>
+                        </div>
+                      </div>
+                      {datasetTasksLoading ? (
+                        <div className="empty-card">Загружаем видео датасета.</div>
+                      ) : !datasetTasks.length ? (
+                        <div className="empty-card">В датасете пока нет видео.</div>
+                      ) : !filteredDatasetTasks.length ? (
+                        <div className="empty-card">По этому запросу видео не найдены.</div>
+                      ) : (
+                        <div className="dataset-task-list" aria-label="Видео датасета">
+                          {displayedDatasetTasks.map((task) => (
+                            <div key={task.id} className="dataset-task-row dataset-task-row--video">
+                              <span className="dataset-task-row__thumb dataset-task-row__thumb--empty" aria-hidden="true"></span>
+                              <span className="dataset-task-row__meta">
+                                <strong>{task.source_name || `Видео #${task.id}`}</strong>
+                                <span>
+                                  #{task.id} · {Number(task.input_payload?.frame_count || 0)} кадров · {translateTaskStatus(task.status)}
+                                </span>
+                              </span>
+                              <a className="btn btn--primary btn--compact" href={`/videos/${task.id}/pre-annotate/`}>
+                                Выбрать кадры
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeRoomSection === "team" ? (
+                <div className="room-console-section">
+                  <div className="room-console-split">
+                    <div className="room-console-panel room-console-panel--workspace">
+                      <div className="panel-card__head">
+                        <div>
+                          <span className="eyebrow">Команда</span>
+                          <h2>Участники комнаты</h2>
+                        </div>
+                      </div>
+                      <label className="field panel-search">
+                        <span>Поиск</span>
+                        <input
+                          value={annotatorSearch}
+                          type="text"
+                          placeholder="Имя, ID или статус"
+                          onChange={(event) => setAnnotatorSearch(event.currentTarget.value)}
+                        />
+                      </label>
+                      {(dashboard.annotators || []).length ? (
+                        filteredAnnotators.length ? (
+                          <div className="annotators-list annotators-list--scroll">
+                            {filteredAnnotators.map((annotator) => (
+                              <button
+                                key={annotator.user_id}
+                                className={`annotator-row ${annotator.user_id === selectedAnnotatorUserId ? "is-active" : ""}`}
+                                type="button"
+                                onClick={() =>
+                                  setSelectedAnnotatorUserId((current) => (current === annotator.user_id ? null : annotator.user_id))
+                                }
+                              >
+                                <div className="annotator-row__meta">
+                                  <strong>{annotator.display_name}</strong>
+                                  <span>
+                                    {translateMembership(annotator.status)} · {translateRole(annotator.role)}
+                                  </span>
+                                </div>
+                                <div className="annotator-row__brief">
+                                  <div>{formatPercent(annotator.progress_percent)}</div>
+                                  <div>отправлено: {annotator.completed_tasks}</div>
+                                  <div>
+                                    {annotator.task_quota == null ? "квота не задана" : `квота: ${annotator.quota_used}/${annotator.task_quota}`}
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="empty-card">По этому запросу исполнители не найдены.</div>
+                        )
+                      ) : (
+                        <div className="empty-card">В этой комнате пока нет исполнителей.</div>
+                      )}
+                    </div>
+
+                    <div className="room-console-panel room-console-panel--workspace">
+                      <div className="panel-card__head">
+                        <h2>Профиль участника</h2>
+                      </div>
+                      {activeAnnotator ? (
+                        <>
+                          <div className="summary-stack">
+                            <div className="summary-row">
+                              <span>Исполнитель</span>
+                              <strong>
+                                #{activeAnnotator.user_id} {activeAnnotator.display_name}
+                              </strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Статус</span>
+                              <strong>{translateMembership(activeAnnotator.status)}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Роль</span>
+                              <strong>{translateRole(activeAnnotator.role)}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Выполнено</span>
+                              <strong>{activeAnnotator.completed_tasks}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>В работе</span>
+                              <strong>{activeAnnotator.in_progress_tasks}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>Квота</span>
+                              <strong>
+                                {activeAnnotator.task_quota == null
+                                  ? "Не задана"
+                                  : `${activeAnnotator.quota_used} из ${activeAnnotator.task_quota}${
+                                      activeAnnotator.quota_source === "default" ? " · стандартная" : ""
+                                    }`}
+                              </strong>
+                            </div>
+                          </div>
+                          <div className="role-assignment-box">
+                            {dashboard.actor.can_assign_roles ? (
+                              <label className="field field--compact">
+                                <span>Роль участника</span>
+                                <select value={selectedRole} onChange={(event) => setSelectedRole(event.currentTarget.value)}>
+                                  {dashboard.membership_role_options.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                            {dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? (
+                              <label className="field field--compact">
+                                <span>Квота задач</span>
+                                <input
+                                  value={selectedQuota}
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  placeholder={
+                                    dashboard.room.default_assignment_quota == null
+                                      ? "Без стандартной квоты"
+                                      : `Стандартная: ${dashboard.room.default_assignment_quota}`
+                                  }
+                                  onChange={(event) => setSelectedQuota(event.currentTarget.value)}
+                                />
+                              </label>
+                            ) : null}
+                            <div className="role-assignment-box__actions">
+                              <a className="btn btn--muted btn--compact" href={`/users/${activeAnnotator.user_id}/profile/`}>
+                                Открыть профиль
+                              </a>
+                              {dashboard.actor.can_assign_roles ? (
+                                <button className="btn btn--secondary btn--compact" type="button" onClick={handleRoleSubmit}>
+                                  Сохранить роль
+                                </button>
+                              ) : null}
+                              {dashboard.actor.can_assign_quotas && activeAnnotatorCanReceiveQuota ? (
+                                <button className="btn btn--secondary btn--compact" type="button" disabled={quotaBusy} onClick={handleQuotaSubmit}>
+                                  {quotaBusy ? "Сохраняем..." : "Сохранить квоту"}
+                                </button>
+                              ) : null}
+                              {dashboard.actor.can_assign_roles ? (
+                                <button className="btn btn--danger btn--compact" type="button" onClick={handleRemoveAnnotator}>
+                                  Удалить участника
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="empty-card">Выбери исполнителя в списке слева.</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {dashboard.actor.can_invite ? (
+                    <div className="room-console-split">
+                      <div className="room-console-panel">
+                        <div className="panel-card__head">
+                          <h2>Invite-ссылка</h2>
+                        </div>
+                        <div className="stack-form stack-form--compact">
+                          <label className="field">
+                            <span>Ссылка для входа</span>
+                            <input value={dashboard.invite.url} type="text" readOnly />
+                          </label>
+                          <button className="btn btn--primary" type="button" onClick={handleCopyInviteLink}>
+                            Скопировать ссылку
+                          </button>
+                          <button className="btn btn--secondary" type="button" disabled={inviteBusy} onClick={handleRegenerateInvite}>
+                            {inviteBusy ? "Обновляем..." : "Перегенерировать invite"}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="room-console-panel">
+                        <div className="panel-card__head">
+                          <h2>Заявки на вступление</h2>
+                        </div>
+                        {dashboard.join_requests?.length ? (
+                          <div className="annotators-list manage-request-list-legacy">
+                            {dashboard.join_requests.map((joinRequest) => (
+                              <div key={joinRequest.id} className="annotator-row manage-request-row-legacy">
+                                <div className="annotator-row__meta">
+                                  <strong>{joinRequest.display_name}</strong>
+                                  <span>
+                                    {joinRequest.email} · {translateMembership(joinRequest.status)}
+                                  </span>
+                                </div>
+                                <div className="role-assignment-box__actions">
+                                  {joinRequest.status === "pending" ? (
+                                    <>
+                                      <button
+                                        className="btn btn--secondary btn--compact"
+                                        type="button"
+                                        disabled={joinRequestBusyId === joinRequest.id}
+                                        onClick={() => handleJoinRequestAction(joinRequest.id, "approve")}
+                                      >
+                                        Принять
+                                      </button>
+                                      <button
+                                        className="btn btn--muted btn--compact"
+                                        type="button"
+                                        disabled={joinRequestBusyId === joinRequest.id}
+                                        onClick={() => handleJoinRequestAction(joinRequest.id, "reject")}
+                                      >
+                                        Отклонить
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className="panel-note">
+                                      {joinRequest.status === "approved"
+                                        ? `Принял: ${joinRequest.reviewed_by_display_name || "модератор"}`
+                                        : `Отклонил: ${joinRequest.reviewed_by_display_name || "модератор"}`}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="empty-card">По invite-ссылке пока никто не запросил доступ.</div>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeRoomSection === "review" ? (
+                <div className="room-console-section">
+                  <div className="room-console-panel room-console-panel--intro">
+                    <div>
+                      <span className="eyebrow">Контроль качества</span>
+                      <h2>Проверка разметки</h2>
+                      <p>На странице комнаты виден список объектов и краткая сводка. Детальное сравнение открывается в редакторе.</p>
+                    </div>
+                    <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
+                      Открыть в редакторе
+                    </a>
+                  </div>
+                  <section className="room-review-grid room-review-grid--console">
+                    <div className="room-console-panel room-review-grid__card room-review-grid__card--scroll">
+                      <div className="panel-card__head">
+                        <h2>Размеченные объекты</h2>
+                      </div>
+                      <label className="field panel-search">
+                        <span>Поиск</span>
+                        <input
+                          value={reviewSearch}
+                          type="text"
+                          placeholder="Задача, файл или тип"
+                          onChange={(event) => setReviewSearch(event.currentTarget.value)}
+                        />
+                      </label>
+                      {reviewTasksLoading ? (
+                        <div className="empty-card">Загружаем объекты для проверки.</div>
+                      ) : !reviewTasks.length ? (
+                        <div className="empty-card">Размеченных объектов для проверки пока нет.</div>
+                      ) : !filteredReviewTasks.length ? (
+                        <div className="empty-card">По этому запросу объекты не найдены.</div>
+                      ) : (
+                        <div className="annotators-list annotators-list--scroll">
+                          {filteredReviewTasks.map((task) => (
+                            <button
+                              key={task.id}
+                              className={`annotator-row review-task-row ${task.id === selectedReviewTaskId ? "is-active" : ""}`}
+                              type="button"
+                              onClick={() => setSelectedReviewTaskId(task.id)}
+                            >
+                              <div className="annotator-row__meta">
+                                <strong>Задача #{task.id}</strong>
+                                <span>{task.source_name || translateSourceType(task.source_type)}</span>
+                              </div>
+                              <div className="annotator-row__brief">
+                                <div>{translateReviewOutcome(task.review_outcome)}</div>
+                                <div>
+                                  {task.review_outcome === "validation"
+                                    ? `${task.validation_votes_count}/${task.validation_votes_required} голосов`
+                                    : `${task.annotations_count} аннотац.`}
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="room-console-panel room-review-grid__card">
+                      <div className="panel-card__head">
+                        <h2>Сводка объекта</h2>
+                      </div>
+                      {reviewDetail ? (
+                        <div className="summary-stack review-task-detail">
+                          <div className="summary-row">
+                            <span>Задача</span>
+                            <strong>#{reviewDetail.task.id}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>Статус</span>
+                            <strong>{translateReviewOutcome(reviewDetail.review_outcome)}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>Тип</span>
+                            <strong>{translateSourceType(reviewDetail.task.source_type)}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>Раунд</span>
+                            <strong>{reviewDetail.task.current_round}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>Сходство</span>
+                            <strong>{reviewDetail.task.validation_score == null ? "Не рассчитано" : `${reviewDetail.task.validation_score}%`}</strong>
+                          </div>
+                          <div className="summary-row">
+                            <span>Голоса</span>
+                            <strong>
+                              {reviewDetail.validation_votes_count}/{reviewDetail.validation_votes_required}
+                            </strong>
+                          </div>
+                          {reviewDetail.task.source_file_url ? (
+                            reviewDetail.task.source_type === "image" ? (
+                              <img
+                                className="review-task-preview"
+                                src={reviewDetail.task.source_file_url}
+                                alt={reviewDetail.task.source_name || `task-${reviewDetail.task.id}`}
+                              />
+                            ) : (
+                              <video className="review-task-preview" src={reviewDetail.task.source_file_url} controls preload="metadata"></video>
+                            )
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="empty-card">Выбери размеченный объект в списке слева.</div>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+
+              {activeRoomSection === "export" ? (
+                <div className="room-console-section">
+                  <div className="room-console-panel room-console-panel--workspace">
+                    <div className="panel-card__head">
+                      <div>
+                        <span className="eyebrow">Экспорт</span>
+                        <h2>Экспорт и лейблы</h2>
+                      </div>
+                    </div>
+                    <div className="label-chip-list label-chip-list--static">
+                      {dashboard.labels.length ? (
+                        dashboard.labels.map((label) => (
+                          <span key={label.id} className="label-chip label-chip--static" style={{ ["--label-color" as any]: label.color }}>
+                            <i></i>
+                            <span>{label.name}</span>
+                          </span>
+                        ))
+                      ) : (
+                        <div className="empty-card">Лейблы для этой комнаты пока не заданы.</div>
+                      )}
+                    </div>
+                    <label className="field field--export-compact">
+                      <span>Формат выгрузки</span>
+                      <select value={selectedExportFormat} onChange={(event) => setSelectedExportFormat(event.target.value)}>
+                        {dashboard.export_formats.map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button className="btn btn--secondary" type="button" onClick={handleExport}>
+                      Выгрузить датасет
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {activeRoomSection === "settings" ? (
+                <div className="room-console-section">
+                  <div className="room-settings-board" aria-label="Настройки комнаты">
+                    <aside className="room-settings-board__rail">
+                      <div className="room-settings-board__rail-head">
+                        <span>Настройка</span>
+                        <strong>Комната</strong>
+                      </div>
+                      <div className="room-settings-board__steps">
+                        <div className="room-settings-board__step is-active">
+                          <span>1</span>
+                          <div>
+                            <strong>Основное</strong>
+                            <small>{dashboard.room.title}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>2</span>
+                          <div>
+                            <strong>Датасет</strong>
+                            <small>{translateDatasetMode(dashboard.room.dataset_type)} · {dashboard.room.dataset_label || "Без названия"}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>3</span>
+                          <div>
+                            <strong>Доступ</strong>
+                            <small>{dashboard.room.has_password ? "Вход по паролю" : "Открытый вход"}</small>
+                          </div>
+                        </div>
+                        <div className="room-settings-board__step">
+                          <span>4</span>
+                          <div>
+                            <strong>Качество</strong>
+                            <small>{dashboard.room.review_voting_enabled ? "Пул валидации включен" : "Без пула валидации"}</small>
+                          </div>
+                        </div>
+                      </div>
+                    </aside>
+
+                    <section className="room-settings-board__workspace">
+                      <div className="room-settings-board__workspace-head">
+                        <div>
+                          <span className="eyebrow">Параметры</span>
+                          <h2>Управление комнатой</h2>
+                          <p>Структура комнаты зафиксирована после создания. Изменяемые поля открываются на отдельной странице редактирования.</p>
+                        </div>
+                        {dashboard.actor.can_edit_room ? (
+                          <a className="btn btn--primary" href={`/rooms/${dashboard.room.id}/edit/`}>
+                            Редактировать
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <div className="room-settings-board__fields">
+                        <article className="room-settings-board__field">
+                          <span>Тип датасета</span>
+                          <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Сценарий</span>
+                          <strong>{translateAnnotationWorkflow(dashboard.room.annotation_workflow || "standard")}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Датасет</span>
+                          <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Дедлайн</span>
+                          <strong>{formatDate(dashboard.room.deadline)}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Стандартная квота</span>
+                          <strong>{dashboard.room.default_assignment_quota == null ? "Не задана" : dashboard.room.default_assignment_quota}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Cross-validation</span>
+                          <strong>{dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "Выкл."}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>Пул валидации</span>
+                          <strong>{dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} голос.` : "Выкл."}</strong>
+                        </article>
+                        <article className="room-settings-board__field">
+                          <span>PDF</span>
+                          <strong>{dashboard.room.description_pdf_name || "Не добавлен"}</strong>
+                        </article>
+                      </div>
+
+                      <div className="room-settings-board__footer">
+                        <p className="panel-note room-settings-panel__note">
+                          Название, описание, дедлайн, пароль, стандартная квота и параметры контроля качества редактируются без изменения состава задач.
+                        </p>
+                        {dashboard.actor.can_delete_room ? (
+                          <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
+                            Удалить комнату
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              ) : null}
+            </main>
+
+            <aside className="room-console-aside" aria-label="Сводка">
+              <div className="room-console-aside__panel">
+                <span className="eyebrow">Прогресс</span>
+                <RoomProgressChart
+                  totalTasks={dashboard.overview.total_tasks}
+                  completedTasks={dashboard.overview.completed_tasks}
+                  remainingTasks={dashboard.overview.remaining_tasks}
+                  progressPercent={dashboard.overview.progress_percent}
+                />
+              </div>
+              <div className="room-console-aside__panel">
+                <span className="eyebrow">Параметры</span>
+                <div className="summary-stack">
+                  <div className="summary-row">
+                    <span>Дедлайн</span>
+                    <strong>{formatDate(dashboard.room.deadline)}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Доступ</span>
+                    <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
+                  </div>
+                  <div className="summary-row">
+                    <span>Лейблов</span>
+                    <strong>{dashboard.labels.length}</strong>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        {deleteRoomConfirmOpen ? (
+          <div className="modal-shell" role="presentation" onClick={handleCancelDeleteRoom}>
+            <div
+              className="modal-card modal-card--danger"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-room-modal-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal-card__head">
+                <span className="eyebrow">Опасное действие</span>
+                <h2 id="delete-room-modal-title">Удалить комнату?</h2>
+                <p>
+                  Комната, задачи, участники и результаты разметки будут удалены без возможности восстановления. Для подтверждения
+                  введи текущий пароль владельца.
+                </p>
+              </div>
+              <label className="field field--full">
+                <span>Пароль владельца</span>
+                <input
+                  value={deleteRoomPassword}
+                  type="password"
+                  placeholder="Введи текущий пароль аккаунта"
+                  autoFocus
+                  onChange={(event) => setDeleteRoomPassword(event.currentTarget.value)}
+                />
+              </label>
+              <div className="modal-card__actions">
+                <button className="btn btn--muted" type="button" onClick={handleCancelDeleteRoom} disabled={deleteRoomBusy}>
+                  Отмена
+                </button>
+                <button className="btn btn--danger" type="button" onClick={handleDeleteRoom} disabled={deleteRoomBusy}>
+                  {deleteRoomBusy ? "Удаляем..." : "Подтвердить удаление"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
-      <section className="page-topbar page-topbar--room">
+      <section className="page-topbar page-topbar--room room-command-center">
         <div className="page-topbar__copy">
-          <span className="eyebrow">Комната</span>
+          <span className="eyebrow">{dashboard ? `Комната #${dashboard.room.id}` : "Комната"}</span>
           <h1>{dashboard?.room.title || "Загрузка комнаты..."}</h1>
           <p>{dashboard?.room.description || "Подгружаем статистику и рабочий контур."}</p>
+          {dashboard?.room.description_pdf_url ? (
+            <a className="btn btn--muted btn--compact room-description-pdf-link" href={dashboard.room.description_pdf_url} target="_blank" rel="noreferrer">
+              {dashboard.room.description_pdf_name || "Открыть PDF с описанием"}
+            </a>
+          ) : null}
           {dashboard ? (
-            <div className="summary-stack room-header-inline-meta">
-              <div className="summary-row">
-                <span>ID комнаты</span>
-                <strong>#{dashboard.room.id}</strong>
-              </div>
-              <div className="summary-row">
+            <div className="room-command-meta" aria-label="Параметры комнаты">
+              <article className="room-command-meta__item">
                 <span>Датасет</span>
                 <strong>{dashboard.room.dataset_label || "Тестовый датасет"}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
                 <span>Тип</span>
                 <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
+                <span>Сценарий</span>
+                <strong>{roomWorkflowLabel}</strong>
+              </article>
+              <article className="room-command-meta__item">
                 <span>Дедлайн</span>
                 <strong>{formatDate(dashboard.room.deadline)}</strong>
-              </div>
-              <div className="summary-row">
+              </article>
+              <article className="room-command-meta__item">
                 <span>Доступ</span>
                 <strong>{dashboard.room.has_password ? "С паролем" : "Без пароля"}</strong>
-              </div>
+              </article>
             </div>
           ) : (
             <div className="empty-card room-header-inline-meta__empty">Загрузка.</div>
           )}
-          {dashboard && (dashboard.actor.can_annotate || dashboard.actor.can_review) ? (
+          {dashboard && (roomPrimaryAction || dashboard.actor.can_review || dashboard.actor.can_edit_room || dashboard.actor.can_export) ? (
             <div className="room-header-cta" aria-label="Действия комнаты">
-              {dashboard.actor.can_annotate && dashboard.room.dataset_type === "video" && firstVideoTask ? (
-                <a className="btn btn--primary room-header-cta__button" href={`/videos/${firstVideoTask.id}/pre-annotate/`}>
-                  Выбрать кадры
-                </a>
-              ) : dashboard.actor.can_annotate ? (
-                <a className="btn btn--primary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/`}>
-                  Приступить к работе
+              {roomPrimaryAction ? (
+                <a className="btn btn--primary room-header-cta__button" href={roomPrimaryAction.href}>
+                  {roomPrimaryAction.label}
                 </a>
               ) : null}
               {dashboard.actor.can_review ? (
                 <a className="btn btn--secondary room-header-cta__button" href={`/rooms/${dashboard.room.id}/work/?mode=review`}>
                   Открыть проверку
                 </a>
+              ) : null}
+              {dashboard.actor.can_edit_room ? (
+                <a className="btn btn--muted room-header-cta__button" href={`/rooms/${dashboard.room.id}/edit/`}>
+                  Настройки
+                </a>
+              ) : null}
+              {dashboard.actor.can_export ? (
+                <button className="btn btn--muted room-header-cta__button" type="button" onClick={handleExport}>
+                  Экспорт
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -4650,6 +5923,20 @@ function RoomDetailPage() {
                 remainingTasks={dashboard.overview.remaining_tasks}
                 progressPercent={dashboard.overview.progress_percent}
               />
+              <div className="room-progress-brief" aria-label="Сводка задач">
+                <div>
+                  <span>Всего</span>
+                  <strong>{dashboard.overview.total_tasks}</strong>
+                </div>
+                <div>
+                  <span>Готово</span>
+                  <strong>{dashboard.overview.completed_tasks}</strong>
+                </div>
+                <div>
+                  <span>Осталось</span>
+                  <strong>{dashboard.overview.remaining_tasks}</strong>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="empty-card">Загрузка.</div>
@@ -4659,70 +5946,148 @@ function RoomDetailPage() {
 
       {loading ? <div className="empty-card">Загрузка комнаты.</div> : null}
 
-      {dashboard?.actor.can_annotate ? (
+      {dashboard ? (
+        <section className="room-command-strip" aria-label="Сводка комнаты">
+          <article className="room-command-stat">
+            <span>Участников</span>
+            <strong>{dashboard.annotators?.length || 0}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Лейблов</span>
+            <strong>{dashboard.labels.length}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Cross-validation</span>
+            <strong>{dashboard.room.cross_validation_enabled ? `${dashboard.room.cross_validation_annotators_count}x` : "Выкл."}</strong>
+          </article>
+          <article className="room-command-stat">
+            <span>Голосование</span>
+            <strong>{dashboard.room.review_voting_enabled ? `${dashboard.room.review_votes_required} голос.` : "Выкл."}</strong>
+          </article>
+        </section>
+      ) : null}
+
+      {canShowRoomWorkspace && dashboard ? (
         <section
           className={`workspace-grid workspace-grid--room-top ${dashboard.actor.can_manage ? "workspace-grid--owner-manage" : ""} ${
             hasRoomManagementActions ? "" : "workspace-grid--single"
           }`}
         >
-          <div className="workspace-grid__main workspace-grid__main--room-annotator">
-            <div className="panel-card">
-              <div className="panel-card__head">
-                <h2>Личная статистика</h2>
-              </div>
-              <div className="summary-stack">
-                <div className="summary-row">
-                  <span>Роль в комнате</span>
-                  <strong>{translateRole(dashboard.actor.role)}</strong>
+          {dashboard.actor.can_annotate ? (
+            <div className="workspace-grid__main workspace-grid__main--room-annotator">
+              <details
+                className="panel-card section-disclosure room-personal-panel room-personal-panel--disclosure"
+                open={personalSectionOpen}
+                onToggle={(event) => setPersonalSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="section-disclosure__summary">
+                  <div className="section-disclosure__copy">
+                    <span className="eyebrow section-disclosure__eyebrow">Моя очередь</span>
+                    <strong>Личная статистика</strong>
+                    <p className="section-disclosure__note">
+                      {translateRole(dashboard.actor.role)} • {formatPercent(dashboard.annotator_stats?.progress_percent || 0)} •{" "}
+                      {dashboard.annotator_stats?.remaining_tasks == null
+                        ? "остаток не задан"
+                        : `осталось ${dashboard.annotator_stats.remaining_tasks}`}
+                    </p>
+                  </div>
+                  <span className="section-disclosure__icon" aria-hidden="true"></span>
+                </summary>
+                <div className="section-disclosure__content room-personal-content">
+                  <div className="summary-stack room-personal-summary">
+                    <div className="summary-row">
+                      <span>Роль в комнате</span>
+                      <strong>{translateRole(dashboard.actor.role)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Выполнено мной</span>
+                      <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>В работе</span>
+                      <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Осталось</span>
+                      <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Квота</span>
+                      <strong>
+                        {dashboard.annotator_stats?.task_quota == null
+                          ? "Не задана"
+                          : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
+                      </strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Мой прогресс</span>
+                      <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
+                    </div>
+                  </div>
+                  <div className="activity-board">
+                    <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
+                  </div>
                 </div>
-                <div className="summary-row">
-                  <span>Выполнено мной</span>
-                  <strong>{dashboard.annotator_stats?.completed_tasks || 0}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>В работе</span>
-                  <strong>{dashboard.annotator_stats?.in_progress_tasks || 0}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Осталось</span>
-                  <strong>{dashboard.annotator_stats?.remaining_tasks == null ? "Не задано" : dashboard.annotator_stats.remaining_tasks}</strong>
-                </div>
-                <div className="summary-row">
-                  <span>Квота</span>
-                  <strong>
-                    {dashboard.annotator_stats?.task_quota == null
-                      ? "Не задана"
-                      : `${dashboard.annotator_stats.quota_used} из ${dashboard.annotator_stats.task_quota}`}
-                  </strong>
-                </div>
-                <div className="summary-row">
-                  <span>Мой прогресс</span>
-                  <strong>{formatPercent(dashboard.annotator_stats?.progress_percent || 0)}</strong>
-                </div>
-              </div>
-              <div className="activity-board">
-                <ActivityBoard series={dashboard.annotator_stats?.activity || []} />
-              </div>
+              </details>
             </div>
-          </div>
+          ) : hasRoomManagementActions ? (
+            <div className="workspace-grid__main workspace-grid__main--room-annotator">
+              <details
+                className="panel-card section-disclosure room-personal-panel room-personal-panel--disclosure room-personal-panel--owner"
+                open={personalSectionOpen}
+                onToggle={(event) => setPersonalSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
+              >
+                <summary className="section-disclosure__summary">
+                  <div className="section-disclosure__copy">
+                    <span className="eyebrow section-disclosure__eyebrow">Панель владельца</span>
+                    <strong>Сводка управления</strong>
+                    <p className="section-disclosure__note">
+                      {translateRole(dashboard.actor.role)} • {dashboard.overview.total_tasks} задач • {dashboard.annotators?.length || 0} участников
+                    </p>
+                  </div>
+                  <span className="section-disclosure__icon" aria-hidden="true"></span>
+                </summary>
+                <div className="section-disclosure__content room-personal-content">
+                  <div className="summary-stack room-personal-summary">
+                    <div className="summary-row">
+                      <span>Роль</span>
+                      <strong>{translateRole(dashboard.actor.role)}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Задач в комнате</span>
+                      <strong>{dashboard.overview.total_tasks}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Участников</span>
+                      <strong>{dashboard.annotators?.length || 0}</strong>
+                    </div>
+                    <div className="summary-row">
+                      <span>Датасет</span>
+                      <strong>{translateDatasetMode(dashboard.room.dataset_type)}</strong>
+                    </div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          ) : null}
 
           {hasRoomManagementActions ? (
             <div className="workspace-grid__side workspace-grid__side--room-controls">
               <details
-                className="panel-card section-disclosure"
+                className="panel-card section-disclosure section-disclosure--command"
                 open={manageSectionOpen}
                 onToggle={(event) => setManageSectionOpen((event.currentTarget as HTMLDetailsElement).open)}
               >
                 <summary className="section-disclosure__summary">
                   <div className="section-disclosure__copy">
                     <span className="eyebrow section-disclosure__eyebrow">Управление</span>
-                    <strong>Настройки и доступ</strong>
+                    <strong>Управление комнатой</strong>
                     <p className="section-disclosure__note">{getManageSectionSummary(dashboard)}</p>
                   </div>
                   <span className="section-disclosure__icon" aria-hidden="true"></span>
                 </summary>
                 <div className="section-disclosure__content">
-                  <div className="workspace-grid__side--stack manage-stack">
+                  <div className="workspace-grid__side--stack manage-stack manage-stack--command">
                     {(dashboard.actor.can_edit_room || dashboard.actor.can_delete_room) ? (
                       <div className="panel-card room-settings-panel manage-card-legacy manage-card-legacy--settings">
                         <div className="panel-card__head">
@@ -8042,7 +9407,6 @@ function RoomWorkPage() {
   const [payloadText, setPayloadText] = useState(JSON.stringify(createDefaultGenericPayload(), null, 2));
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeInspector, setActiveInspector] = useState<"annotations" | "payload" | null>(null);
   const [submittedTasks, setSubmittedTasks] = useState<EditableSubmissionListItem[]>([]);
   const [submittedTasksLoading, setSubmittedTasksLoading] = useState(false);
   const [selectedSubmittedTaskId, setSelectedSubmittedTaskId] = useState<number | null>(null);
@@ -8153,10 +9517,6 @@ function RoomWorkPage() {
         : submittedDetail?.editable
           ? "Сохранить изменения"
           : "Только чтение";
-
-  function toggleInspector(nextInspector: "annotations" | "payload") {
-    setActiveInspector((current) => (current === nextInspector ? null : nextInspector));
-  }
 
   useEffect(() => {
     if (
@@ -8347,7 +9707,6 @@ function RoomWorkPage() {
     options?: { taskId?: number | null; annotatorId?: number | null }
   ) {
     setWorkspaceMode(nextMode);
-    setActiveInspector(null);
     setSubmitting(false);
     setCurrentTask(null);
     setLoading(true);
@@ -8783,31 +10142,6 @@ function RoomWorkPage() {
               </button>
             ) : null}
           </div>
-          <div className="room-editor__action-group room-editor__action-group--inspect" aria-label="Панели редактора">
-            <button className={`btn btn--muted btn--compact ${activeInspector === "annotations" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("annotations")}>
-              Области{editorState.annotationCount ? ` ${editorState.annotationCount}` : ""}
-            </button>
-            <button className={`btn btn--muted btn--compact ${activeInspector === "payload" ? "is-active" : ""}`} type="button" onClick={() => toggleInspector("payload")}>
-              JSON
-            </button>
-          </div>
-          {workspaceMode === "review" ? null : (
-            <div className="room-editor__action-group room-editor__action-group--submit" aria-label="Действия с задачей">
-              {workspaceMode === "queue" && isMediaTask && currentTask ? (
-                <>
-                  <button className="btn btn--secondary btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleNoObjectTask}>
-                    {noObjecting ? "Отмечаем..." : "Объекта нет"}
-                  </button>
-                  <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleSkipTask}>
-                    {skipping ? "Пропускаем..." : "Пропустить"}
-                  </button>
-                </>
-              ) : null}
-              <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
-                {submitButtonLabel}
-              </button>
-            </div>
-          )}
         </div>
       </header>
 
@@ -9105,7 +10439,7 @@ function RoomWorkPage() {
             </div>
 
             <div ref={mediaToolRef} className={isMediaTask || workspaceMode === "review" ? "editor-toolbar" : "editor-toolbar hidden"}>
-              <div className="editor-toolbar__frame">
+              <div className={`editor-toolbar__frame ${workspaceMode === "review" || videoFrameContext ? "" : "hidden"}`}>
                 {workspaceMode === "review" ? (
                   <div className="room-editor__review-filters" role="group" aria-label="Фильтр проверки">
                     <button
@@ -9160,7 +10494,6 @@ function RoomWorkPage() {
                     ))}
                   </div>
                 ) : null}
-                <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" ? "hidden" : ""}`}></div>
               </div>
               <div ref={zoomToolbarRef} className={isMediaTask ? "editor-toolbar__zoom" : "editor-toolbar__zoom hidden"}>
                 <div className="media-zoom">
@@ -9174,45 +10507,77 @@ function RoomWorkPage() {
           </div>
         </section>
 
-        <aside className={`room-editor__inspector ${activeInspector ? "is-open" : ""}`}>
-          <section className={activeInspector === "annotations" ? "editor-panel" : "editor-panel hidden"}>
-            <div className="editor-panel__head">
-              <span className="editor-panel__title">
-                {scenario.annotationsTitle}
-                {editorState.annotationCount ? ` (${editorState.annotationCount})` : ""}
+        <aside className="room-editor__answerrail">
+          <section className="editor-panel editor-panel--answer">
+            <div className="editor-panel__head room-editor__answer-head">
+              <div>
+                <span className="editor-panel__title">Ответ</span>
+                <strong>{scenario.annotationsTitle}</strong>
+              </div>
+              <span className="editor-chip editor-chip--ghost">
+                {editorState.annotationCount ? `${editorState.annotationCount} обл.` : "Нет областей"}
               </span>
-              <div className="editor-panel__actions">
-                <button
-                  ref={clearAnnotationsBtnRef}
-                  className={`btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`}
-                  type="button"
-                >
-                  Очистить
+            </div>
+
+            <div className="room-editor__answer-scroll">
+              <div className={`room-editor__answer-section ${workspaceMode === "review" || !isMediaTask ? "hidden" : ""}`}>
+                <span className="room-editor__answer-label">Класс объекта</span>
+                <div ref={labelPaletteRef} className={`label-chip-list editor-label-palette ${workspaceMode === "review" || !isMediaTask ? "hidden" : ""}`}></div>
+              </div>
+
+              <div className="room-editor__answer-section room-editor__answer-section--fill">
+                <div className="room-editor__answer-section-head">
+                  <span className="room-editor__answer-label">Области</span>
+                  <button
+                    ref={clearAnnotationsBtnRef}
+                    className={`btn btn--muted btn--compact ${editorState.annotationCount && currentTask?.workflow_stage !== "text_transcription" ? "" : "hidden"}`}
+                    type="button"
+                  >
+                    Очистить
+                  </button>
+                </div>
+                <div ref={annotationListRef} className="annotation-list empty-card">
+                  Разметка пока отсутствует.
+                </div>
+              </div>
+
+              <details className="room-editor__payload-details" open={!isMediaTask}>
+                <summary>JSON результата</summary>
+                <label className="field editor-field editor-field--payload">
+                  <span ref={resultLabelRef}>Результат разметки</span>
+                  <textarea
+                    ref={resultJsonRef}
+                    rows={12}
+                    value={payloadText}
+                    readOnly={Boolean(currentTask && isMediaTask) || isReadOnlyStage}
+                    onChange={(event) => setPayloadText(event.currentTarget.value)}
+                  ></textarea>
+                </label>
+                {bootstrap.app_debug_mode && currentTask ? (
+                  <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
+                ) : null}
+              </details>
+            </div>
+
+            {workspaceMode === "review" ? (
+              <div className="room-editor__answer-note">Решение по проверке доступно в левой панели ревью.</div>
+            ) : (
+              <div className="room-editor__answer-actions" aria-label="Действия с задачей">
+                {workspaceMode === "queue" && isMediaTask && currentTask ? (
+                  <div className="room-editor__answer-secondary-actions">
+                    <button className="btn btn--secondary btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleNoObjectTask}>
+                      {noObjecting ? "Отмечаем..." : "Объекта нет"}
+                    </button>
+                    <button className="btn btn--muted btn--compact" type="button" disabled={submitting || skipping || noObjecting} onClick={handleSkipTask}>
+                      {skipping ? "Пропускаем..." : "Пропустить"}
+                    </button>
+                  </div>
+                ) : null}
+                <button className="btn btn--primary btn--compact room-editor__submit" type="submit" disabled={submitDisabled}>
+                  {submitButtonLabel}
                 </button>
               </div>
-            </div>
-            <div ref={annotationListRef} className="annotation-list empty-card">
-              Разметка пока отсутствует.
-            </div>
-          </section>
-
-          <section className={activeInspector === "payload" ? "editor-panel" : "editor-panel hidden"}>
-            <div className="editor-panel__head">
-              <span className="editor-panel__title">Результат</span>
-            </div>
-            <label className="field editor-field editor-field--payload">
-              <span ref={resultLabelRef}>Результат разметки</span>
-              <textarea
-                ref={resultJsonRef}
-                rows={16}
-                value={payloadText}
-                readOnly={Boolean(currentTask && isMediaTask) || isReadOnlyStage}
-                onChange={(event) => setPayloadText(event.currentTarget.value)}
-              ></textarea>
-            </label>
-            {bootstrap.app_debug_mode && currentTask ? (
-              <pre className="payload-preview room-editor__debug">{JSON.stringify(currentTask.input_payload, null, 2)}</pre>
-            ) : null}
+            )}
           </section>
         </aside>
       </div>
