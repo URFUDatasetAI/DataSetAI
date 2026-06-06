@@ -25689,7 +25689,14 @@
                         translateTaskStatus(task.status)
                       ] })
                     ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: `/videos/${task.id}/pre-annotate/`, children: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "a",
+                      {
+                        className: "btn btn--primary btn--compact",
+                        href: task.source_type === "video" ? `/videos/${task.id}/pre-annotate/` : `/rooms/${roomId}/work/`,
+                        children: task.source_type === "video" ? "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" : "\u0420\u0430\u0437\u043C\u0435\u0447\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B"
+                      }
+                    )
                   ] }, task.id)) })
                 ] }) : null
               ] }) : null,
@@ -26507,7 +26514,14 @@
                             translateTaskStatus(task.status)
                           ] })
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("a", { className: "btn btn--primary btn--compact", href: `/videos/${task.id}/pre-annotate/`, children: "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                          "a",
+                          {
+                            className: "btn btn--primary btn--compact",
+                            href: task.source_type === "video" ? `/videos/${task.id}/pre-annotate/` : `/rooms/${roomId}/work/`,
+                            children: task.source_type === "video" ? "\u0412\u044B\u0431\u0440\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B" : "\u0420\u0430\u0437\u043C\u0435\u0447\u0430\u0442\u044C \u043A\u0430\u0434\u0440\u044B"
+                          }
+                        )
                       ] }, task.id)) })
                     ] }) : null,
                     dashboard.actor.can_export ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panel-card manage-card-legacy manage-card-legacy--export", children: [
