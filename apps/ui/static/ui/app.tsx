@@ -5285,8 +5285,11 @@ function RoomDetailPage() {
                                   #{task.id} · {Number(task.input_payload?.frame_count || 0)} кадров · {translateTaskStatus(task.status)}
                                 </span>
                               </span>
-                              <a className="btn btn--primary btn--compact" href={`/videos/${task.id}/pre-annotate/`}>
-                                Выбрать кадры
+                              <a
+                                className="btn btn--primary btn--compact"
+                                href={task.source_type === "video" ? `/videos/${task.id}/pre-annotate/` : `/rooms/${roomId}/work/`}
+                              >
+                                {task.source_type === "video" ? "Выбрать кадры" : "Размечать кадры"}
                               </a>
                             </div>
                           ))}
@@ -6282,8 +6285,11 @@ function RoomDetailPage() {
                                     #{task.id} · {Number(task.input_payload?.frame_count || 0)} кадров · {translateTaskStatus(task.status)}
                                   </span>
                                 </span>
-                                <a className="btn btn--primary btn--compact" href={`/videos/${task.id}/pre-annotate/`}>
-                                  Выбрать кадры
+                                <a
+                                  className="btn btn--primary btn--compact"
+                                  href={task.source_type === "video" ? `/videos/${task.id}/pre-annotate/` : `/rooms/${roomId}/work/`}
+                                >
+                                  {task.source_type === "video" ? "Выбрать кадры" : "Размечать кадры"}
                                 </a>
                               </div>
                             ))}
